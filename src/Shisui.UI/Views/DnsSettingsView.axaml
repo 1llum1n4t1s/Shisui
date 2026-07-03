@@ -1,0 +1,125 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Shisui.UI.ViewModels"
+             xmlns:models="using:Shisui.Core.Models"
+             xmlns:conv="using:Shisui.UI.Converters"
+             xmlns:acv="using:Avalonia.Data.Converters"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             x:Class="Shisui.UI.Views.DnsSettingsView"
+             x:DataType="vm:DnsSettingsViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="8,0">
+      <TextBlock Classes="h1" Text="DNS 設定" />
+
+      <primitives:HeaderedContentControl Header="ネットワークアダプタ">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Grid.Column="0"
+                      ItemsSource="{Binding Adapters}"
+                      SelectedItem="{Binding SelectedAdapter}"
+                      HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="models:NetworkAdapterInfo">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding DisplayName}" />
+                    <TextBlock Text="(無効)" Classes="caption" IsVisible="{Binding !IsUp}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}" Margin="8,0,0,0" />
+          </Grid>
+
+          <StackPanel IsVisible="{Binding SelectedAdapter, Converter={x:Static acv:ObjectConverters.IsNotNull}}" Spacing="2">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="現在の IPv4 DNS:" Classes="caption" />
+              <TextBlock Text="{Binding SelectedAdapter.CurrentIPv4Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="現在の IPv6 DNS:" Classes="caption" />
+              <TextBlock Text="{Binding SelectedAdapter.CurrentIPv6Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="DNS プロバイダ">
+        <StackPanel Spacing="8">
+          <ComboBox ItemsSource="{Binding Presets}"
+                    SelectedItem="{Binding SelectedPreset}"
+                    HorizontalAlignment="Stretch">
+            <ComboBox.ItemTemplate>
+              <DataTemplate DataType="models:DnsProviderPreset">
+                <StackPanel Spacing="1" Margin="0,2">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Description}" Classes="caption" />
+                </StackPanel>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+
+          <StackPanel IsVisible="{Binding IsCustomPresetSelected}" Spacing="8" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <StackPanel Width="220">
+                <TextBlock Text="IPv4 プライマリ" Classes="caption" />
+                <TextBox Text="{Binding CustomIpv4Primary}" PlaceholderText="例: 1.1.1.1" />
+              </StackPanel>
+              <StackPanel Width="220">
+                <TextBlock Text="IPv4 セカンダリ" Classes="caption" />
+                <TextBox Text="{Binding CustomIpv4Secondary}" PlaceholderText="例: 1.0.0.1" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <StackPanel Width="220">
+                <TextBlock Text="IPv6 プライマリ" Classes="caption" />
+                <TextBox Text="{Binding CustomIpv6Primary}" PlaceholderText="例: 2606:4700:4700::1111" />
+              </StackPanel>
+              <StackPanel Width="220">
+                <TextBlock Text="IPv6 セカンダリ" Classes="caption" />
+                <TextBox Text="{Binding CustomIpv6Secondary}" PlaceholderText="例: 2606:4700:4700::1001" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0,0,4">
+        <Button Content="適用" Command="{Binding ApplyCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Content="自動取得 (DHCP) に戻す" Command="{Binding ResetToAutomaticCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Content="DNS キャッシュをクリア" Command="{Binding FlushDnsCacheCommand}" IsEnabled="{Binding !IsBusy}" />
+      </StackPanel>
+      <TextBlock Text="{Binding StatusText}" Classes="caption" Margin="4,4,0,12" />
+
+      <primitives:HeaderedContentControl Header="不要になったネットワークデバイスの掃除" IsVisible="{Binding IsWindows}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="取り外した USB アダプタや、アンインストールした VPN クライアントなど、現在は接続されていないのにレジストリ上の登録が残っているネットワークデバイスを削除します。「Microsoft 製」の項目は VPN 機能等で使う Windows 標準の仮想デバイスであることが多く、通常は削除不要です。削除後に該当デバイスを再度使う場合、ドライバーの再インストールが必要になることがあります。" />
+
+          <Button Content="一覧を更新" Command="{Binding LoadGhostAdaptersCommand}" IsEnabled="{Binding !IsGhostAdaptersBusy}" HorizontalAlignment="Left" />
+
+          <ItemsControl ItemsSource="{Binding GhostAdapters}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:GhostAdapterItemViewModel">
+                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,8">
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
+                      <TextBlock Text="{Binding Info.Description}" FontWeight="SemiBold" />
+                      <TextBlock Classes="caption" Text="{Binding Info.Manufacturer, StringFormat='製造元: {0}'}" />
+                      <TextBlock Text="⚠ Microsoft 標準の仮想デバイスです。通常は削除不要です。" FontSize="12" Foreground="#FF9F0A"
+                                 IsVisible="{Binding Info.IsLikelyMicrosoftVirtualDevice}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Content="確認済み" IsChecked="{Binding IsConfirmed}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Button Grid.Column="2" Content="削除" Command="{Binding RemoveCommand}" Classes="danger" VerticalAlignment="Center" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <TextBlock Text="{Binding GhostAdaptersStatusText}" Classes="caption" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

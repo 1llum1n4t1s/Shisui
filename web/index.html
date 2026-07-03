@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shisui（止水） — Windows / macOS 向けネットワーク設定アプリ / Network tuning app</title>
+<meta name="description" content="Shisui（止水／しすい）は Windows / macOS 向けのネットワーク設定デスクトップアプリ。DNS プロバイダの切り替え・DNS キャッシュのクリア・（Windows では）BBR2 / TCP 調整やネットワークメンテナンス、ゴーストデバイスの掃除をひとつのアプリで。明鏡止水の「止水」——波立たない澄んだ水面のように、静かでクリーンなネットワークへ。Shisui is a network tuning desktop app for Windows and macOS." />
+<meta name="keywords" content="Shisui, 止水, しすい, DNS, Cloudflare, BBR2, TCP, ネットワーク, Windows, macOS, ネットワーク設定, network tuning" />
+<meta name="author" content="ゆろち" />
+<meta name="robots" content="index, follow" />
+<meta name="theme-color" content="#061b24" />
+<link rel="canonical" href="https://shisui.nephilim.jp/" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Shisui" />
+<meta property="og:title" content="Shisui（止水） — Windows / macOS 向けネットワーク設定アプリ" />
+<meta property="og:description" content="波立たない澄んだ水面のように、静かでクリーンなネットワークへ。DNS 切り替え・キャッシュクリア・BBR2 / TCP 調整をひとつのアプリで。A quiet, clean network tuning app for Windows &amp; macOS." />
+<meta property="og:url" content="https://shisui.nephilim.jp/" />
+<meta property="og:locale" content="ja_JP" />
+<meta property="og:locale:alternate" content="en_US" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="Shisui（止水） — ネットワーク設定アプリ" />
+<meta name="twitter:description" content="静かでクリーンなネットワークへ整える Windows / macOS 向けアプリ。A quiet network tuning app." />
+
+<!-- Inline SVG favicon: still water with a single ripple -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2361d6e6'/%3E%3Cstop offset='1' stop-color='%230e4d64'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='%23061b24'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='none' stroke='url(%23g)' stroke-width='1.6'/%3E%3Ccircle cx='16' cy='16' r='8.5' fill='none' stroke='%2361d6e6' stroke-width='1' opacity='.55'/%3E%3Ccircle cx='16' cy='16' r='12' fill='none' stroke='%2361d6e6' stroke-width='.8' opacity='.28'/%3E%3C/svg%3E" />
+
+<script>document.documentElement.classList.add('js');</script>
+<style>
+  /* ============================================================
+     Shisui（止水）— "Still Water"
+     明鏡止水の「止水」。波立たない澄んだ水面のように、
+     静かでクリーンで安定したネットワークへ整える。
+     Deep still-water teal/blue, quiet ripple motif.
+     No external fonts / CDN / images — fully self-contained.
+     ============================================================ */
+
+  :root{
+    --bg-0:#031319;        /* 最も深い水底 / deepest water */
+    --bg-1:#061b24;        /* base */
+    --bg-2:#0a2a36;        /* raised */
+    --bg-3:#0e3a4a;        /* panel */
+    --deep:#0e4d64;        /* 静かな深い水面 / deep still water */
+    --deep-2:#0a3948;
+    --accent:#3aa8c1;      /* 澄んだ水面 / clear water accent */
+    --accent-2:#61d6e6;    /* highlight ripple */
+    --accent-soft:#8fe6f0cc;
+    --teal:#1f7a8c;        /* mid teal */
+    --frost:#d7edf3;       /* frosted text */
+    --ink:#f0f8fb;         /* primary text */
+    --muted:#8fb4c2;       /* secondary / EN line */
+    --muted-2:#5c8494;     /* faint */
+    --line:#1d4a5a;        /* hairline */
+    --line-bright:#3aa8c133;
+    --glass:#0a2a36cc;
+    --shadow:0 30px 80px -30px #000b;
+    --r:18px;
+    --maxw:1180px;
+
+    /* System font stacks only — no webfont download. */
+    --f-display:"Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    --f-head:"Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    --f-jp:"Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", "Segoe UI", system-ui, sans-serif;
+    --f-body:"Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+    --f-mono:"Cascadia Code", "Consolas", "SF Mono", ui-monospace, "Courier New", monospace;
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+
+  html{ scroll-behavior:smooth; -webkit-text-size-adjust:100%; }
+
+  body{
+    margin:0;
+    background:var(--bg-1);
+    color:var(--ink);
+    font-family:var(--f-body);
+    line-height:1.65;
+    font-size:clamp(15px,1.05vw,17px);
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  /* ---- Bilingual: JA default, EN toggle. ----
+     Both languages are present in the DOM. By default the EN lines are
+     hidden and JA shown. Toggling to EN adds .lang-en on <html>. */
+  [data-en]{ display:none; }
+  html.lang-en [data-ja]{ display:none; }
+  html.lang-en [data-en]{ display:revert; }
+  /* inline EN fragments inside JA paragraphs */
+  .en-inline{ display:none; }
+  html.lang-en .en-inline{ display:block; }
+  html.lang-en .ja-inline{ display:none; }
+
+  /* ---- Layered atmospheric background (fixed): a calm water surface ---- */
+  .bgwrap{ position:fixed; inset:0; z-index:-2; overflow:hidden; pointer-events:none; }
+  .bgwrap::before{
+    content:""; position:absolute; inset:-20%;
+    background:
+      radial-gradient(50% 42% at 20% 6%, #0e4d6455 0%, transparent 60%),
+      radial-gradient(42% 40% at 86% 20%, #3aa8c122 0%, transparent 62%),
+      radial-gradient(64% 54% at 68% 102%, #0a394866 0%, transparent 60%),
+      linear-gradient(168deg, var(--bg-0), var(--bg-1) 46%, #04141b 100%);
+  }
+  .bgwrap::after{
+    /* very faint grain, keeps surfaces from banding */
+    content:""; position:absolute; inset:0; opacity:.045; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* Slow, gentle horizon ripples drawn as SVG */
+  .ripple-bg{ position:absolute; inset:0; width:100%; height:100%; opacity:.4; }
+  .ripple-bg path{ stroke:#1f6b80; fill:none; }
+
+  /* ---- Layout primitives ---- */
+  .wrap{ width:min(92%,var(--maxw)); margin-inline:auto; }
+  section{ position:relative; }
+  .eyebrow{
+    font-family:var(--f-head); font-weight:700; letter-spacing:.32em;
+    text-transform:uppercase; font-size:.7rem; color:var(--accent-2);
+    display:inline-flex; align-items:center; gap:.7em;
+  }
+  .eyebrow::before{ content:""; width:26px; height:1px; background:linear-gradient(90deg,var(--accent-2),transparent); }
+  .gradtext{
+    background:linear-gradient(112deg,var(--accent-2) 0%, #bfeef5 44%, var(--teal) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  a{ color:inherit; }
+  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+
+  /* ============================ HEADER ============================ */
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    backdrop-filter:blur(14px) saturate(1.2);
+    background:linear-gradient(180deg, #061b24dd, #061b2455 70%, transparent);
+    border-bottom:1px solid #ffffff0d;
+  }
+  .nav-inner{ display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.85rem 0; }
+  .brand{ display:flex; align-items:center; gap:.7rem; text-decoration:none; }
+  .brand .mark{ width:32px; height:32px; flex:none; filter:drop-shadow(0 0 10px #3aa8c155); }
+  .brand b{ font-family:var(--f-display); font-weight:800; font-size:1.2rem; letter-spacing:.02em; }
+  .brand .kanji{ font-family:var(--f-jp); color:var(--muted); font-size:.8rem; margin-left:.15rem; }
+  .nav-links{ display:flex; align-items:center; gap:1.5rem; }
+  .nav-links a.nav-anchor{
+    text-decoration:none; color:var(--frost); font-family:var(--f-head); font-weight:600;
+    font-size:.86rem; letter-spacing:.02em; opacity:.82; transition:opacity .2s, color .2s;
+  }
+  .nav-links a.nav-anchor:hover{ opacity:1; color:var(--accent-2); }
+  .lang-btn{
+    font-family:var(--f-head); font-weight:700; font-size:.78rem; letter-spacing:.06em;
+    color:var(--frost); background:#0a2a36aa; border:1px solid var(--line);
+    padding:.42rem .7rem; border-radius:10px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:.4rem;
+    transition:border-color .2s, background .2s, transform .2s;
+  }
+  .lang-btn:hover{ border-color:var(--accent); background:#3aa8c114; transform:translateY(-1px); }
+  .lang-btn .cur{ color:var(--accent-2); }
+  @media(max-width:720px){ .nav-links a.nav-anchor{ display:none; } }
+
+  /* ============================ HERO ============================ */
+  .hero{ padding:clamp(3rem,9vw,7rem) 0 clamp(3.5rem,7vw,6rem); }
+  .hero-grid{
+    display:grid; grid-template-columns:1.12fr .88fr; gap:clamp(2rem,5vw,4.5rem);
+    align-items:center;
+  }
+  @media(max-width:920px){ .hero-grid{ grid-template-columns:1fr; } }
+
+  .badge-row{ display:flex; flex-wrap:wrap; gap:.55rem; margin-bottom:1.6rem; }
+  .badge{
+    font-family:var(--f-head); font-weight:600; font-size:.72rem; letter-spacing:.03em;
+    padding:.4rem .7rem; border-radius:999px; border:1px solid var(--line);
+    background:#0a2a36aa; color:var(--frost); display:inline-flex; gap:.45rem; align-items:center;
+  }
+  .badge .dot{ width:6px; height:6px; border-radius:50%; background:var(--accent-2); box-shadow:0 0 10px var(--accent-2); animation:breathe 4.5s ease-in-out infinite; }
+  @keyframes breathe{ 0%,100%{ opacity:.5 } 50%{ opacity:1; box-shadow:0 0 14px var(--accent-2) } }
+
+  h1.title{
+    font-family:var(--f-display); font-weight:800;
+    font-size:clamp(3.2rem,9vw,6.2rem); line-height:.98; letter-spacing:.01em;
+    margin:.2rem 0 .15rem;
+  }
+  .title-sub{
+    font-family:var(--f-jp); font-weight:600; color:var(--muted);
+    font-size:clamp(1rem,2.4vw,1.35rem); letter-spacing:.28em; margin:0 0 1.4rem;
+  }
+  .tagline{ font-family:var(--f-jp); font-weight:700; font-size:clamp(1.25rem,3vw,1.8rem); line-height:1.45; margin:0 0 .35rem; }
+  .tagline-en{ color:var(--muted); font-size:clamp(.95rem,2vw,1.1rem); font-weight:500; margin:0 0 2rem; max-width:50ch; }
+
+  .cta-row{ display:flex; flex-wrap:wrap; gap:.9rem; align-items:center; }
+  .btn{
+    position:relative; isolation:isolate;
+    font-family:var(--f-head); font-weight:700; font-size:.95rem; letter-spacing:.01em;
+    text-decoration:none; cursor:pointer;
+    padding:.95rem 1.5rem; border-radius:13px;
+    display:inline-flex; align-items:center; gap:.7rem;
+    transition:transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s, border-color .22s, background .22s;
+  }
+  .btn svg{ width:19px; height:19px; }
+  .btn .sub{ font-weight:600; font-size:.74rem; opacity:.75; margin-left:.15rem; }
+  .btn-primary{
+    color:#031319;
+    background:linear-gradient(120deg,var(--accent-2), #8fe6f0 52%, #bfeef5);
+    box-shadow:0 14px 40px -12px #3aa8c188, inset 0 0 0 1px #ffffff55;
+  }
+  .btn-primary:hover{ transform:translateY(-3px); box-shadow:0 22px 55px -12px #61d6e6aa, inset 0 0 0 1px #fff; }
+  .btn-ghost{
+    color:var(--frost); border:1px solid var(--line);
+    background:#0a2a36aa;
+  }
+  .btn-ghost:hover{ transform:translateY(-3px); border-color:var(--accent); background:#3aa8c114; box-shadow:0 16px 40px -18px #000; }
+
+  .hero-meta{ margin-top:1.7rem; display:flex; flex-wrap:wrap; gap:1.1rem 1.9rem; color:var(--muted); font-size:.84rem; }
+  .hero-meta b{ color:var(--frost); font-family:var(--f-head); display:block; }
+
+  /* ---- The signature stage: still water surface with a single quiet ripple ---- */
+  .stage{
+    position:relative; aspect-ratio:1/1; display:grid; place-items:center;
+  }
+  .stage::before{
+    content:""; position:absolute; inset:8% 8% 6%;
+    background:radial-gradient(circle at 50% 42%, #3aa8c12e, transparent 62%);
+    filter:blur(30px); z-index:0;
+  }
+  .pond{
+    position:relative; width:88%; aspect-ratio:1/1;
+    border-radius:50%;
+    background:
+      radial-gradient(120% 120% at 50% 12%, #0e3a4a 0%, #082431 46%, #041820 100%);
+    border:1px solid var(--line-bright);
+    box-shadow:0 34px 70px -26px #000c, inset 0 2px 30px #61d6e618, inset 0 -20px 40px #02101688;
+    overflow:hidden; z-index:2;
+  }
+  /* soft sky reflection at the top edge */
+  .pond::before{
+    content:""; position:absolute; left:0; right:0; top:0; height:42%;
+    background:linear-gradient(180deg, #61d6e614, transparent);
+    pointer-events:none;
+  }
+  .pond svg{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  /* expanding ripple rings */
+  .ring{ transform-origin:50% 46%; }
+  .ring.r1{ animation:spread 7s ease-out infinite; }
+  .ring.r2{ animation:spread 7s ease-out infinite; animation-delay:2.33s; }
+  .ring.r3{ animation:spread 7s ease-out infinite; animation-delay:4.66s; }
+  @keyframes spread{
+    0%{ transform:scale(.05); opacity:0; }
+    12%{ opacity:.85; }
+    100%{ transform:scale(1); opacity:0; }
+  }
+  /* the single drop that lands, then stills */
+  .drop{ animation:droplet 7s ease-in infinite; }
+  @keyframes droplet{
+    0%{ transform:translateY(-42px); opacity:0; }
+    7%{ opacity:1; }
+    11%{ transform:translateY(0); opacity:1; }
+    13%,100%{ transform:translateY(0); opacity:0; }
+  }
+  /* faint drifting horizontal water lines */
+  .surf{ opacity:.5; animation:drift 12s ease-in-out infinite; }
+  .surf.s2{ animation-duration:16s; animation-direction:reverse; opacity:.32; }
+  @keyframes drift{ 0%,100%{ transform:translateX(-3%) } 50%{ transform:translateX(3%) } }
+
+  .stage-cap{
+    position:absolute; bottom:-.3rem; left:50%; transform:translateX(-50%);
+    font-family:var(--f-jp); font-size:.76rem; color:var(--muted-2); letter-spacing:.14em;
+    white-space:nowrap;
+  }
+
+  /* ============================ STAT / PROTOCOL STRIP ============================ */
+  .formats{ border-block:1px solid #ffffff0d; padding:1.1rem 0; background:#061b2488; }
+  .formats-inner{ display:flex; align-items:center; gap:1.2rem; flex-wrap:wrap; justify-content:center; }
+  .formats .lbl{ font-family:var(--f-head); font-weight:600; letter-spacing:.14em; font-size:.7rem; color:var(--muted-2); text-transform:uppercase; }
+  .chip{
+    font-family:var(--f-display); font-weight:600; font-size:.9rem; letter-spacing:.03em;
+    color:var(--frost); padding:.3rem .8rem; border:1px solid var(--line); border-radius:8px;
+    background:linear-gradient(180deg,#0e3a4a,#0a2a36);
+  }
+  .chip.glow{ color:var(--accent-2); border-color:var(--line-bright); box-shadow:0 0 14px #3aa8c122; }
+  .chip code{ font-family:var(--f-mono); font-size:.86em; }
+
+  /* ============================ SECTION HEAD ============================ */
+  .sec{ padding:clamp(3.4rem,8vw,6rem) 0; }
+  .sec-head{ max-width:64ch; margin-bottom:clamp(2rem,4vw,3rem); }
+  .sec-head h2{
+    font-family:var(--f-display); font-weight:800; letter-spacing:-.01em;
+    font-size:clamp(2rem,5vw,3.1rem); line-height:1.05; margin:.8rem 0 .5rem;
+  }
+  .sec-head .h2-en{ font-family:var(--f-head); color:var(--muted); font-size:clamp(1rem,2vw,1.25rem); font-weight:600; letter-spacing:.02em; }
+  .sec-head p{ color:var(--muted); margin:.9rem 0 0; }
+
+  /* ============================ FEATURES GRID ============================ */
+  .feat-grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:1rem; }
+  .card{
+    grid-column:span 4;
+    position:relative; overflow:hidden;
+    border:1px solid var(--line); border-radius:var(--r);
+    background:linear-gradient(180deg,#0a2a36, #082230);
+    padding:1.5rem 1.45rem 1.6rem;
+    transition:transform .3s cubic-bezier(.2,.8,.2,1), border-color .3s, box-shadow .3s;
+  }
+  .card::before{ /* corner light */
+    content:""; position:absolute; top:-1px; right:-1px; width:54px; height:54px;
+    background:linear-gradient(135deg,#3aa8c122, transparent 70%);
+    clip-path:polygon(100% 0, 0 0, 100% 100%);
+    transition:background .3s;
+  }
+  .card::after{ /* hover ripple-glow following cursor */
+    content:""; position:absolute; inset:0; opacity:0;
+    background:radial-gradient(140px 140px at var(--mx,80%) var(--my,0%), #3aa8c11f, transparent 70%);
+    transition:opacity .3s;
+  }
+  .card:hover{ transform:translateY(-6px); border-color:#3aa8c166; box-shadow:0 26px 50px -28px #000, 0 0 0 1px #3aa8c122; }
+  .card:hover::after{ opacity:1; }
+  .card:hover::before{ background:linear-gradient(135deg,#61d6e655, transparent 70%); }
+  .card:hover .ic{ transform:translateY(-2px) scale(1.05); }
+
+  .card.wide{ grid-column:span 6; }
+  @media(max-width:900px){ .card,.card.wide{ grid-column:span 6; } }
+  @media(max-width:600px){ .card,.card.wide{ grid-column:span 12; } }
+
+  .ic{
+    width:46px; height:46px; border-radius:12px; margin-bottom:1.05rem;
+    display:grid; place-items:center; flex:none;
+    background:linear-gradient(140deg,#0e3a4a,#0a2a36);
+    border:1px solid var(--line-bright);
+    transition:transform .3s;
+  }
+  .ic svg{ width:24px; height:24px; stroke:var(--accent-2); fill:none; stroke-width:1.7; }
+  .card h3{ font-family:var(--f-head); font-weight:700; font-size:1.12rem; margin:0 0 .1rem; letter-spacing:.01em; }
+  .card .h3-en{ font-family:var(--f-head); font-weight:600; color:var(--accent-soft); font-size:.76rem; letter-spacing:.05em; text-transform:uppercase; display:block; margin-bottom:.6rem; }
+  .card p{ margin:0; color:var(--frost); font-size:.92rem; }
+  .card .tags{ margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.4rem; }
+  .card .tags span{ font-family:var(--f-head); font-size:.68rem; letter-spacing:.03em; padding:.18rem .5rem; border-radius:6px; background:#0e3a4a; border:1px solid var(--line); color:var(--muted); }
+  .card .tags span.win{ color:var(--accent-2); border-color:var(--line-bright); }
+
+  .plat-tag{
+    display:inline-flex; align-items:center; gap:.35rem; margin-top:.9rem;
+    font-family:var(--f-head); font-weight:700; font-size:.66rem; letter-spacing:.05em;
+    color:var(--accent-2); background:#3aa8c112; border:1px solid var(--line-bright);
+    padding:.2rem .55rem; border-radius:999px;
+  }
+  .plat-tag.both{ color:var(--muted); background:#0e3a4a; border-color:var(--line); }
+  .plat-tag svg{ width:12px; height:12px; }
+
+  /* ============================ DNS TABLE ============================ */
+  .dns-wrap{ margin-top:clamp(1.6rem,3vw,2.4rem); overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:linear-gradient(180deg,#0a2a36,#082230); }
+  table.dns{ width:100%; border-collapse:collapse; min-width:640px; font-size:.9rem; }
+  table.dns caption{ text-align:left; padding:1rem 1.2rem .2rem; color:var(--muted); font-size:.84rem; }
+  table.dns th, table.dns td{ text-align:left; padding:.85rem 1.2rem; border-bottom:1px solid var(--line); }
+  table.dns thead th{ font-family:var(--f-head); font-weight:700; color:var(--accent-2); letter-spacing:.04em; font-size:.74rem; text-transform:uppercase; }
+  table.dns tbody tr:last-child td{ border-bottom:none; }
+  table.dns tbody tr:hover{ background:#3aa8c10d; }
+  table.dns .name{ font-family:var(--f-jp); font-weight:600; color:var(--frost); }
+  table.dns code{ font-family:var(--f-mono); font-size:.88em; color:var(--accent-soft); }
+
+  /* ============================ SPLIT: HOW IT WORKS ============================ */
+  .split{ display:grid; grid-template-columns:1fr 1fr; gap:clamp(1.4rem,3vw,2.4rem); align-items:stretch; }
+  @media(max-width:840px){ .split{ grid-template-columns:1fr; } }
+  .panel{
+    position:relative; border:1.5px solid var(--line-bright); border-radius:var(--r);
+    background:linear-gradient(160deg,#0a2a36, #082230); padding:2rem 1.6rem;
+    display:flex; flex-direction:column; gap:1rem; min-height:240px; justify-content:center;
+    overflow:hidden;
+  }
+  .panel::before{
+    content:""; position:absolute; inset:0; opacity:.4;
+    background:repeating-linear-gradient(180deg,#3aa8c108 0 14px, transparent 14px 28px);
+  }
+  .pn-row{ display:flex; align-items:center; gap:1rem; position:relative; }
+  .pn-ic{ width:52px; height:52px; flex:none; border-radius:12px; display:grid; place-items:center; background:#0e3a4a99; border:1px solid var(--line-bright); }
+  .pn-ic svg{ width:26px; height:26px; stroke:var(--accent-2); fill:none; stroke-width:1.6; }
+  .pn-row b{ font-family:var(--f-head); font-weight:700; font-size:1rem; display:block; }
+  .pn-arrow{ text-align:center; color:var(--accent-2); font-size:1.05rem; font-family:var(--f-mono); animation:pulse 3s ease-in-out infinite; letter-spacing:.06em; }
+  @keyframes pulse{ 0%,100%{ opacity:.4 } 50%{ opacity:1 } }
+
+  .how-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1rem; }
+  .how-list li{ display:flex; gap:1rem; align-items:flex-start; padding:1rem 1.1rem; border:1px solid var(--line); border-radius:14px; background:#0a2a3688; transition:border-color .25s, transform .25s; }
+  .how-list li:hover{ border-color:#3aa8c155; transform:translateX(4px); }
+  .num{ font-family:var(--f-display); font-weight:800; font-size:1.1rem; color:var(--accent-2); flex:none; width:1.8rem; }
+  .how-list b{ font-family:var(--f-head); font-weight:700; }
+  .how-list .desc{ color:var(--muted); font-size:.88rem; display:block; margin-top:.2rem; }
+
+  /* ============================ SYSTEM REQUIREMENTS ============================ */
+  .req-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
+  @media(max-width:840px){ .req-grid{ grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:460px){ .req-grid{ grid-template-columns:1fr; } }
+  .req{
+    border:1px solid var(--line); border-radius:var(--r); padding:1.3rem 1.25rem;
+    background:linear-gradient(180deg,#0a2a36,#082230); position:relative; overflow:hidden;
+    transition:border-color .25s, transform .25s;
+  }
+  .req:hover{ border-color:#3aa8c155; transform:translateY(-4px); }
+  .req .k{ font-family:var(--f-head); font-weight:600; letter-spacing:.12em; text-transform:uppercase; font-size:.68rem; color:var(--accent-2); margin-bottom:.5rem; }
+  .req .v{ font-family:var(--f-display); font-weight:600; font-size:1.16rem; line-height:1.2; }
+  .req .v small{ font-family:var(--f-jp); font-weight:400; font-size:.8rem; color:var(--muted); display:block; margin-top:.35rem; letter-spacing:0; }
+
+  .plat-note{
+    margin-top:1.4rem; border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:12px; background:#0a2a3688; padding:1rem 1.2rem;
+    color:var(--frost); font-size:.9rem; display:flex; gap:.8rem; align-items:flex-start;
+  }
+  .plat-note svg{ width:20px; height:20px; stroke:var(--accent-2); fill:none; stroke-width:1.7; flex:none; margin-top:.15rem; }
+
+  /* ============================ DOWNLOAD ============================ */
+  .dl-panel{
+    position:relative; overflow:hidden;
+    border:1px solid #3aa8c133; border-radius:26px;
+    background:
+      radial-gradient(60% 90% at 85% 0%, #0e4d6455, transparent 60%),
+      radial-gradient(50% 80% at 0% 100%, #3aa8c11a, transparent 60%),
+      linear-gradient(160deg,#0b3140, #071e28);
+    padding:clamp(2rem,5vw,3.4rem);
+    box-shadow:var(--shadow);
+  }
+  .dl-panel::before{
+    content:""; position:absolute; right:-70px; top:-70px; width:280px; height:280px; opacity:.22;
+    background:radial-gradient(circle at 50% 50%, #61d6e6, transparent 62%);
+    border-radius:50%; animation:pulseGlow 9s ease-in-out infinite; pointer-events:none;
+  }
+  @keyframes pulseGlow{ 0%,100%{ transform:scale(.9); opacity:.16 } 50%{ transform:scale(1.05); opacity:.28 } }
+  .dl-head{ display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:1rem; margin-bottom:1.8rem; position:relative; }
+  .dl-head h2{ font-family:var(--f-display); font-weight:800; font-size:clamp(1.9rem,4.5vw,2.8rem); margin:.4rem 0 0; letter-spacing:.01em; }
+  .dl-head .h2-en{ color:var(--muted); font-family:var(--f-head); font-weight:600; }
+  .price-pill{ font-family:var(--f-head); font-weight:700; font-size:.8rem; letter-spacing:.04em; color:var(--accent-2); border:1px solid var(--line-bright); background:#3aa8c112; padding:.5rem .9rem; border-radius:999px; }
+
+  .dl-grid{ display:grid; grid-template-columns:1fr; gap:1rem; position:relative; }
+  .dl-card{
+    text-decoration:none; color:var(--ink);
+    border:1px solid var(--line); border-radius:18px;
+    background:linear-gradient(180deg,#0e3a4a, #0a2a36);
+    padding:1.5rem 1.5rem 1.4rem; display:flex; align-items:center; gap:1.1rem;
+    transition:transform .26s cubic-bezier(.2,.8,.2,1), border-color .26s, box-shadow .26s;
+    position:relative; overflow:hidden;
+  }
+  .dl-card::after{ content:""; position:absolute; inset:0; opacity:0; background:linear-gradient(120deg,#3aa8c118, transparent 60%); transition:opacity .26s; }
+  .dl-card:hover{ transform:translateY(-5px); border-color:var(--accent); box-shadow:0 26px 55px -24px #000, 0 0 0 1px #3aa8c133; }
+  .dl-card:hover::after{ opacity:1; }
+  .dl-card:hover .dl-ic{ background:linear-gradient(140deg,#61d6e6,#0e4d64); }
+  .dl-card:hover .dl-ic svg{ stroke:#031319; }
+  .dl-ic{ width:54px; height:54px; flex:none; border-radius:13px; display:grid; place-items:center; background:linear-gradient(140deg,#0e3a4a,#0a2a36); border:1px solid var(--line-bright); transition:background .26s; }
+  .dl-ic svg{ width:28px; height:28px; stroke:var(--accent-2); fill:none; stroke-width:1.6; transition:stroke .26s; }
+  .dl-card .arch{ font-family:var(--f-display); font-weight:600; font-size:1.18rem; line-height:1.1; letter-spacing:.02em; }
+  .dl-card .os{ font-family:var(--f-head); color:var(--muted); font-size:.82rem; display:block; margin-top:.25rem; }
+  .dl-card .go{ margin-left:auto; color:var(--accent-2); font-size:1.3rem; transition:transform .26s; flex:none; }
+  .dl-card:hover .go{ transform:translateX(5px); }
+  .dl-card .rec{
+    position:absolute; top:.85rem; right:.9rem;
+    font-family:var(--f-head); font-weight:700; font-size:.62rem; letter-spacing:.04em;
+    color:#031319; background:linear-gradient(120deg,var(--accent-2),#bfeef5); padding:.2rem .55rem; border-radius:6px;
+    opacity:0; transition:opacity .3s;
+  }
+  .dl-card.show-suggest .rec{ opacity:1; }
+
+  .dl-note{ margin-top:1.5rem; display:flex; flex-wrap:wrap; gap:.7rem 1.6rem; color:var(--muted); font-size:.82rem; position:relative; }
+  .dl-note span.item{ display:inline-flex; align-items:center; gap:.5rem; }
+  .dl-note svg{ width:15px; height:15px; stroke:var(--accent-2); fill:none; stroke-width:1.7; }
+
+  .os-hint{
+    margin-top:1.2rem; position:relative;
+    font-size:.84rem; color:var(--frost); background:#0a2a3688;
+    border:1px solid var(--line); border-radius:12px; padding:.85rem 1.1rem;
+    display:none;
+  }
+  .os-hint.show{ display:block; }
+  .os-hint b{ color:var(--accent-2); }
+
+  /* ============================ TRUST STRIP ============================ */
+  .trust{ display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-top:1.2rem; }
+  @media(max-width:760px){ .trust{ grid-template-columns:1fr; } }
+  .trust div{ border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem; background:#0a2a3688; }
+  .trust b{ font-family:var(--f-head); font-weight:700; color:var(--accent-2); display:block; margin-bottom:.25rem; font-size:.92rem; }
+  .trust p{ margin:0; color:var(--muted); font-size:.82rem; }
+
+  /* ============================ FOOTER ============================ */
+  footer{
+    border-top:1px solid #ffffff0d; margin-top:clamp(3rem,6vw,5rem);
+    background:linear-gradient(180deg, transparent, #041219);
+    padding:clamp(2.6rem,5vw,4rem) 0 2.5rem;
+  }
+  .foot-grid{ display:grid; grid-template-columns:1.5fr 1fr 1fr; gap:2rem; }
+  @media(max-width:760px){ .foot-grid{ grid-template-columns:1fr; gap:1.6rem; } }
+  .foot-brand .brand{ margin-bottom:.9rem; }
+  .foot-brand p{ color:var(--muted); font-size:.86rem; max-width:42ch; margin:.4rem 0; }
+  .foot-col h4{ font-family:var(--f-head); font-weight:700; letter-spacing:.1em; text-transform:uppercase; font-size:.74rem; color:var(--frost); margin:0 0 .9rem; }
+  .foot-col a, .foot-col span.fitem{ display:block; color:var(--muted); text-decoration:none; font-size:.86rem; margin-bottom:.55rem; transition:color .2s; }
+  .foot-col a:hover{ color:var(--accent-2); }
+  .legit{
+    margin-top:2rem; padding-top:1.5rem; border-top:1px solid #ffffff0d;
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:1rem;
+    color:var(--muted-2); font-size:.78rem;
+  }
+  .legit .badge-safe{
+    display:inline-flex; align-items:center; gap:.5rem; color:var(--accent-2);
+    border:1px solid var(--line-bright); background:#3aa8c110; padding:.4rem .8rem; border-radius:999px;
+    font-family:var(--f-head); font-weight:600; letter-spacing:.02em;
+  }
+  .legit .badge-safe svg{ width:15px; height:15px; stroke:var(--accent-2); fill:none; stroke-width:1.8; }
+  .legit p{ margin:0; max-width:64ch; }
+
+  /* ============================ REVEAL TRANSITION ============================ */
+  .js .reveal{
+    opacity:0; transform:translateY(26px);
+    transition:
+      opacity .8s cubic-bezier(.2,.85,.25,1),
+      transform .8s cubic-bezier(.2,.85,.25,1);
+    transition-delay:var(--d,0ms);
+  }
+  .js .is-in .reveal{ opacity:1; transform:none; }
+
+  :focus-visible{ outline:2px solid var(--accent-2); outline-offset:3px; border-radius:6px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{ animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+    .reveal{ opacity:1 !important; transform:none !important; }
+  }
+</style>
+</head>
+
+<body>
+<div class="bgwrap" aria-hidden="true">
+  <svg class="ripple-bg" preserveAspectRatio="xMidYMid slice" viewBox="0 0 1200 800" fill="none">
+    <g stroke-width="1">
+      <path d="M0 180 Q 300 160 600 180 T 1200 180" stroke-opacity="0.16"/>
+      <path d="M0 320 Q 300 340 600 320 T 1200 320" stroke-opacity="0.10"/>
+      <path d="M0 500 Q 300 480 600 500 T 1200 500" stroke-opacity="0.12"/>
+      <path d="M0 640 Q 300 660 600 640 T 1200 640" stroke-opacity="0.08"/>
+    </g>
+  </svg>
+</div>
+
+<!-- ===================== HEADER ===================== -->
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Shisui ホーム">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <defs><linearGradient id="bm" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#61d6e6"/><stop offset="1" stop-color="#0e4d64"/>
+        </linearGradient></defs>
+        <rect width="32" height="32" rx="7" fill="#061b24"/>
+        <circle cx="16" cy="16" r="4.5" fill="none" stroke="url(#bm)" stroke-width="1.6"/>
+        <circle cx="16" cy="16" r="8.5" fill="none" stroke="#61d6e6" stroke-width="1" opacity=".55"/>
+        <circle cx="16" cy="16" r="12" fill="none" stroke="#61d6e6" stroke-width=".8" opacity=".28"/>
+      </svg>
+      <span><b>Shisui</b><span class="kanji" lang="ja">止水</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="nav-anchor" href="#features"><span data-ja>機能</span><span data-en>Features</span></a>
+      <a class="nav-anchor" href="#requirements"><span data-ja>動作環境</span><span data-en>Requirements</span></a>
+      <a class="nav-anchor" href="#download"><span data-ja>ダウンロード</span><span data-en>Download</span></a>
+      <button class="lang-btn" id="langToggle" type="button" aria-label="言語を切り替える / Toggle language">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+        <span data-ja>EN</span><span data-en>日本語</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ===================== HERO ===================== -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <div class="badge-row reveal" style="--d:60ms">
+          <span class="badge"><span class="dot"></span><span data-ja>Windows / macOS 対応</span><span data-en>Windows / macOS</span></span>
+          <span class="badge">Avalonia · .NET 10</span>
+          <span class="badge"><span data-ja>自動更新対応</span><span data-en>Auto-updates</span></span>
+        </div>
+
+        <h1 class="title reveal" id="hero-title" style="--d:120ms"><span class="gradtext">Shisui</span></h1>
+        <p class="title-sub reveal" lang="ja" style="--d:180ms">止水 — しすい</p>
+
+        <p class="tagline reveal" style="--d:240ms"><span data-ja lang="ja">波立たない澄んだ水面のように、静かで安定したネットワークへ。</span><span data-en>A network as still and clear as calm water.</span></p>
+        <p class="tagline-en reveal" style="--d:300ms"><span data-ja lang="ja">DNS の切り替え、キャッシュのクリア、BBR2 / TCP の調整、ネットワークの掃除。散らかった設定を、ひとつのアプリで静かに整える。</span><span data-en>Switch DNS, flush the cache, tune BBR2 / TCP, and sweep away network cruft — all from one quiet, tidy app.</span></p>
+
+        <div class="cta-row reveal" style="--d:360ms">
+          <a class="btn btn-primary" id="primary-dl" href="https://shisui.nephilim.jp/Shisui-win-Setup.exe" download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            <span><span data-ja>ダウンロード</span><span data-en>Download</span> <span class="sub" id="primary-dl-sub">Windows x64</span></span>
+          </a>
+          <a class="btn btn-ghost" href="#features">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+            <span><span data-ja>機能を見る</span><span data-en>See features</span></span>
+          </a>
+        </div>
+
+        <div class="hero-meta reveal" style="--d:440ms">
+          <div><b><span data-ja>広告・課金なし</span><span data-en>No ads or fees</span></b></div>
+          <div><b><span data-ja>日本語 UI</span><span data-en>Japanese UI</span></b></div>
+          <div><b><span data-ja>署名済みインストーラ</span><span data-en>Signed installer</span></b></div>
+          <div><b><span data-ja>起動時に自動更新確認</span><span data-en>Checks for updates</span></b></div>
+        </div>
+      </div>
+
+      <!-- Signature stage: still water surface with a single quiet ripple -->
+      <div class="stage reveal" style="--d:280ms" aria-hidden="true">
+        <div class="pond">
+          <svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice">
+            <defs>
+              <radialGradient id="ringg" cx="50%" cy="46%" r="50%">
+                <stop offset="0%" stop-color="#61d6e6" stop-opacity="0"/>
+                <stop offset="70%" stop-color="#61d6e6" stop-opacity="0"/>
+                <stop offset="100%" stop-color="#61d6e6" stop-opacity="1"/>
+              </radialGradient>
+            </defs>
+            <!-- drifting surface lines -->
+            <g class="surf">
+              <path d="M-10 118 Q 50 112 100 118 T 210 118" stroke="#3aa8c1" stroke-opacity="0.28" stroke-width="1" fill="none"/>
+              <path d="M-10 138 Q 50 144 100 138 T 210 138" stroke="#3aa8c1" stroke-opacity="0.2" stroke-width="1" fill="none"/>
+            </g>
+            <g class="surf s2">
+              <path d="M-10 160 Q 50 155 100 160 T 210 160" stroke="#3aa8c1" stroke-opacity="0.16" stroke-width="1" fill="none"/>
+            </g>
+            <!-- expanding ripple rings from the drop point -->
+            <circle class="ring r1" cx="100" cy="92" r="70" fill="none" stroke="#61d6e6" stroke-width="1.3" stroke-opacity="0.9"/>
+            <circle class="ring r2" cx="100" cy="92" r="70" fill="none" stroke="#61d6e6" stroke-width="1.1" stroke-opacity="0.7"/>
+            <circle class="ring r3" cx="100" cy="92" r="70" fill="none" stroke="#3aa8c1" stroke-width="1" stroke-opacity="0.55"/>
+            <!-- the single drop -->
+            <circle class="drop" cx="100" cy="92" r="2.4" fill="#bfeef5"/>
+          </svg>
+        </div>
+        <span class="stage-cap"><span data-ja lang="ja">一滴、そして静けさ。</span><span data-en>One drop, then stillness.</span></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== PROTOCOL / DNS STRIP ===================== -->
+  <section class="formats" aria-label="対応する主な設定 / Key settings">
+    <div class="wrap formats-inner">
+      <span class="lbl">DNS</span>
+      <span class="chip glow">Cloudflare</span>
+      <span class="chip"><code>1.1.1.1</code></span>
+      <span class="chip">Google</span>
+      <span class="chip"><code>8.8.8.8</code></span>
+      <span class="lbl" style="margin-left:.5rem">TCP</span>
+      <span class="chip">BBR2</span>
+      <span class="chip">ECN / RSC</span>
+      <span class="chip"><span data-ja>IPv4 / IPv6</span><span data-en>IPv4 / IPv6</span></span>
+    </div>
+  </section>
+
+  <!-- ===================== FEATURES ===================== -->
+  <section class="sec" id="features" aria-labelledby="feat-title">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Features</span>
+        <h2 id="feat-title"><span data-ja>散らかった設定を、静かに整える。</span><span data-en>Quietly tidy up your network settings.</span></h2>
+        <p class="h2-en"><span data-ja lang="en">Everything network, in one calm place.</span><span data-en>Everything network, in one calm place.</span></p>
+        <p><span data-ja lang="ja">DNS の切り替えからキャッシュのクリア、Windows では BBR2 / TCP の調整やメンテナンスコマンド、ゴーストデバイスの掃除まで。コマンドプロンプトを開かずに、澄んだ水面のようなネットワークへ。</span><span data-en>From DNS switching and cache flushing to — on Windows — BBR2 / TCP tuning, maintenance commands and ghost-device cleanup. No command prompt required.</span></p>
+      </div>
+
+      <div class="feat-grid">
+
+        <article class="card wide reveal" style="--d:40ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+          <span class="h3-en">DNS Provider Switching</span>
+          <h3><span data-ja>DNS プロバイダの切り替え</span><span data-en>Switch DNS providers</span></h3>
+          <p><span data-ja lang="ja">Cloudflare（標準 / マルウェアブロック / マルウェア+アダルトブロック）や Google Public DNS、任意のカスタムサーバーへワンクリックで切り替え。IPv4 / IPv6 の両方に対応し、「自動取得（DHCP）に戻す」もボタンひとつ。</span><span data-en>Switch to Cloudflare (standard / malware-block / malware+adult-block), Google Public DNS, or any custom server in one click. Full IPv4 &amp; IPv6 support, plus a one-tap "back to automatic (DHCP)".</span></p>
+          <div class="tags"><span>Cloudflare</span><span>Google</span><span>Custom</span><span>IPv4 / IPv6</span><span>DHCP</span></div>
+          <span class="plat-tag both"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg><span data-ja>Windows / macOS</span><span data-en>Windows / macOS</span></span>
+        </article>
+
+        <article class="card reveal" style="--d:100ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+          <span class="h3-en">Flush DNS Cache</span>
+          <h3><span data-ja>DNS キャッシュのクリア</span><span data-en>Flush DNS cache</span></h3>
+          <p><span data-ja lang="ja">古い名前解決が残って繋がらない、そんなときはワンクリックで DNS キャッシュをクリア。すぐに澄んだ状態へ戻します。</span><span data-en>When stale name-resolution gets in the way, clear the DNS cache in a single click and start clean.</span></p>
+          <span class="plat-tag both"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg><span data-ja>Windows / macOS</span><span data-en>Windows / macOS</span></span>
+        </article>
+
+        <article class="card reveal" style="--d:160ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3 0 3-8 6-8s3 8 6 8 3-4 6-4"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg></div>
+          <span class="h3-en">BBR2 Congestion Control</span>
+          <h3><span data-ja>BBR2 輻輳制御の切り替え</span><span data-en>BBR2 congestion control</span></h3>
+          <p><span data-ja lang="ja">TCP の輻輳制御を BBR2 に切り替え。いま有効か無効かがバッジで一目で分かります。RSC / ECN / Timestamps / RSS も個別に切り替え可能。</span><span data-en>Switch TCP congestion control to BBR2, with a badge showing at a glance whether it's on. RSC / ECN / Timestamps / RSS can each be toggled individually.</span></p>
+          <div class="tags"><span class="win">BBR2</span><span>RSC</span><span>ECN</span><span>RSS</span></div>
+          <span class="plat-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg>Windows</span>
+        </article>
+
+        <article class="card reveal" style="--d:60ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H4v5M15 3h5v5M9 21H4v-5M15 21h5v-5"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></div>
+          <span class="h3-en">Maintenance Commands</span>
+          <h3><span data-ja>ネットワークメンテナンス</span><span data-en>Maintenance commands</span></h3>
+          <p><span data-ja lang="ja">nbtstat / ipconfig / netsh / route / arp などの定番コマンドをカタログから選んで実行。影響の大きいコマンドは「確認済み」にチェックを入れないと実行できない、安全設計です。</span><span data-en>Run staple commands — nbtstat / ipconfig / netsh / route / arp — from a curated catalog. High-impact commands stay locked until you tick "confirmed", by design.</span></p>
+          <div class="tags"><span>netsh</span><span>ipconfig</span><span>route</span><span>arp</span></div>
+          <span class="plat-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg>Windows</span>
+        </article>
+
+        <article class="card reveal" style="--d:120ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/></svg></div>
+          <span class="h3-en">Ghost Device Cleanup</span>
+          <h3><span data-ja>不要デバイスの掃除</span><span data-en>Ghost device cleanup</span></h3>
+          <p><span data-ja lang="ja">取り外した USB アダプタや削除した VPN が残す「切断済みゴーストデバイス」を掃除。アダプタ一覧をすっきり澄んだ状態に保ちます。</span><span data-en>Sweep away the disconnected "ghost devices" left behind by removed USB adapters and deleted VPNs, keeping your adapter list clean.</span></p>
+          <div class="tags"><span>Ghost</span><span>USB</span><span>VPN</span></div>
+          <span class="plat-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg>Windows</span>
+        </article>
+
+        <article class="card reveal" style="--d:180ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 4l-9 9-3-3"/></svg></div>
+          <span class="h3-en">Auto Updates</span>
+          <h3><span data-ja>自動更新</span><span data-en>Automatic updates</span></h3>
+          <p><span data-ja lang="ja">起動時に自動でアップデートを確認。新しいバージョンが出ても、あなたが何もしなくても静かに最新へ。</span><span data-en>Checks for updates automatically at launch, quietly keeping you on the latest version.</span></p>
+          <span class="plat-tag both"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg><span data-ja>Windows / macOS</span><span data-en>Windows / macOS</span></span>
+        </article>
+
+        <article class="card reveal" style="--d:80ms">
+          <div class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M3 14h18M8 21h8M12 17v4"/></svg></div>
+          <span class="h3-en">macOS Tahoe-style UI</span>
+          <h3><span data-ja>上質で静かな UI</span><span data-en>A refined, quiet UI</span></h3>
+          <p><span data-ja lang="ja">macOS Tahoe 風の質感を意識した、余白広めで落ち着いた日本語 UI。DNS 設定・BBR2 調整・メンテナンスをタブで整理し、実行ログも一望できます。</span><span data-en>A calm, spacious Japanese UI inspired by macOS Tahoe. DNS, BBR2 and maintenance sit in clean tabs, with a live execution log alongside.</span></p>
+          <span class="plat-tag both"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5h16v14H4z"/></svg><span data-ja>Windows / macOS</span><span data-en>Windows / macOS</span></span>
+        </article>
+
+      </div>
+
+      <!-- DNS preset table -->
+      <div class="dns-wrap reveal" style="--d:80ms">
+        <table class="dns">
+          <caption><span data-ja lang="ja">内蔵の DNS プリセット（公式アドレス）。カスタム入力にも対応。</span><span data-en>Built-in DNS presets (official addresses). Custom entries supported too.</span></caption>
+          <thead>
+            <tr>
+              <th scope="col"><span data-ja>プリセット</span><span data-en>Preset</span></th>
+              <th scope="col">IPv4</th>
+              <th scope="col">IPv6</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name">Cloudflare <span data-ja>標準</span><span data-en>standard</span></td>
+              <td><code>1.1.1.1</code> / <code>1.0.0.1</code></td>
+              <td><code>2606:4700:4700::1111</code></td>
+            </tr>
+            <tr>
+              <td class="name">Cloudflare <span data-ja>マルウェアブロック</span><span data-en>malware-block</span></td>
+              <td><code>1.1.1.2</code> / <code>1.0.0.2</code></td>
+              <td><code>2606:4700:4700::1112</code></td>
+            </tr>
+            <tr>
+              <td class="name">Cloudflare <span data-ja>マルウェア + アダルトブロック</span><span data-en>malware + adult-block</span></td>
+              <td><code>1.1.1.3</code> / <code>1.0.0.3</code></td>
+              <td><code>2606:4700:4700::1113</code></td>
+            </tr>
+            <tr>
+              <td class="name">Google Public DNS</td>
+              <td><code>8.8.8.8</code> / <code>8.8.4.4</code></td>
+              <td><code>2001:4860:4860::8888</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== HOW IT WORKS ===================== -->
+  <section class="sec" aria-labelledby="how-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">How it works</span>
+        <h2 id="how-title"><span data-ja>選ぶ、適用する、静まる。</span><span data-en>Pick, apply, settle.</span></h2>
+        <p class="h2-en"><span data-ja lang="en">No command prompt, no guesswork.</span><span data-en>No command prompt, no guesswork.</span></p>
+      </div>
+
+      <div class="split">
+        <div class="panel reveal" role="img" aria-label="Shisui が設定を適用し、ネットワークが静かに整う様子 / Shisui applies settings and the network settles">
+          <div class="pn-row">
+            <div class="pn-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg></div>
+            <div><b><span data-ja lang="ja">プリセットを選んで適用</span><span data-en>Pick a preset and apply</span></b><span class="how-list-x"></span></div>
+          </div>
+          <div class="pn-arrow" aria-hidden="true">↓ &nbsp; apply settings &nbsp; ↓</div>
+          <div class="pn-row">
+            <div class="pn-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3 0 3-8 6-8s3 8 6 8 3-4 6-4"/></svg></div>
+            <div><b><span data-ja lang="ja">ネットワークが澄んだ状態へ</span><span data-en>Your network settles, clean and stable</span></b></div>
+          </div>
+        </div>
+
+        <ol class="how-list reveal" style="--d:120ms">
+          <li><span class="num">1</span><div><b><span data-ja>起動する</span><span data-en>Launch Shisui.</span></b><span class="desc"><span data-ja lang="ja">Windows では起動時に自動で管理者昇格を要求します。</span><span data-en>On Windows it requests administrator elevation automatically at launch.</span></span></div></li>
+          <li><span class="num">2</span><div><b><span data-ja>タブを選ぶ</span><span data-en>Choose a tab.</span></b><span class="desc"><span data-ja lang="ja">DNS 設定 / BBR2・TCP 調整 / メンテナンス。目的の操作へすぐに。</span><span data-en>DNS / BBR2 &amp; TCP / Maintenance — jump straight to what you need.</span></span></div></li>
+          <li><span class="num">3</span><div><b><span data-ja>適用してログで確認</span><span data-en>Apply and read the log.</span></b><span class="desc"><span data-ja lang="ja">実行内容は常時表示のログパネルで確認できます。あとは静かに整うだけ。</span><span data-en>Every action shows in the always-on log panel — then it simply settles.</span></span></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SYSTEM REQUIREMENTS ===================== -->
+  <section class="sec" id="requirements" aria-labelledby="req-title" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">System Requirements</span>
+        <h2 id="req-title"><span data-ja>動作環境</span><span data-en>System requirements</span></h2>
+        <p class="h2-en"><span data-ja lang="en">What you need to run Shisui.</span><span data-en>What you need to run Shisui.</span></p>
+      </div>
+      <div class="req-grid">
+        <div class="req reveal" style="--d:40ms">
+          <div class="k">OS</div>
+          <div class="v">Windows 10 / 11<small><span data-ja>64-bit エディション</span><span data-en>64-bit editions</span></small></div>
+        </div>
+        <div class="req reveal" style="--d:90ms">
+          <div class="k"><span data-ja>権限</span><span data-en>Privileges</span></div>
+          <div class="v"><span data-ja>管理者権限</span><span data-en>Administrator</span><small><span data-ja>起動時に自動で昇格を要求</span><span data-en>Elevation requested at launch</span></small></div>
+        </div>
+        <div class="req reveal" style="--d:140ms">
+          <div class="k">Runtime</div>
+          <div class="v"><span data-ja>不要</span><span data-en>None</span><small>Avalonia · .NET 10 · self-contained</small></div>
+        </div>
+        <div class="req reveal" style="--d:190ms">
+          <div class="k">macOS</div>
+          <div class="v"><span data-ja>一部対応</span><span data-en>Partial</span><small><span data-ja>DNS 切替・キャッシュクリアのみ</span><span data-en>DNS switch &amp; cache flush only</span></small></div>
+        </div>
+      </div>
+
+      <div class="plat-note reveal" style="--d:120ms" role="note">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
+        <p style="margin:0"><span data-ja lang="ja"><b>macOS について：</b>現在の macOS 版は DNS プロバイダの切り替えと DNS キャッシュのクリアに対応します。BBR2 / TCP 調整・メンテナンスコマンド・ゴーストデバイスの掃除は <code style="font-family:var(--f-mono)">netsh</code> に依存するため Windows 専用です。</span><span data-en><b>About macOS:</b> the macOS build supports DNS provider switching and DNS cache flushing. BBR2 / TCP tuning, maintenance commands and ghost-device cleanup rely on <code style="font-family:var(--f-mono)">netsh</code> and are Windows-only.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DOWNLOAD ===================== -->
+  <section class="sec download" id="download" aria-labelledby="dl-title">
+    <div class="wrap">
+      <div class="dl-panel reveal">
+        <div class="dl-head">
+          <div>
+            <span class="eyebrow">Download</span>
+            <h2 id="dl-title"><span data-ja>今すぐ手に入れる</span><span data-en>Get Shisui</span></h2>
+            <p class="h2-en"><span data-ja lang="en">Shisui for Windows.</span><span data-en>Shisui for Windows.</span></p>
+          </div>
+          <span class="price-pill"><span data-ja>¥0 · 完全無料</span><span data-en>¥0 · Always free</span></span>
+        </div>
+
+        <div class="dl-grid">
+          <a class="dl-card show-suggest" id="dl-win" href="https://shisui.nephilim.jp/Shisui-win-Setup.exe" download>
+            <span class="rec"><span data-ja>おすすめ</span><span data-en>Recommended</span></span>
+            <div class="dl-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 10.5 4v7H3z"/><path d="M10.5 4 21 2.5V11h-10.5z"/><path d="M3 13h7.5v7L3 18.5z"/><path d="M10.5 13H21v8.5L10.5 20z"/></svg></div>
+            <div>
+              <span class="arch">Windows · x64</span>
+              <span class="os"><span data-ja>署名済みインストーラ · Setup.exe · 起動時に管理者昇格</span><span data-en>Signed installer · Setup.exe · elevates at launch</span></span>
+            </div>
+            <span class="go" aria-hidden="true">↓</span>
+          </a>
+        </div>
+
+        <div class="os-hint" id="osHint" role="note"></div>
+
+        <div class="dl-note">
+          <span class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M21 3l-9 9-3-3"/></svg> <span data-ja>起動時に自動でアップデート確認</span><span data-en>Auto-updates checked at launch</span></span>
+          <span class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.5 7.5 8 8 4.5-.5 8-3 8-8V6z"/><path d="M9 12l2 2 4-4"/></svg> <span data-ja>署名済み・マルウェアなしの正規ソフトウェア</span><span data-en>Signed, non-malicious legitimate software</span></span>
+          <span class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M8 20h8"/></svg> <span data-ja>macOS 版は現在準備中</span><span data-en>macOS build is in the works</span></span>
+        </div>
+
+        <div class="trust">
+          <div class="reveal" style="--d:40ms">
+            <b><span data-ja>完全無料</span><span data-en>Free</span></b>
+            <p><span data-ja lang="ja">広告・課金・トラッキングは一切なし。</span><span data-en>No ads, no paywalls, no tracking.</span></p>
+          </div>
+          <div class="reveal" style="--d:90ms">
+            <b><span data-ja>安全設計</span><span data-en>Safe by design</span></b>
+            <p><span data-ja lang="ja">影響の大きい操作は確認チェック必須。</span><span data-en>High-impact actions require an explicit confirmation.</span></p>
+          </div>
+          <div class="reveal" style="--d:140ms">
+            <b><span data-ja>静かで軽快</span><span data-en>Quiet &amp; light</span></b>
+            <p><span data-ja lang="ja">.NET 10 / Avalonia。素早く起動、静かに整う。</span><span data-en>.NET 10 / Avalonia — quick to start, quiet to run.</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===================== FOOTER ===================== -->
+<footer aria-labelledby="foot-title">
+  <h2 id="foot-title" class="sr-only">Footer</h2>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top" aria-label="Shisui ホーム">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+            <defs><linearGradient id="fm" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#61d6e6"/><stop offset="1" stop-color="#0e4d64"/>
+            </linearGradient></defs>
+            <rect width="32" height="32" rx="7" fill="#061b24"/>
+            <circle cx="16" cy="16" r="4.5" fill="none" stroke="url(#fm)" stroke-width="1.6"/>
+            <circle cx="16" cy="16" r="8.5" fill="none" stroke="#61d6e6" stroke-width="1" opacity=".55"/>
+            <circle cx="16" cy="16" r="12" fill="none" stroke="#61d6e6" stroke-width=".8" opacity=".28"/>
+          </svg>
+          <span><b>Shisui</b><span class="kanji" lang="ja">止水</span></span>
+        </a>
+        <p><span data-ja lang="ja">Windows / macOS 向けのネットワーク設定デスクトップアプリ。DNS の切り替え・キャッシュのクリア・BBR2 / TCP 調整・ネットワークの掃除を、波立たない水面のように静かに整えます。</span><span data-en>A network tuning desktop app for Windows and macOS. Switch DNS, flush caches, tune BBR2 / TCP and sweep away cruft — as calm as still water.</span></p>
+      </div>
+
+      <nav class="foot-col" aria-label="Product">
+        <h4>Product</h4>
+        <a href="#features"><span data-ja>機能</span><span data-en>Features</span></a>
+        <a href="#requirements"><span data-ja>動作環境</span><span data-en>Requirements</span></a>
+        <a href="#download"><span data-ja>ダウンロード</span><span data-en>Download</span></a>
+      </nav>
+
+      <nav class="foot-col" aria-label="About">
+        <h4>About</h4>
+        <span class="fitem"><span data-ja>開発者：ゆろち</span><span data-en>Developer: Yurochi</span></span>
+        <span class="fitem"><span data-ja>ライセンス：MIT</span><span data-en>License: MIT</span></span>
+        <span class="fitem"><span data-ja>自動更新対応</span><span data-en>Auto-updates supported</span></span>
+      </nav>
+    </div>
+
+    <div class="legit">
+      <span class="badge-safe">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.5 7.5 8 8 4.5-.5 8-3 8-8V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        <span data-ja>正規ソフトウェア</span><span data-en>Legitimate software</span>
+      </span>
+      <p>
+        <span data-ja lang="ja">Shisui はマルウェアやアドウェアを含まない正規のソフトウェアです。トラッキングや広告は一切ありません。© 2026 ゆろち · MIT License.</span>
+        <span data-en>Shisui is legitimate software with no malware, adware or tracking. © 2026 Yurochi · MIT License.</span>
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* Progressive enhancement only — the page is fully functional & visible without JS.
+   デフォルトは日本語表示。JS 無効でも日本語がそのまま出る。 */
+(function(){
+  var doc = document.documentElement;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* 1) 言語トグル（日本語デフォルト / EN 切替） */
+  var btn = document.getElementById('langToggle');
+  if (btn) {
+    btn.addEventListener('click', function(){
+      var toEn = !doc.classList.contains('lang-en');
+      doc.classList.toggle('lang-en', toEn);
+      doc.setAttribute('lang', toEn ? 'en' : 'ja');
+      btn.setAttribute('aria-pressed', String(toEn));
+    });
+  }
+
+  /* 2) OS 判定でダウンロードのヒント文言を出し分ける。
+        Windows 以外の来訪者には「Windows 版のみ配布」と明示する。 */
+  var hint = document.getElementById('osHint');
+  var sub  = document.getElementById('primary-dl-sub');
+  if (hint) {
+    var ua = (navigator.userAgent || '') + ' ' + (navigator.platform || '');
+    var isWin = /Windows|Win32|Win64/i.test(ua);
+    var isMac = /Mac|Macintosh|Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua);
+    if (isMac) {
+      hint.classList.add('show');
+      hint.innerHTML =
+        '<span data-ja lang="ja">お使いの端末は <b>macOS</b> のようです。現在 Shisui は <b>Windows 版のみ</b>を配布しています（macOS 版は準備中）。Windows 端末でダウンロードしてください。</span>' +
+        '<span data-en>You appear to be on <b>macOS</b>. Shisui currently ships a <b>Windows build only</b> (macOS is in the works). Please download from a Windows machine.</span>';
+      if (sub) sub.textContent = 'Windows x64 のみ / Windows only';
+    } else if (!isWin) {
+      hint.classList.add('show');
+      hint.innerHTML =
+        '<span data-ja lang="ja">現在 Shisui は <b>Windows 10 / 11（x64）版のみ</b>を配布しています。Windows 端末でダウンロードしてください。</span>' +
+        '<span data-en>Shisui currently ships a <b>Windows 10 / 11 (x64) build only</b>. Please download from a Windows machine.</span>';
+    }
+  }
+
+  /* 3) Scroll-reveal: reveal sections as they enter the viewport. */
+  var sections = document.querySelectorAll('section, footer');
+  if (reduce || !('IntersectionObserver' in window)) {
+    sections.forEach(function(s){ s.classList.add('is-in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (e.isIntersecting){ e.target.classList.add('is-in'); io.unobserve(e.target); }
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    sections.forEach(function(s){ io.observe(s); });
+    var hero = document.querySelector('.hero');
+    if (hero) hero.classList.add('is-in');
+  }
+
+  /* 4) Card hover spotlight follows the cursor. */
+  if (!reduce) {
+    document.querySelectorAll('.card').forEach(function(card){
+      card.addEventListener('pointermove', function(ev){
+        var r = card.getBoundingClientRect();
+        card.style.setProperty('--mx', (ev.clientX - r.left) + 'px');
+        card.style.setProperty('--my', (ev.clientY - r.top) + 'px');
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>

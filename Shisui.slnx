@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Shisui.Core/Shisui.Core.csproj" />
+    <Project Path="src/Shisui.Tests/Shisui.Tests.csproj" />
+    <Project Path="src/Shisui.UI/Shisui.UI.csproj" />
+  </Folder>
+</Solution>

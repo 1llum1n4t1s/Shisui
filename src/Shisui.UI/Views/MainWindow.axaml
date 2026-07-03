@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Shisui.UI.ViewModels"
+        xmlns:views="using:Shisui.UI.Views"
+        x:Class="Shisui.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Shisui"
+        Icon="avares://Shisui.UI/icon/app.ico"
+        Width="1040" Height="720" MinWidth="860" MinHeight="560"
+        Background="Transparent"
+        ExtendClientAreaTitleBarHeightHint="32"
+        ExtendClientAreaToDecorationsHint="True"
+        TransparencyLevelHint="AcrylicBlur"
+        WindowStartupLocation="CenterScreen">
+
+  <Panel>
+    <!--  ウィンドウ背景：アクリルブラー (Lhamiel と同じ Tahoe 風ガラス質感)  -->
+    <ExperimentalAcrylicBorder IsHitTestVisible="False">
+      <ExperimentalAcrylicBorder.Material>
+        <ExperimentalAcrylicMaterial
+            BackgroundSource="Digger"
+            MaterialOpacity="0.85"
+            TintColor="{DynamicResource Color.Window}"
+            TintOpacity="0.9" />
+      </ExperimentalAcrylicBorder.Material>
+    </ExperimentalAcrylicBorder>
+
+    <Grid Margin="16,36,16,16" RowDefinitions="*,Auto">
+      <!--  ═══ サイドバー + コンテンツ ═══  -->
+      <TabControl Grid.Row="0" Classes="sidebar">
+        <TabItem Header="DNS 設定">
+          <views:DnsSettingsView DataContext="{Binding DnsSettings}" />
+        </TabItem>
+        <TabItem Header="BBR2 / TCP 調整" IsVisible="{Binding IsWindows}">
+          <views:TcpTuningView DataContext="{Binding TcpTuning}" />
+        </TabItem>
+        <TabItem Header="メンテナンス" IsVisible="{Binding IsWindows}">
+          <views:MaintenanceView DataContext="{Binding Maintenance}" />
+        </TabItem>
+        <TabItem Header="バージョン">
+          <views:VersionView DataContext="{Binding Version}" />
+        </TabItem>
+      </TabControl>
+
+      <!--  ═══ 実行ログ (Lhamiel のガラスカードと同じ質感)  ═══  -->
+      <Border
+          Grid.Row="1"
+          Margin="0,12,0,0"
+          Padding="12"
+          Background="{DynamicResource Brush.Container}"
+          BorderBrush="{DynamicResource Brush.Border}"
+          BorderThickness="1"
+          CornerRadius="14">
+        <Grid RowDefinitions="Auto,*" MaxHeight="180">
+          <TextBlock Grid.Row="0" Text="実行ログ" FontSize="13" FontWeight="SemiBold"
+                     Foreground="{DynamicResource Brush.FG2}" Margin="0,0,0,8" />
+          <ScrollViewer Grid.Row="1">
+            <ItemsControl ItemsSource="{Binding LogEntries}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="vm:CommandLogEntry">
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2">
+                    <TextBlock Text="{Binding Timestamp, StringFormat='HH:mm:ss'}" FontFamily="Consolas,Menlo,monospace"
+                               FontSize="12" Foreground="{DynamicResource Brush.FG2}" />
+                    <TextBlock Text="OK" Foreground="#34C759" FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                               FontWeight="SemiBold" IsVisible="{Binding Success}" />
+                    <TextBlock Text="NG" Foreground="#FF3B30" FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                               FontWeight="SemiBold" IsVisible="{Binding !Success}" />
+                    <TextBlock Text="{Binding CommandLine}" FontFamily="Consolas,Menlo,monospace" FontSize="12"
+                               Foreground="{DynamicResource Brush.FG1}" TextWrapping="NoWrap" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+  </Panel>
+</Window>

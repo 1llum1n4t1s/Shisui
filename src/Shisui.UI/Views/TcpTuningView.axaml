@@ -1,0 +1,76 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Shisui.UI.ViewModels"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             x:Class="Shisui.UI.Views.TcpTuningView"
+             x:DataType="vm:TcpTuningViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="8,0">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" Classes="h1" Text="BBR2 / TCP 調整" />
+        <Button Grid.Column="1" Content="状態を再取得" Command="{Binding RefreshStateCommand}" IsEnabled="{Binding !IsBusy}" />
+      </Grid>
+
+      <primitives:HeaderedContentControl Header="BBR2 輻輳制御">
+        <StackPanel Spacing="8">
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="現在の状態 (輻輳制御):" VerticalAlignment="Center" Foreground="{DynamicResource Brush.FG2}" />
+              <TextBlock Text="{Binding Bbr2StateText}" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="「BBR2 を有効化」は、5 つのテンプレート (Internet / InternetCustom / Datacenter / DatacenterCustom / Compat) の輻輳制御を BBR2 に切り替え、あわせて IPv4 / IPv6 のループバック Large MTU を無効化します。「既定値に戻す」は輻輳制御を既定に戻し、ループバック Large MTU を有効化します。" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="※ 上のバッジは輻輳制御アルゴリズム (＝BBR2 本体) の状態です。ループバック Large MTU の現在値は Windows の照会 API に公開されておらず取得できないため、バッジには含めていません (設定操作は上のボタンで行われます)。" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="BBR2 を有効化" Command="{Binding EnableBbr2Command}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="既定値に戻す" Command="{Binding RevertBbr2Command}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="TCP グローバル詳細設定">
+        <Grid ColumnDefinitions="180,150,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="RSC (受信セグメント結合)" VerticalAlignment="Center" />
+          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RscStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Row="0" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
+          <Button Grid.Row="0" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="ECN Capability" VerticalAlignment="Center" />
+          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EcnStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Row="1" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
+          <Button Grid.Row="1" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="TCP Timestamps" VerticalAlignment="Center" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimestampsStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Row="2" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
+          <Button Grid.Row="2" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="RSS (受信側スケーリング)" VerticalAlignment="Center" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RssStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+          <Button Grid.Row="3" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
+          <Button Grid.Row="3" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+
+          <TextBlock Grid.Row="4" Grid.Column="0" Text="TCP Fast Open" VerticalAlignment="Center" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FastOpenStateText}" FontWeight="SemiBold" VerticalAlignment="Center"
+                     ToolTip.Tip="TCP Fast Open は Windows の照会 API に現在値が公開されておらず、有効/無効の取得ができません。設定 (有効化/無効化) は可能です。" />
+          <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
+          <Button Grid.Row="4" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+        </Grid>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="生の netsh 出力 (参考)">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="上のバッジ表示は PowerShell から取得したロケール非依存の状態です。より詳しい生の出力を見たい場合はこちら。" />
+          <Button Content="表示 (netsh int tcp show global)" Command="{Binding ShowGlobalStatusCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
+          <TextBox Text="{Binding GlobalStatusOutput}" IsReadOnly="True" FontFamily="Consolas,Menlo,monospace" AcceptsReturn="True" Height="160" TextWrapping="NoWrap" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <TextBlock Text="{Binding StatusText}" Classes="caption" Margin="4,0,0,12" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
