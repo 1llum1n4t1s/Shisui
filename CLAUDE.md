@@ -36,11 +36,28 @@ pwsh scripts/release-local.ps1 -SkipUpload
 No RID-locked `packages.lock.json` is used, so there is no `--no-restore` dance for local builds. The release
 script (`scripts/release-local.ps1`) does its own RID-locked self-contained publish; it does not touch a lockfile.
 
-**Verifying the UI when it can't be automated**: the app ships with `requireAdministrator` in `app.manifest`, so
-UAC's secure desktop blocks screenshot/computer-use driving. The established smoke-test loop is: flip
-`app.manifest` to `asInvoker`, `dotnet build src/Shisui.UI`, launch the built exe, confirm the process stays up
-with an empty stdout/stderr (Avalonia writes binding errors there), then restore `requireAdministrator` and
-rebuild. Compiled bindings (`x:DataType`) catch binding-path typos at build time, which is the main safety net.
+**Verifying the UI when it can't be automated**: `app.manifest` is `asInvoker` (see below), but
+`Program.cs` self-relaunches elevated via `WindowsElevationHelper` on every real startup, so UAC's secure
+desktop still blocks screenshot/computer-use driving. The established smoke-test loop is: temporarily comment
+out the `WindowsElevationHelper` relaunch block in `Program.cs`, `dotnet build src/Shisui.UI`, launch the built
+exe, confirm the process stays up with an empty stdout/stderr (Avalonia writes binding errors there), then
+restore the block and rebuild. Compiled bindings (`x:DataType`) catch binding-path typos at build time, which
+is the main safety net.
+
+**Why elevation happens at runtime, not via the manifest**: `app.manifest` requests `asInvoker`, not
+`requireAdministrator`, even though almost every command this app runs (`netsh`/`ipconfig`/DNS changes) needs
+admin. A `requireAdministrator` manifest breaks Velopack's installer: `Setup.exe`/`Update.exe` invokes the
+packaged exe with internal hook args (`--veloapp-install` etc.) via `CreateProcess`, which cannot elevate —
+only `ShellExecute` can — so the hook call fails immediately with `ERROR_ELEVATION_REQUIRED` (Win32 740,
+`os error -2147024156`) and the installer aborts with a "Setup エラー" dialog. This is a confirmed Velopack
+limitation, not a Shisui bug (maintainer: "Velopack does not support applications requiring admin at this
+time" — https://github.com/velopack/velopack.docs/discussions/8). The fix: keep the manifest at `asInvoker` so
+Velopack's own process launches succeed, and perform the actual elevation in `Program.cs` immediately after
+`VelopackApp.Build().Run()` — `WindowsElevationHelper.IsRunningAsAdministrator()` checks the current token, and
+if not elevated, `TryRelaunchElevated` restarts the process via `ShellExecute` + the `runas` verb (one UAC
+prompt at startup, matching the original design intent of not re-prompting per command) and exits the
+non-elevated instance. This check runs *before* `SingleInstanceGuard` is acquired, so the non-elevated process
+never holds the single-instance lock while its elevated replacement starts.
 
 ## Architecture
 

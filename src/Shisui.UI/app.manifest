@@ -3,13 +3,18 @@
   <assemblyIdentity version="1.0.0.0" name="Shisui.UI.app"/>
 
   <!--
-    このアプリの操作対象 (netsh / ipconfig / DNS設定変更 等) はほぼ全て管理者権限を要求するため、
-    起動時に UAC 昇格を要求する。個々のコマンド実行のたびに昇格を挟む設計にはしない。
+    このアプリの操作対象 (netsh / ipconfig / DNS設定変更 等) はほぼ全て管理者権限を要求するが、
+    manifest 側で requireAdministrator を指定すると Velopack の Setup.exe/Update.exe が内部フック
+    (veloapp-install 引数呼び出し等) を CreateProcess で起動する際に ERROR_ELEVATION_REQUIRED (740) で失敗し、
+    インストーラー自体が動かなくなる (Velopack メンテナ確認済み: 現状 admin manifest 非対応。
+    https://github.com/velopack/velopack.docs/discussions/8)。
+    そのため asInvoker のまま起動し、Program.cs 起動直後の自己再起動 (ShellExecute + runas) で
+    昇格する。個々のコマンド実行のたびに昇格を挟む設計にはしない (起動時 1 回のみ)。
   -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
