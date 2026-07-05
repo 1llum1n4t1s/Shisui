@@ -66,4 +66,18 @@ public static class WindowsMaintenanceCommandCatalog
     ];
 
     public static WindowsMaintenanceCommand? Find(string id) => All.FirstOrDefault(c => c.Definition.Id == id);
+
+    /// <summary>
+    /// 「まとめて実行」に対応するカテゴリ → ボタンラベル。個別実行より一括実行の方が意味を持つ非破壊
+    /// カテゴリだけを対象にする (IP 再取得は解放だけだと通信断になるので解放→再取得の順で走らせる等)。
+    /// スタックリセット (危険) は全部まとめて叩くと事故になるため、コンポーネント再検出は単一コマンドの
+    /// ため、いずれも一括対象に含めない。バッチは <see cref="All"/> の並び順で逐次実行される。
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> BatchableCategoryLabels { get; } =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [CategoryCache] = "すべてまとめて実行",
+            [CategoryReacquire] = "まとめて再取得 (解放 → 再取得)",
+            [CategoryProxy] = "まとめてリセット",
+        };
 }

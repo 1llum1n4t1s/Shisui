@@ -32,33 +32,56 @@
       </primitives:HeaderedContentControl>
 
       <primitives:HeaderedContentControl Header="TCP グローバル詳細設定">
-        <Grid ColumnDefinitions="180,150,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="RSC (受信セグメント結合)" VerticalAlignment="Center" />
-          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RscStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Button Grid.Row="0" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
-          <Button Grid.Row="0" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="Windows の TCP スタックのグローバル設定です。通常は既定のままで問題ありませんが、回線や環境に合わせて個別に切り替えられます。" />
+          <Grid ColumnDefinitions="*,140,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="RSC (受信セグメント結合)" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="受信した小さな TCP セグメントを NIC 側でまとめてから OS に渡し、CPU 負荷を下げます。高速回線向け。パケットキャプチャや一部の仮想環境で問題が出る場合は無効化します。" />
+            </StackPanel>
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RscStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Row="0" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Row="0" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
 
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="ECN Capability" VerticalAlignment="Center" />
-          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EcnStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Button Grid.Row="1" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
-          <Button Grid.Row="1" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="ECN Capability (明示的輻輳通知)" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="ルーターがパケットを破棄する前に「混雑」を通知でき、実際のロスが起きる前に送信速度を抑えられます。ECN を正しく扱わない古い機器と相性問題が出る場合は無効化します。" />
+            </StackPanel>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EcnStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Row="1" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Row="1" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
 
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="TCP Timestamps" VerticalAlignment="Center" />
-          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimestampsStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Button Grid.Row="2" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
-          <Button Grid.Row="2" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+            <StackPanel Grid.Row="2" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="TCP Timestamps" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="パケットに送信時刻を付けて往復遅延 (RTT) を正確に測定し、高速回線での安定性を高めます。古いロードバランサーやファイアウォールと相性問題が出る場合は無効化します。" />
+            </StackPanel>
+            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimestampsStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Row="2" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Row="2" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
 
-          <TextBlock Grid.Row="3" Grid.Column="0" Text="RSS (受信側スケーリング)" VerticalAlignment="Center" />
-          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RssStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-          <Button Grid.Row="3" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
-          <Button Grid.Row="3" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
+            <StackPanel Grid.Row="3" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="RSS (受信側スケーリング)" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="受信トラフィックの処理を複数の CPU コアに分散し、高速回線で単一コアがボトルネックになるのを防ぎます。マルチコア環境向け。" />
+            </StackPanel>
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RssStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Row="3" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Row="3" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
 
-          <TextBlock Grid.Row="4" Grid.Column="0" Text="TCP Fast Open" VerticalAlignment="Center" />
-          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FastOpenStateText}" FontWeight="SemiBold" VerticalAlignment="Center"
-                     ToolTip.Tip="TCP Fast Open は Windows の照会 API に現在値が公開されておらず、有効/無効の取得ができません。設定 (有効化/無効化) は可能です。" />
-          <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" IsEnabled="{Binding !IsBusy}" />
-          <Button Grid.Row="4" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:False" Margin="0,2,0,2" IsEnabled="{Binding !IsBusy}" />
-        </Grid>
+            <StackPanel Grid.Row="4" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="TCP Fast Open" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="接続確立の待ち時間 (約 1 往復分) を省いて、繰り返し接続するサーバーへのアクセスを高速化します。現在値は Windows の照会 API に非公開のため状態バッジは「取得非対応」ですが、設定は可能です。" />
+            </StackPanel>
+            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FastOpenStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+            <Button Grid.Row="4" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}" />
+          </Grid>
+        </StackPanel>
       </primitives:HeaderedContentControl>
 
       <primitives:HeaderedContentControl Header="生の netsh 出力 (参考)">

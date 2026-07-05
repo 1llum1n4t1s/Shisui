@@ -30,10 +30,11 @@
 
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="更新を確認" Command="{Binding CheckForUpdateCommand}" IsEnabled="{Binding !IsChecking}" />
-            <Button Content="更新をダウンロードして再起動" Command="{Binding DownloadAndApplyCommand}"
-                    Classes="accent" IsVisible="{Binding IsUpdateReady}" IsEnabled="{Binding !IsChecking}" />
+            <Button Content="スキップした更新を再表示" Command="{Binding ClearIgnoredUpdateTagCommand}"
+                    IsVisible="{Binding HasIgnoredUpdateTag}" IsEnabled="{Binding !IsChecking}" />
           </StackPanel>
-          <TextBlock Text="{Binding UpdateStatusText}" Classes="caption" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding UpdateStatusText}" Classes="caption" TextWrapping="Wrap"
+                     IsVisible="{Binding UpdateStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
           <CheckBox Content="起動時に自動で更新を確認する" IsChecked="{Binding CheckForUpdatesOnStartup}" />
         </StackPanel>

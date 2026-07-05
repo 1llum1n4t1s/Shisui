@@ -5,12 +5,19 @@ namespace Shisui.Core.Models;
 public sealed class AppSettings
 {
     public string? LastSelectedAdapterId { get; set; }
+
+    /// <summary>前回選択した DNS プロバイダプリセットの Id (次回起動時に復元する)。</summary>
+    public string? LastSelectedPresetId { get; set; }
+
     public List<DnsProviderPreset> CustomPresets { get; set; } = [];
     public double WindowWidth { get; set; } = 900;
     public double WindowHeight { get; set; } = 640;
 
     /// <summary>起動時に自動で更新を確認するか。</summary>
     public bool CheckForUpdatesOnStartup { get; set; } = true;
+
+    /// <summary>「このバージョンをスキップ」で保存した更新タグ。以降この版の自動更新通知を出さない。</summary>
+    public string? IgnoreUpdateTag { get; set; }
 
     /// <summary>
     /// Velopack 自動更新の配信元。Cloudflare R2 (カスタムドメイン) をハードコード固定する。

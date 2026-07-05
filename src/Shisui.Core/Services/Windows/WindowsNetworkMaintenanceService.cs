@@ -10,6 +10,9 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor) 
     public IReadOnlyList<MaintenanceCommandDefinition> GetAvailableCommands() =>
         WindowsMaintenanceCommandCatalog.All.Select(c => c.Definition).ToList();
 
+    public IReadOnlyDictionary<string, string> GetBatchableCategoryLabels() =>
+        WindowsMaintenanceCommandCatalog.BatchableCategoryLabels;
+
     public Task<CommandExecutionResult> RunAsync(string commandId, CancellationToken ct = default)
     {
         var command = WindowsMaintenanceCommandCatalog.Find(commandId);

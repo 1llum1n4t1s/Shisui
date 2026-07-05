@@ -54,6 +54,7 @@ public partial class App : Application
             services.AddSingleton<ICommandExecutor, ProcessCommandExecutor>();
             services.AddSingleton<INetworkAdapterService, Core.Services.Windows.WindowsNetworkAdapterService>();
             services.AddSingleton<IDnsConfigurationService, Core.Services.Windows.WindowsDnsConfigurationService>();
+            services.AddSingleton<IDohConfigurationService, Core.Services.Windows.WindowsDohConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
@@ -67,8 +68,10 @@ public partial class App : Application
             services.AddSingleton<INetworkAdapterService, Core.Services.MacOS.MacNetworkAdapterService>();
             services.AddSingleton<IDnsConfigurationService, Core.Services.MacOS.MacDnsConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.MacOS.MacDnsCacheService>();
-            // BBR2 / TCP グローバル調整・任意実行メンテナンスコマンドは Windows (netsh) 専用機能のため macOS には登録しない。
-            // MainWindowViewModel は TcpTuningViewModel / MaintenanceViewModel が未登録なら該当タブを表示しない。
+            // BBR2 / TCP グローバル調整・任意実行メンテナンスコマンド・DoH は Windows (netsh) 専用機能のため
+            // macOS には登録しない。MainWindowViewModel は TcpTuningViewModel / MaintenanceViewModel が
+            // 未登録なら該当タブを表示せず、DnsSettingsViewModel は IDohConfigurationService? が null なら
+            // DoH チェックボックスを表示しない。
         }
         else
         {

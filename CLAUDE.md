@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Shisui is a cross-platform (Windows / macOS) desktop app for network configuration. It lets the user switch
 DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google Public DNS, or custom IPv4/IPv6),
-flush the DNS cache, and — on Windows only — toggle BBR2 congestion control and run a catalog of `netsh` /
-`ipconfig` / `nbtstat` network maintenance commands.
+flush the DNS cache, and — on Windows only — toggle DNS over HTTPS (DoH) for the selected preset, toggle BBR2
+congestion control / TCP global options, run a catalog of `netsh` / `ipconfig` / `nbtstat` network maintenance
+commands, and clean up disconnected "ghost" network devices.
 
 **Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This CLAUDE.md is in English
 to match the reference project's documentation conventions; code comments and user-facing text remain Japanese.
@@ -64,10 +65,12 @@ never holds the single-instance lock while its elevated replacement starts.
 ### Project Structure
 
 - **Shisui.Core** — Interfaces, models, and all OS-interacting services. No UI dependency.
-  - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDnsCacheService`, `ITcpTuningService`,
-    `INetworkMaintenanceService`, `ICommandExecutor`, `ISettingsService`.
-  - `Models/` — `NetworkAdapterInfo`, `DnsServerSet`, `DnsProviderPreset`, `DnsPresetCatalog` (hardcoded official
-    Cloudflare/Google IP addresses), `MaintenanceCommandDefinition`, `CommandExecutionResult`, `AppSettings`.
+  - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDohConfigurationService`,
+    `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`, `IGhostAdapterService`,
+    `ICommandExecutor`, `ISettingsService`.
+  - `Models/` — `NetworkAdapterInfo`, `DnsServerSet`, `DnsProviderPreset` (has a nullable `DohTemplate`),
+    `DnsPresetCatalog` (hardcoded official Cloudflare/Google IPs + DoH templates), `DohStatus`,
+    `TcpSettingsSnapshot`, `GhostAdapterInfo`, `MaintenanceCommandDefinition`, `CommandExecutionResult`, `AppSettings`.
   - `Services/Windows/` — netsh/ipconfig-backed implementations. Command *building* (pure string formatting) is
     split from command *execution* (`ICommandExecutor`) so the exact command strings are unit-testable without
     touching the OS. See `WindowsDnsCommandBuilder`, `WindowsTcpCommandBuilder`, `WindowsMaintenanceCommandCatalog`.
@@ -96,25 +99,63 @@ inside an AppleScript string literal (backslash/quote escaping only) and invokes
 internally (a normal argv-parsing tool, so `ArgumentList` is correct there — this is the one place in the codebase
 mixing both invocation styles, intentionally).
 
+**Output decoding is auto-detected, not a fixed encoding**: `ProcessCommandExecutor` reads stdout/stderr as **raw
+bytes** (both `BaseStream`s copied concurrently to avoid pipe deadlock), then decodes with a heuristic — strict
+UTF-8 first, falling back to the OEM code page (`CultureInfo.CurrentCulture.TextInfo.OEMCodePage`, = CP932 on
+Japanese Windows) on `DecoderFallbackException`. This is deliberate and empirically necessary: `netsh`/`ipconfig`
+emit **UTF-8 on some machines and OEM/CP932 on others** (depends on the console output code page inheritance,
+which for a GUI app with no console resolves unpredictably), so a fixed `StandardOutputEncoding` mojibakes one
+environment or the other. Verified on this machine (a WinExe/no-console harness through the real executor):
+netsh emitted UTF-8 while the GUI's `Console.OutputEncoding` was CP932, which is exactly the mojibake case the
+old fixed-decode path produced (「繧｢繧ｯ繝・…」). CP932 Japanese byte sequences are essentially never valid
+strict UTF-8, so the try-UTF-8-then-OEM order self-detects safely. `CodePagesEncodingProvider` is registered in
+`ProcessCommandExecutor`'s static ctor (needed for `GetEncoding(932)`); it ships in the .NET 10 shared framework,
+so **no `System.Text.Encoding.CodePages` PackageReference is needed** (adding it triggers an NU1510 prune
+warning). `DecodeConsoleOutput` is `internal` + unit-tested (`ProcessCommandExecutorDecodeTests`).
+
 ### DI: Windows-only features are optional dependencies, not stubbed
 
-`ITcpTuningService` and `INetworkMaintenanceService` are only registered in `App.axaml.cs` when
-`OperatingSystem.IsWindows()`. `MainWindowViewModel`'s constructor takes `TcpTuningViewModel? = null` and
-`MaintenanceViewModel? = null` with explicit default values — `Microsoft.Extensions.DependencyInjection` only
+`ITcpTuningService`, `INetworkMaintenanceService`, `IGhostAdapterService`, and `IDohConfigurationService` are
+only registered in `App.axaml.cs` when `OperatingSystem.IsWindows()`. Consumers take them as
+constructor parameters with explicit `= null` defaults — `Microsoft.Extensions.DependencyInjection` only
 substitutes `null` for an unregistered service type when the constructor parameter has a default value; without
-`= null` it throws `InvalidOperationException` at startup on macOS. The corresponding tabs in `MainWindow.axaml`
-are gated on `IsVisible="{Binding IsWindows}"`, not on null-checking the ViewModel directly.
+`= null` it throws `InvalidOperationException` at startup on macOS. This applies to `MainWindowViewModel`
+(`TcpTuningViewModel? = null`, `MaintenanceViewModel? = null`; the corresponding tabs in `MainWindow.axaml` are
+gated on `IsVisible="{Binding IsWindows}"`) and to `DnsSettingsViewModel` (`IGhostAdapterService? = null`,
+`IDohConfigurationService? = null`; the ghost-cleanup card and DoH checkbox are gated on `IsWindows` /
+`IsDohAvailable`), never on null-checking directly in bindings.
 
 ### DNS Preset Catalog (`Core/Models/DnsPresetCatalog.cs`)
 
-Hardcoded official addresses — do not "correct" these without checking the provider's current documentation:
+Hardcoded official addresses + DoH templates — do not "correct" these without checking the provider's current
+documentation. **The DoH template hostname differs per Cloudflare filtering tier** (`security.` / `family.`
+subdomains, verified against developers.cloudflare.com): using the plain `cloudflare-dns.com` template for the
+malware / malware+adult tiers would silently give *unfiltered* DoH resolution — a functional bug that defeats the
+preset. Google uses one hostname for all its IPs; the custom preset has no DoH template (DoH is hidden for it).
 
-| Preset | IPv4 | IPv6 |
-|---|---|---|
-| Cloudflare 標準 | 1.1.1.1 / 1.0.0.1 | 2606:4700:4700::1111 / ::1001 |
-| Cloudflare マルウェアブロック | 1.1.1.2 / 1.0.0.2 | 2606:4700:4700::1112 / ::1002 |
-| Cloudflare マルウェア+アダルトブロック | 1.1.1.3 / 1.0.0.3 | 2606:4700:4700::1113 / ::1003 |
-| Google Public DNS | 8.8.8.8 / 8.8.4.4 | 2001:4860:4860::8888 / ::8844 |
+| Preset | IPv4 | IPv6 | DoH template |
+|---|---|---|---|
+| Cloudflare 標準 | 1.1.1.1 / 1.0.0.1 | 2606:4700:4700::1111 / ::1001 | `https://cloudflare-dns.com/dns-query` |
+| Cloudflare マルウェアブロック | 1.1.1.2 / 1.0.0.2 | 2606:4700:4700::1112 / ::1002 | `https://security.cloudflare-dns.com/dns-query` |
+| Cloudflare マルウェア+アダルトブロック | 1.1.1.3 / 1.0.0.3 | 2606:4700:4700::1113 / ::1003 | `https://family.cloudflare-dns.com/dns-query` |
+| Google Public DNS | 8.8.8.8 / 8.8.4.4 | 2001:4860:4860::8888 / ::8844 | `https://dns.google/dns-query` |
+
+### DNS over HTTPS (DoH) toggle (`IDohConfigurationService`, Windows)
+
+The DNS tab shows a DoH checkbox for presets that have a `DohTemplate` (all built-ins except カスタム). Enabling
+registers each of the preset's IPs via `netsh dnsclient add encryption server=<ip> dohtemplate=<url>
+autoupgrade=yes udpfallback=yes` and then `netsh dnsclient set global doh=yes`; disabling runs `netsh dnsclient
+delete encryption server=<ip> protocol=doh` per IP (global `doh` is left alone — it can affect other
+registrations). Windows also supports DoT via the same `netsh dnsclient` family, but Shisui only ships DoH (DoT
+has no state-read cmdlet and unclear version support).
+
+**The checkbox reflects real OS state, it is not a saved preference.** `WindowsDohStateCommandBuilder` /
+`WindowsDohStateParser` (pure, unit-tested, same locale-independent `KEY=VALUE` PowerShell pattern as the TCP tab)
+read `Get-DnsClientDohServerAddress -ServerAddress <ips>` and classify `DohStatus` = Enabled (all IPs
+`AutoUpgrade=True`) / Partial / Disabled / Unknown. `DnsSettingsViewModel.RefreshDohStateAsync` runs on startup
+and on preset change, setting `UseDoh = (status == Enabled)`. The *selected preset* is persisted
+(`AppSettings.LastSelectedPresetId`, restored via direct field assignment to avoid firing `OnSelectedPresetChanged`)
+so that the DoH state is read against the preset the user last used, not always the default.
 
 ### Reading current state is locale-independent (PowerShell cmdlets, NOT netsh text)
 
@@ -144,8 +185,8 @@ A section in the DNS tab lists **disconnected** network-class devices (leftover 
 adapters / uninstalled VPNs) via `pnputil /enum-devices /disconnected /class Net /format xml` (XML for
 locale-independent parsing) and removes one via `pnputil /remove-device "<InstanceId>"`. Windows' own WAN Miniport
 virtual devices match the same filter, so `WindowsGhostAdapterParser` flags `Manufacturer` containing "Microsoft"
-(→ UI shows a ⚠ warning) and **every** row requires its own per-row 確認済み checkbox before delete. This uses
-pnputil's proper PnP uninstall path rather than raw registry edits.
+(→ UI shows a ⚠ warning, but deletion still runs on a single click — no confirmation gate). This uses pnputil's
+proper PnP uninstall path rather than raw registry edits.
 
 ### UI Framework
 
@@ -161,9 +202,15 @@ pnputil's proper PnP uninstall path rather than raw registry edits.
 - Main view: `MainWindow` is a sidebar `TabControl` — DNS 設定 / BBR2・TCP 調整 / メンテナンス (last two
   `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent 実行ログ card fed by each tab ViewModel's
   `CommandExecuted` event, one `UserControl` per tab.
-- Destructive maintenance commands require a per-row "確認済み" `CheckBox` before their `RunCommand` can execute
-  (`MaintenanceCommandItemViewModel.CanRun`) — deliberately not a modal dialog, to keep everything on compiled
-  bindings without a dialog-service abstraction.
+- Destructive maintenance commands are visually flagged (red button via `Classes.danger="{Binding
+  Definition.IsDestructive}"`) but run immediately on click — no confirmation checkbox or modal dialog gates them.
+- Some maintenance categories also expose a "まとめて実行" (run-all) button that runs every command in the
+  category sequentially in catalog order. The batchable set lives in
+  `WindowsMaintenanceCommandCatalog.BatchableCategoryLabels` (キャッシュ・登録 / IP アドレス再取得 /
+  プロキシ設定リセット) — deliberately **excluding** the destructive スタックリセット category (running all of
+  advfirewall/winsock/tcp/ip resets blindly is a footgun) and the single-command component-rediscovery category.
+  IP reacquire is the motivating case: `ipconfig /release` alone just drops connectivity, so release→renew is
+  only meaningful as a sequence.
 
 ### Settings & Logging
 
@@ -196,11 +243,20 @@ need separate Apple notarization and is not set up).
   custom domain on the `nephilim.jp` Cloudflare zone). The base URL is hardcoded in `AppSettings.UpdateBaseUrl`
   with `[JsonIgnore]` (not overridable from settings.json — closes the third-party-host redirection attack surface).
   Channel is `win` only (`releases.win.json`).
-- **Client wiring**: `Program.cs` calls `VelopackApp.Build().Run()` first (before the single-instance guard);
-  `UI/Services/UpdateService.cs` wraps `UpdateManager(SimpleWebSource)` for check/download/apply; the バージョン tab
-  (`VersionViewModel` / `VersionView`) shows the current version, a 更新を確認 button, and auto-checks on startup
-  (gated by `AppSettings.CheckForUpdatesOnStartup`). In dev (`dotnet run`), `UpdateManager.IsInstalled` is false so
-  the check no-ops — that is expected.
+- **Client wiring**: `Program.cs` calls `VelopackApp.Build().Run()` first (before the single-instance guard).
+  The check/download/apply **UI is the `VelopackUpdateDialog.Avalonia` package** (`UpdateDialogWindow.ShowAsync`),
+  not hand-rolled — `UI/Services/UpdateService.cs` only builds the `UpdateManager(SimpleWebSource)` and exposes
+  `TryCreateInstalledManager()` (returns null on dev/uninstalled builds). `VersionViewModel.ShowUpdateDialogAsync`
+  owns the dialog: `Strings = ShisuiUpdateStrings.Instance` (JP-only, no locale switching unlike Lhamiel),
+  `IgnoredTagName`/`VersionIgnored` persist "skip this version" to `AppSettings.IgnoreUpdateTag`, `AccentBrush`
+  matches the app's `#0A84FF`. Manual check (更新を確認 button) uses `manualCheck: true` (shows even when
+  up-to-date); startup auto-check (gated by `AppSettings.CheckForUpdatesOnStartup`) uses `manualCheck: false` and
+  is **deferred via `Dispatcher.UIThread.Post(Background)`** because `Version.Initialize()` runs inside the
+  `MainWindowViewModel` ctor — i.e. *before* `desktop.MainWindow` is assigned, so the owner window isn't ready yet.
+  In dev (`dotnet run`), `UpdateManager.IsInstalled` is false so `TryCreateInstalledManager` returns null and the
+  dialog is skipped — that is expected. Shisui is **not** AOT/trimmed, so no `TrimmerRootAssembly` entries are
+  needed (unlike Lhamiel). Velopack is referenced directly (not via the dialog package's transitive ref) since
+  `Program.cs`/`UpdateService` use it; both pin 1.2.0.
 - **Release is local + signed, not CI**: `scripts/release-local.ps1` (adapted from `C:\Users\IMT\dev\VStoVSC`)
   does publish (self-contained win-x64) → `vpk pack` + **Authenticode sign** (Certum "Open Source Code Signing in
   the cloud", `signtool /n "Open Source Developer Yuichiro Shinozaki"`) → signature verify → R2 upload (wrangler) →

@@ -13,6 +13,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDnsCacheService _cacheService;
     private readonly ISettingsService _settingsService;
     private readonly IGhostAdapterService? _ghostAdapterService;
+    private readonly IDohConfigurationService? _dohService;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -54,29 +55,62 @@ public partial class DnsSettingsViewModel : ObservableObject
     [ObservableProperty]
     private string ghostAdaptersStatusText = string.Empty;
 
+    [ObservableProperty]
+    private bool useDoh;
+
+    [ObservableProperty]
+    private string dohStateText = string.Empty;
+
     public bool IsCustomPresetSelected => SelectedPreset.Id == DnsPresetCatalog.Custom.Id;
+
+    /// <summary>DoH チェックボックスを表示するか (Windows かつサービス登録済みかつ選択中プリセットが対応)。</summary>
+    public bool IsDohAvailable => IsWindows && _dohService is not null && SelectedPreset.DohTemplate is not null;
 
     public DnsSettingsViewModel(
         INetworkAdapterService adapterService,
         IDnsConfigurationService dnsService,
         IDnsCacheService cacheService,
         ISettingsService settingsService,
-        IGhostAdapterService? ghostAdapterService = null)
+        IGhostAdapterService? ghostAdapterService = null,
+        IDohConfigurationService? dohService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
         _cacheService = cacheService;
         _settingsService = settingsService;
         _ghostAdapterService = ghostAdapterService;
+        _dohService = dohService;
+
+        // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
+        // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
+        var lastPresetId = _settingsService.Current.LastSelectedPresetId;
+        if (lastPresetId is not null)
+        {
+            var restored = Presets.FirstOrDefault(p => p.Id == lastPresetId);
+            if (restored is not null)
+            {
+                selectedPreset = restored;
+            }
+        }
 
         _ = LoadAdaptersAsync();
         if (_ghostAdapterService is not null)
         {
             _ = LoadGhostAdaptersAsync();
         }
+
+        // 起動時に、選択中プリセットの DoH 実状態をチェックボックス・バッジへ反映する
+        // (UseDoh は設定ファイルに保存せず、OS の実際の登録状況を単一の真実とする)。
+        _ = RefreshDohStateAsync(SelectedPreset.Servers);
     }
 
-    partial void OnSelectedPresetChanged(DnsProviderPreset value) => OnPropertyChanged(nameof(IsCustomPresetSelected));
+    partial void OnSelectedPresetChanged(DnsProviderPreset value)
+    {
+        OnPropertyChanged(nameof(IsCustomPresetSelected));
+        OnPropertyChanged(nameof(IsDohAvailable));
+        // プリセットを切り替えたら、その宛先の DoH 実状態を取り直してチェックボックス・バッジへ反映する。
+        _ = RefreshDohStateAsync(value.Servers);
+    }
 
     [RelayCommand]
     private async Task LoadAdaptersAsync()
@@ -125,13 +159,23 @@ public partial class DnsSettingsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var results = await _dnsService.ApplyAsync(SelectedAdapter.Id, servers);
+            var results = (await _dnsService.ApplyAsync(SelectedAdapter.Id, servers)).ToList();
+
+            if (IsDohAvailable)
+            {
+                var dohResults = UseDoh
+                    ? await _dohService!.EnableAsync(servers, SelectedPreset.DohTemplate!)
+                    : await _dohService!.DisableAsync(servers);
+                results.AddRange(dohResults);
+            }
+
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
 
             _settingsService.Current.LastSelectedAdapterId = SelectedAdapter.Id;
+            _settingsService.Current.LastSelectedPresetId = SelectedPreset.Id;
             await _settingsService.SaveAsync();
 
             StatusText = results.All(r => r.Success)
@@ -139,12 +183,44 @@ public partial class DnsSettingsViewModel : ObservableObject
                 : "一部のコマンドが失敗しました。ログを確認してください";
 
             await LoadAdaptersAsync();
+            await RefreshDohStateAsync(servers);
         }
         finally
         {
             IsBusy = false;
         }
     }
+
+    private async Task RefreshDohStateAsync(DnsServerSet servers)
+    {
+        if (!IsDohAvailable)
+        {
+            DohStateText = string.Empty;
+            UseDoh = false;
+            return;
+        }
+
+        try
+        {
+            var status = await _dohService!.GetStatusAsync(servers);
+            DohStateText = FormatDohStatus(status);
+            // チェックボックスは OS の実状態を反映する (全サーバーで有効なときだけ ON)。
+            UseDoh = status == DohStatus.Enabled;
+        }
+        catch
+        {
+            // 状態取得の失敗は致命的ではない (適用操作自体は完了している) ので握りつぶし、不明表示にする。
+            DohStateText = "⚪ 不明";
+        }
+    }
+
+    private static string FormatDohStatus(DohStatus status) => status switch
+    {
+        DohStatus.Enabled => "🟢 有効",
+        DohStatus.Disabled => "🔴 無効",
+        DohStatus.Partial => "🟡 一部のみ有効",
+        _ => "⚪ 不明",
+    };
 
     [RelayCommand]
     private async Task ResetToAutomaticAsync()

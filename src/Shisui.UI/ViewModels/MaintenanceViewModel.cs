@@ -21,9 +21,14 @@ public partial class MaintenanceViewModel : ObservableObject
     public MaintenanceViewModel(INetworkMaintenanceService maintenanceService)
     {
         _maintenanceService = maintenanceService;
+        var batchLabels = maintenanceService.GetBatchableCategoryLabels();
         Categories = maintenanceService.GetAvailableCommands()
             .GroupBy(c => c.Category)
-            .Select(g => new MaintenanceCategoryGroup(g.Key, g.Select(d => new MaintenanceCommandItemViewModel(d, RunAsync)).ToList()))
+            .Select(g => new MaintenanceCategoryGroup(
+                g.Key,
+                g.Select(d => new MaintenanceCommandItemViewModel(d, RunAsync)).ToList(),
+                batchLabels.TryGetValue(g.Key, out var label) ? label : null,
+                RunAllAsync))
             .ToList();
     }
 
@@ -41,6 +46,44 @@ public partial class MaintenanceViewModel : ObservableObject
         finally
         {
             item.IsRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// カテゴリ内のコマンドをカタログ並び順で逐次実行する (IP 再取得なら 解放 → 再取得 の順)。
+    /// 個々の結果はログに流し、最後に成功/失敗件数をまとめて表示する。
+    /// </summary>
+    private async Task RunAllAsync(MaintenanceCategoryGroup group)
+    {
+        group.IsRunningAll = true;
+        try
+        {
+            var failed = 0;
+            foreach (var item in group.Items)
+            {
+                item.IsRunning = true;
+                try
+                {
+                    var result = await _maintenanceService.RunAsync(item.Definition.Id);
+                    CommandExecuted?.Invoke(this, result);
+                    if (!result.Success)
+                    {
+                        failed++;
+                    }
+                }
+                finally
+                {
+                    item.IsRunning = false;
+                }
+            }
+
+            StatusText = failed == 0
+                ? $"「{group.Name}」を順に実行しました ({group.Items.Count} 件)"
+                : $"「{group.Name}」を実行しました ({group.Items.Count} 件中 {failed} 件失敗。ログを確認してください)";
+        }
+        finally
+        {
+            group.IsRunningAll = false;
         }
     }
 }

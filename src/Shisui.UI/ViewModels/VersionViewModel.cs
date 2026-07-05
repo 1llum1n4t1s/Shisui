@@ -1,20 +1,28 @@
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Media;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Services;
 using Shisui.UI.Services;
+using VelopackUpdateDialog;
 
 namespace Shisui.UI.ViewModels;
 
 /// <summary>
-/// バージョン情報・自動更新タブ。
+/// バージョン情報・自動更新タブ。更新の確認 / ダウンロード / 適用は VelopackUpdateDialog.Avalonia の
+/// <see cref="UpdateDialogWindow"/> に委譲する (自前の進捗 UI は持たない)。
 /// </summary>
 public partial class VersionViewModel : ObservableObject
 {
     private readonly UpdateService _updateService;
     private readonly ISettingsService _settingsService;
+    private bool _updateDialogOpen;
 
     [ObservableProperty]
     private string versionText = "…";
@@ -26,10 +34,14 @@ public partial class VersionViewModel : ObservableObject
     private bool isChecking;
 
     [ObservableProperty]
-    private bool isUpdateReady;
+    private bool checkForUpdatesOnStartup;
 
     [ObservableProperty]
-    private bool checkForUpdatesOnStartup;
+    [NotifyPropertyChangedFor(nameof(HasIgnoredUpdateTag))]
+    private string ignoredUpdateTag = string.Empty;
+
+    /// <summary>「このバージョンをスキップ」で無視中の更新があるか (再表示ボタンの表示制御)。</summary>
+    public bool HasIgnoredUpdateTag => !string.IsNullOrEmpty(IgnoredUpdateTag);
 
     public VersionViewModel(UpdateService updateService, ISettingsService settingsService)
     {
@@ -37,13 +49,18 @@ public partial class VersionViewModel : ObservableObject
         _settingsService = settingsService;
         VersionText = updateService.CurrentVersion;
         CheckForUpdatesOnStartup = settingsService.Current.CheckForUpdatesOnStartup;
+        IgnoredUpdateTag = settingsService.Current.IgnoreUpdateTag ?? string.Empty;
     }
 
     public void Initialize()
     {
         if (_settingsService.Current.CheckForUpdatesOnStartup)
         {
-            _ = CheckForUpdateAsync();
+            // ここは MainWindowViewModel ctor 経由で desktop.MainWindow 代入より前に呼ばれるため、
+            // owner ウィンドウが確定してから走るよう Background 優先度で遅延投入する。
+            Dispatcher.UIThread.Post(
+                () => _ = ShowUpdateDialogAsync(manually: false),
+                DispatcherPriority.Background);
         }
     }
 
@@ -54,35 +71,83 @@ public partial class VersionViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async System.Threading.Tasks.Task CheckForUpdateAsync()
-    {
-        IsChecking = true;
-        UpdateStatusText = "更新を確認しています…";
-        try
-        {
-            var result = await _updateService.CheckAsync();
-            UpdateStatusText = result.Message;
-            IsUpdateReady = result.Outcome == UpdateService.UpdateOutcome.UpdateReady;
-        }
-        finally
-        {
-            IsChecking = false;
-        }
-    }
+    private Task CheckForUpdateAsync() => ShowUpdateDialogAsync(manually: true);
 
     [RelayCommand]
-    private async System.Threading.Tasks.Task DownloadAndApplyAsync()
+    private async Task ClearIgnoredUpdateTagAsync()
     {
+        if (string.IsNullOrEmpty(IgnoredUpdateTag))
+        {
+            return;
+        }
+
+        _settingsService.Current.IgnoreUpdateTag = null;
+        IgnoredUpdateTag = string.Empty;
+        await _settingsService.SaveAsync();
+    }
+
+    /// <summary>
+    /// VelopackUpdateDialog を表示する。<paramref name="manually"/>=true は手動チェック
+    /// (最新でも結果を表示・スキップタグを無視)、false は起動時自動チェック
+    /// (更新があるときだけ・スキップタグ一致は表示しない)。
+    /// </summary>
+    private async Task ShowUpdateDialogAsync(bool manually)
+    {
+        if (_updateDialogOpen)
+        {
+            return;
+        }
+
+        var owner = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        if (owner is null)
+        {
+            // MainWindow 未確定 (通常起こらない)。owner なしでは表示しない。
+            return;
+        }
+
+        var manager = _updateService.TryCreateInstalledManager();
+        if (manager is null)
+        {
+            if (manually)
+            {
+                UpdateStatusText = "開発ビルドのため更新確認はスキップされます (インストール版でのみ動作)";
+            }
+
+            return;
+        }
+
+        _updateDialogOpen = true;
         IsChecking = true;
-        UpdateStatusText = "更新をダウンロードしています…（完了後に自動で再起動します）";
+        UpdateStatusText = string.Empty;
         try
         {
-            await _updateService.DownloadAndApplyAsync();
+            var options = new UpdateDialogOptions
+            {
+                Strings = ShisuiUpdateStrings.Instance,
+                IgnoredTagName = _settingsService.Current.IgnoreUpdateTag,
+                AccentBrush = new SolidColorBrush(Color.Parse("#0A84FF")),
+            };
+            options.VersionIgnored += tag => Dispatcher.UIThread.Post(() =>
+            {
+                _settingsService.Current.IgnoreUpdateTag = tag;
+                IgnoredUpdateTag = tag ?? string.Empty;
+                _ = _settingsService.SaveAsync();
+            });
+            options.ErrorOccurred += ex =>
+                LoggerBootstrap.Log.Error($"Velopack 更新失敗: {ex.GetType().Name}", ex);
+
+            await UpdateDialogWindow.ShowAsync(owner, manager, options, manualCheck: manually);
         }
         catch (Exception ex)
         {
-            UpdateStatusText = $"更新の適用に失敗しました: {ex.Message}";
+            UpdateStatusText = $"更新の確認に失敗しました: {ex.Message}";
+            LoggerBootstrap.Log.Error("更新ダイアログの表示に失敗しました", ex);
+        }
+        finally
+        {
+            (manager as IDisposable)?.Dispose();
             IsChecking = false;
+            _updateDialogOpen = false;
         }
     }
 

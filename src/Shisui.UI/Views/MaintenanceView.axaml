@@ -9,29 +9,32 @@
     <StackPanel Margin="8,0,8,12">
       <TextBlock Classes="h1" Text="メンテナンス" />
       <TextBlock Classes="caption" TextWrapping="Wrap" Margin="4,0,0,12"
-                 Text="赤いボタンのコマンドは既存の設定を初期化するなど影響が大きいものです。「確認済み」にチェックを入れると実行できます。" />
+                 Text="赤いボタンのコマンドは既存の設定を初期化するなど影響が大きいものです。" />
 
       <ItemsControl ItemsSource="{Binding Categories}">
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:MaintenanceCategoryGroup">
             <primitives:HeaderedContentControl Header="{Binding Name}">
-              <ItemsControl ItemsSource="{Binding Items}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="vm:MaintenanceCommandItemViewModel">
-                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6">
-                      <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
-                        <TextBlock Text="{Binding Definition.Label}" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding Definition.Description}" Classes="caption" TextWrapping="Wrap" />
-                        <TextBlock Text="※ 再起動後に有効になります" FontSize="12" Foreground="#FF3B30" IsVisible="{Binding Definition.RequiresReboot}" />
-                      </StackPanel>
-                      <CheckBox Grid.Column="1" Content="確認済み" IsChecked="{Binding IsConfirmed}"
-                                IsVisible="{Binding Definition.IsDestructive}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                      <Button Grid.Column="2" Content="実行" Command="{Binding RunCommand}"
-                              Classes.danger="{Binding Definition.IsDestructive}" VerticalAlignment="Center" />
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+              <StackPanel Spacing="6">
+                <Button Content="{Binding BatchLabel}" Command="{Binding RunAllCommand}"
+                        IsVisible="{Binding SupportsBatch}" IsEnabled="{Binding !IsRunningAll}"
+                        HorizontalAlignment="Left" Margin="0,0,0,2" Classes="accent" />
+                <ItemsControl ItemsSource="{Binding Items}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:MaintenanceCommandItemViewModel">
+                      <Grid ColumnDefinitions="*,Auto" Margin="0,6">
+                        <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
+                          <TextBlock Text="{Binding Definition.Label}" FontWeight="SemiBold" />
+                          <TextBlock Text="{Binding Definition.Description}" Classes="caption" TextWrapping="Wrap" />
+                          <TextBlock Text="※ 再起動後に有効になります" FontSize="12" Foreground="#FF3B30" IsVisible="{Binding Definition.RequiresReboot}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="実行" Command="{Binding RunCommand}"
+                                Classes.danger="{Binding Definition.IsDestructive}" VerticalAlignment="Center" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
             </primitives:HeaderedContentControl>
           </DataTemplate>
         </ItemsControl.ItemTemplate>

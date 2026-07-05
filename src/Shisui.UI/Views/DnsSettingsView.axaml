@@ -81,6 +81,11 @@
               </StackPanel>
             </StackPanel>
           </StackPanel>
+
+          <StackPanel IsVisible="{Binding IsDohAvailable}" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+            <CheckBox Content="DNS over HTTPS (DoH) を有効にする" IsChecked="{Binding UseDoh}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding DohStateText}" Classes="caption" VerticalAlignment="Center" />
+          </StackPanel>
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -102,15 +107,14 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate DataType="vm:GhostAdapterItemViewModel">
                 <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,8">
-                  <Grid ColumnDefinitions="*,Auto,Auto">
+                  <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
                       <TextBlock Text="{Binding Info.Description}" FontWeight="SemiBold" />
                       <TextBlock Classes="caption" Text="{Binding Info.Manufacturer, StringFormat='製造元: {0}'}" />
                       <TextBlock Text="⚠ Microsoft 標準の仮想デバイスです。通常は削除不要です。" FontSize="12" Foreground="#FF9F0A"
                                  IsVisible="{Binding Info.IsLikelyMicrosoftVirtualDevice}" TextWrapping="Wrap" />
                     </StackPanel>
-                    <CheckBox Grid.Column="1" Content="確認済み" IsChecked="{Binding IsConfirmed}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <Button Grid.Column="2" Content="削除" Command="{Binding RemoveCommand}" Classes="danger" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="削除" Command="{Binding RemoveCommand}" Classes="danger" VerticalAlignment="Center" />
                   </Grid>
                 </Border>
               </DataTemplate>
