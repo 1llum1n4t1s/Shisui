@@ -12,6 +12,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     public DnsSettingsViewModel DnsSettings { get; }
 
+    /// <summary>Ping / トレースルート診断タブ (Windows/macOS 両対応、常に非 null)。</summary>
+    public NetworkDiagnosticsViewModel NetworkDiagnostics { get; }
+
     /// <summary>Windows でのみ非 null。View 側は null を「タブ非表示」の合図として扱う。</summary>
     public TcpTuningViewModel? TcpTuning { get; }
 
@@ -22,7 +25,12 @@ public partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<CommandLogEntry> LogEntries { get; } = [];
 
-    public MainWindowViewModel(DnsSettingsViewModel dnsSettings, VersionViewModel version, TcpTuningViewModel? tcpTuning = null, MaintenanceViewModel? maintenance = null)
+    public MainWindowViewModel(
+        DnsSettingsViewModel dnsSettings,
+        NetworkDiagnosticsViewModel networkDiagnostics,
+        VersionViewModel version,
+        TcpTuningViewModel? tcpTuning = null,
+        MaintenanceViewModel? maintenance = null)
     {
         Version = version;
         Version.Initialize();
@@ -31,6 +39,7 @@ public partial class MainWindowViewModel : ObservableObject
         // 既定値 null を与えておくことで、Microsoft.Extensions.DependencyInjection は
         // 未登録サービスをエラーにせずここへ null を注入する。
         DnsSettings = dnsSettings;
+        NetworkDiagnostics = networkDiagnostics;
         TcpTuning = tcpTuning;
         Maintenance = maintenance;
 

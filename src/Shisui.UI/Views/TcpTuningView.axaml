@@ -31,6 +31,77 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="受信ウィンドウ自動調整 (Auto-Tuning)">
+        <StackPanel Spacing="8">
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="現在の状態:" VerticalAlignment="Center" Foreground="{DynamicResource Brush.FG2}" />
+              <TextBlock Text="{Binding AutoTuningStateText}" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="TCP 受信ウィンドウのサイズを回線状況に応じて自動調整する度合いです。通常は既定 (Normal) のままで問題ありません。回線の輻輳が疑われる環境向けに制限を強める設定 (Restricted / HighlyRestricted) や、無効化 (Disabled) も選べます。" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ComboBox ItemsSource="{Binding AutoTuningLevels}" SelectedItem="{Binding SelectedAutoTuningLevel}" Width="180" />
+            <Button Content="設定" Command="{Binding SetAutoTuningLevelCommand}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="0,8,0,0"
+                     Text="どのレベルが実際に速いかは回線環境によって変わります。下のボタンで各レベルを順番に切り替えながら実際にダウンロード速度を計測して比較できます (Cloudflare の公開スピードテストを使用)。1回だけの計測は瞬間的な回線のブレを拾いやすいため、レベルごとに複数回計測して平均を取ります。テストサイズ・回数を大きくしすぎると計測サーバー側の一時的な利用制限 (429) にかかることがあります (その場合は表示された時間だけ待ってから再度お試しください)。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="1 段階あたりのテストサイズ (MB):" VerticalAlignment="Center" />
+            <NumericUpDown Value="{Binding BenchmarkSizeMb}" Minimum="5" Maximum="50" Increment="5" Width="130" FormatString="0"
+                           IsEnabled="{Binding !IsBenchmarkRunning}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="1 段階あたりの計測回数:" VerticalAlignment="Center" />
+            <NumericUpDown Value="{Binding BenchmarkSamplesPerLevel}" Minimum="1" Maximum="5" Increment="1" Width="130" FormatString="0"
+                           IsEnabled="{Binding !IsBenchmarkRunning}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="計測して比較" Command="{Binding RunAutoTuningBenchmarkCommand}" IsEnabled="{Binding !IsBenchmarkRunning}" />
+            <Button Content="キャンセル" Command="{Binding CancelAutoTuningBenchmarkCommand}" IsVisible="{Binding IsBenchmarkRunning}" />
+          </StackPanel>
+          <TextBlock Text="{Binding BenchmarkStatusText}" Classes="caption" TextWrapping="Wrap" />
+
+          <ItemsControl ItemsSource="{Binding BenchmarkResults}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:AutoTuningBenchmarkRow">
+                <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="6" Padding="10,6" Margin="0,2">
+                  <Grid ColumnDefinitions="140,24,*">
+                    <TextBlock Grid.Column="0" Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding ThroughputText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="MTU / ジャンボフレーム設定">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="指定したアダプタの IPv4/IPv6 MTU (最大転送単位) を変更します。既定は 1500。回線やスイッチがジャンボフレームに対応している環境では 9000 前後まで上げるとオーバーヘッドが減りますが、経路上の機器が対応していないと逆に通信できなくなるため注意してください。" />
+          <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}" Margin="8,0,0,0" IsEnabled="{Binding !IsMtuBusy}" />
+          </Grid>
+          <TextBlock Text="{Binding MtuStateText}" Classes="caption" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <NumericUpDown Value="{Binding MtuValue}" Minimum="576" Maximum="9216" Increment="1" Width="140" FormatString="0" />
+            <Button Content="設定" Command="{Binding SetMtuCommand}" IsEnabled="{Binding !IsMtuBusy}" />
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="TCP グローバル詳細設定">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"

@@ -50,4 +50,42 @@ public static class WindowsTcpCommandBuilder
     }
 
     public const string ShowGlobalStatus = "int tcp show global";
+
+    /// <summary>
+    /// 受信ウィンドウ自動調整 (auto-tuning) レベルを設定する。値は公式ドキュメント記載の 5 種
+    /// (disabled/highlyrestricted/restricted/normal/experimental)。
+    /// </summary>
+    public static string BuildSetAutoTuningLevel(AutoTuningLevel level)
+    {
+        var value = level switch
+        {
+            AutoTuningLevel.Disabled => "disabled",
+            AutoTuningLevel.HighlyRestricted => "highlyrestricted",
+            AutoTuningLevel.Restricted => "restricted",
+            AutoTuningLevel.Normal => "normal",
+            AutoTuningLevel.Experimental => "experimental",
+            _ => throw new ArgumentOutOfRangeException(nameof(level)),
+        };
+        return $"int tcp set global autotuninglevel={value}";
+    }
+
+    /// <summary>
+    /// 指定アダプタの IPv4/IPv6 MTU を設定する (store=persistent で再起動後も維持)。ジャンボフレームを
+    /// 使う場合は 9000 前後の値を指定する (実際に通るかは NIC ドライバ側のジャンボフレーム対応にも依存)。
+    /// </summary>
+    public static IReadOnlyList<string> BuildSetMtu(string adapterName, int mtu)
+    {
+        var name = Quote(adapterName);
+        return
+        [
+            $"interface ipv4 set subinterface name={name} mtu={mtu} store=persistent",
+            $"interface ipv6 set subinterface name={name} mtu={mtu} store=persistent",
+        ];
+    }
+
+    /// <summary>
+    /// netsh は CommandLineToArgvW ではなく生コマンドラインを独自再パースするため、
+    /// スペースを含みうる値はここで netsh 流の二重引用符で囲む (WindowsDnsCommandBuilder と同じ方針)。
+    /// </summary>
+    private static string Quote(string value) => $"\"{value}\"";
 }

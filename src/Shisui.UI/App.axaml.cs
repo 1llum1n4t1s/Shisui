@@ -55,10 +55,13 @@ public partial class App : Application
             services.AddSingleton<INetworkAdapterService, Core.Services.Windows.WindowsNetworkAdapterService>();
             services.AddSingleton<IDnsConfigurationService, Core.Services.Windows.WindowsDnsConfigurationService>();
             services.AddSingleton<IDohConfigurationService, Core.Services.Windows.WindowsDohConfigurationService>();
+            services.AddSingleton<IDotConfigurationService, Core.Services.Windows.WindowsDotConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
+            services.AddSingleton<IAutoTuningBenchmarkService, Core.Services.Windows.WindowsAutoTuningBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
+            services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
             services.AddSingleton<TcpTuningViewModel>();
             services.AddSingleton<MaintenanceViewModel>();
         }
@@ -68,6 +71,7 @@ public partial class App : Application
             services.AddSingleton<INetworkAdapterService, Core.Services.MacOS.MacNetworkAdapterService>();
             services.AddSingleton<IDnsConfigurationService, Core.Services.MacOS.MacDnsConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.MacOS.MacDnsCacheService>();
+            services.AddSingleton<INetworkDiagnosticsService, Core.Services.MacOS.MacNetworkDiagnosticsService>();
             // BBR2 / TCP グローバル調整・任意実行メンテナンスコマンド・DoH は Windows (netsh) 専用機能のため
             // macOS には登録しない。MainWindowViewModel は TcpTuningViewModel / MaintenanceViewModel が
             // 未登録なら該当タブを表示せず、DnsSettingsViewModel は IDohConfigurationService? が null なら
@@ -83,6 +87,7 @@ public partial class App : Application
         services.AddSingleton<VersionViewModel>();
 
         services.AddSingleton<DnsSettingsViewModel>();
+        services.AddSingleton<NetworkDiagnosticsViewModel>();
         services.AddSingleton<MainWindowViewModel>();
     }
 }

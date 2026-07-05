@@ -40,6 +40,14 @@
               <TextBlock Text="現在の IPv6 DNS:" Classes="caption" />
               <TextBlock Text="{Binding SelectedAdapter.CurrentIPv6Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
             </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="MAC アドレス:" Classes="caption" />
+              <TextBlock Text="{Binding AdapterDetails.MacAddress, TargetNullValue='取得できません'}" Classes="caption" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="リンク速度:" Classes="caption" />
+              <TextBlock Text="{Binding AdapterDetails.LinkSpeedText, TargetNullValue='取得できません'}" Classes="caption" />
+            </StackPanel>
           </StackPanel>
         </StackPanel>
       </primitives:HeaderedContentControl>
@@ -86,6 +94,20 @@
             <CheckBox Content="DNS over HTTPS (DoH) を有効にする" IsChecked="{Binding UseDoh}" VerticalAlignment="Center" />
             <TextBlock Text="{Binding DohStateText}" Classes="caption" VerticalAlignment="Center" />
           </StackPanel>
+
+          <StackPanel IsVisible="{Binding IsDotAvailable}" Spacing="2" Margin="0,4,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <CheckBox Content="DNS over TLS (DoT) を有効にする" IsChecked="{Binding UseDot}" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBlock Classes="caption" TextWrapping="Wrap"
+                       Text="※ Windows に DoT の登録状況を読み取る手段が無いため、このチェックボックスは実際の OS 状態を反映しません (適用のたびに有効化/無効化コマンドを実行するだけで、次回起動時は未チェックに戻ります)。" />
+          </StackPanel>
+
+          <TextBlock IsVisible="{Binding ShowDohDotInteractionNote}" Classes="caption" TextWrapping="Wrap" Margin="0,4,0,0"
+                     Text="ℹ 両方チェックしても構いません。同じ IP アドレスに対する DoH と DoT の登録は互いに上書きせず共存し、Windows はどちらか一方だけを優先するのではなく両方を実際に使用します (実機のパケットキャプチャで確認済み)。ただし暗号化そのものの効果は片方だけで十分得られるため、両方有効にする実利は大きくありません。" />
+
+          <TextBlock IsVisible="{Binding ShowDohDotInteractionNote}" Classes="caption" TextWrapping="Wrap" Margin="0,2,0,0"
+                     Text="ℹ 速度について: 「DoT の方が仕組み上軽量で速い」とよく言われますが、実機での応答時間計測 (平文DNS / DoH / DoT を切り替えて比較) では逆に DoH の方がわずかに速く、ばらつきも小さい結果になりました。DoH は接続を張ったまま使い回すのに対し DoT は数秒おきに接続を張り直す挙動のためと見られます。オンライン対戦ゲーム等でレイテンシのブレを避けたい場合、暗号化を使うなら DoT より DoH を選ぶことを推奨します。ただし差は数 ms 程度で、そもそも DNS の名前解決は対戦中の通信そのものには関与しないため、体感できるほどの影響は通常ありません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -93,8 +115,10 @@
         <Button Content="適用" Command="{Binding ApplyCommand}" IsEnabled="{Binding !IsBusy}" />
         <Button Content="自動取得 (DHCP) に戻す" Command="{Binding ResetToAutomaticCommand}" IsEnabled="{Binding !IsBusy}" />
         <Button Content="DNS キャッシュをクリア" Command="{Binding FlushDnsCacheCommand}" IsEnabled="{Binding !IsBusy}" />
+        <Button Content="疎通テスト" Command="{Binding PingSelectedDnsCommand}" IsEnabled="{Binding !IsPinging}" />
       </StackPanel>
-      <TextBlock Text="{Binding StatusText}" Classes="caption" Margin="4,4,0,12" />
+      <TextBlock Text="{Binding StatusText}" Classes="caption" Margin="4,4,0,0" />
+      <TextBlock Text="{Binding PingStatusText}" Classes="caption" Margin="4,2,0,12" />
 
       <primitives:HeaderedContentControl Header="不要になったネットワークデバイスの掃除" IsVisible="{Binding IsWindows}">
         <StackPanel Spacing="10">

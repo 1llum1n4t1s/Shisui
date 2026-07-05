@@ -13,6 +13,7 @@ public static class WindowsTcpStateParser
     {
         var options = new Dictionary<TcpGlobalOption, string>();
         var providers = new List<string>();
+        var autoTuningLevel = string.Empty;
 
         foreach (var rawLine in stdout.Split('\n'))
         {
@@ -33,6 +34,7 @@ public static class WindowsTcpStateParser
                 case "ECN": options[TcpGlobalOption.EcnCapability] = value; break;
                 case "TIMESTAMPS": options[TcpGlobalOption.Timestamps] = value; break;
                 case "FASTOPEN": options[TcpGlobalOption.FastOpen] = value; break;
+                case "AUTOTUNE": autoTuningLevel = value; break;
                 case "CC":
                     if (value.Length > 0)
                     {
@@ -43,7 +45,7 @@ public static class WindowsTcpStateParser
             }
         }
 
-        return new TcpSettingsSnapshot(ResolveBbr2(providers), options);
+        return new TcpSettingsSnapshot(ResolveBbr2(providers), options, autoTuningLevel);
     }
 
     private static Bbr2Status ResolveBbr2(IReadOnlyList<string> providers)

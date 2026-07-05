@@ -6,7 +6,7 @@ using Shisui.Core.Models;
 namespace Shisui.Core.Services.Windows;
 
 [SupportedOSPlatform("windows")]
-public sealed class WindowsNetworkAdapterService : INetworkAdapterService
+public sealed class WindowsNetworkAdapterService(ICommandExecutor executor) : INetworkAdapterService
 {
     public Task<IReadOnlyList<NetworkAdapterInfo>> GetAdaptersAsync(CancellationToken ct = default)
     {
@@ -24,6 +24,16 @@ public sealed class WindowsNetworkAdapterService : INetworkAdapterService
             .ToList();
 
         return Task.FromResult<IReadOnlyList<NetworkAdapterInfo>>(adapters);
+    }
+
+    public async Task<NetworkAdapterDetails?> GetAdapterDetailsAsync(string adapterId, CancellationToken ct = default)
+    {
+        var result = await executor.RunAsync(
+            WindowsAdapterDetailsCommandBuilder.FileName,
+            WindowsAdapterDetailsCommandBuilder.BuildArguments(adapterId),
+            ct);
+
+        return result.Success ? WindowsAdapterDetailsParser.Parse(result.StandardOutput, adapterId) : null;
     }
 
     private static NetworkAdapterInfo ToAdapterInfo(NetworkInterface ni)

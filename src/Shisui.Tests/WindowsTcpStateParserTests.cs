@@ -112,4 +112,18 @@ public class WindowsTcpStateParserTests
         Assert.AreEqual("Enabled", snapshot.GetOptionValue(TcpGlobalOption.Rss));
         Assert.AreEqual(Bbr2Status.Enabled, snapshot.Bbr2);
     }
+
+    [TestMethod]
+    public void Parse_ReadsAutoTuningLevel()
+    {
+        var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample + "\nAUTOTUNE=Normal");
+        Assert.AreEqual("Normal", snapshot.AutoTuningLevel);
+    }
+
+    [TestMethod]
+    public void Parse_NoAutoTuneLine_ReturnsEmptyString()
+    {
+        var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample);
+        Assert.AreEqual(string.Empty, snapshot.AutoTuningLevel);
+    }
 }

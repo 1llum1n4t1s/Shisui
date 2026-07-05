@@ -9,6 +9,15 @@ public sealed class AppSettings
     /// <summary>前回選択した DNS プロバイダプリセットの Id (次回起動時に復元する)。</summary>
     public string? LastSelectedPresetId { get; set; }
 
+    /// <summary>カスタムプリセットの入力 IP (前回値を次回起動時に復元する)。</summary>
+    public string? CustomIpv4Primary { get; set; }
+
+    public string? CustomIpv4Secondary { get; set; }
+
+    public string? CustomIpv6Primary { get; set; }
+
+    public string? CustomIpv6Secondary { get; set; }
+
     public List<DnsProviderPreset> CustomPresets { get; set; } = [];
     public double WindowWidth { get; set; } = 900;
     public double WindowHeight { get; set; } = 640;

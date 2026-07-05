@@ -40,4 +40,28 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
         var result = await executor.RunAsync(WindowsTcpStateCommandBuilder.FileName, WindowsTcpStateCommandBuilder.Arguments, ct);
         return result.Success ? WindowsTcpStateParser.Parse(result.StandardOutput) : TcpSettingsSnapshot.Unknown;
     }
+
+    public Task<CommandExecutionResult> SetAutoTuningLevelAsync(AutoTuningLevel level, CancellationToken ct = default) =>
+        executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetAutoTuningLevel(level), ct);
+
+    public async Task<IReadOnlyList<CommandExecutionResult>> SetMtuAsync(string adapterId, int mtu, CancellationToken ct = default)
+    {
+        var results = new List<CommandExecutionResult>();
+        foreach (var args in WindowsTcpCommandBuilder.BuildSetMtu(adapterId, mtu))
+        {
+            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
+        }
+
+        return results;
+    }
+
+    public async Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default)
+    {
+        var result = await executor.RunAsync(
+            WindowsMtuStateCommandBuilder.FileName,
+            WindowsMtuStateCommandBuilder.BuildArguments(adapterId),
+            ct);
+
+        return result.Success ? WindowsMtuStateParser.Parse(result.StandardOutput) : null;
+    }
 }

@@ -47,6 +47,42 @@ public class DnsPresetCatalogTests
     }
 
     [TestMethod]
+    public void Quad9_HasOfficialAddressesAndEncryptionTemplates()
+    {
+        var preset = DnsPresetCatalog.Quad9;
+        Assert.AreEqual("9.9.9.9", preset.Servers.Ipv4Primary);
+        Assert.AreEqual("149.112.112.112", preset.Servers.Ipv4Secondary);
+        Assert.AreEqual("2620:fe::fe", preset.Servers.Ipv6Primary);
+        Assert.AreEqual("2620:fe::9", preset.Servers.Ipv6Secondary);
+        Assert.AreEqual("https://dns.quad9.net/dns-query", preset.DohTemplate);
+        Assert.AreEqual("dns.quad9.net", preset.DotHost);
+    }
+
+    [TestMethod]
+    public void NextDns_HasLinkedIpAddresses_AndNoEncryptionTemplates()
+    {
+        var preset = DnsPresetCatalog.NextDns;
+        Assert.AreEqual("45.90.28.0", preset.Servers.Ipv4Primary);
+        Assert.AreEqual("45.90.30.0", preset.Servers.Ipv4Secondary);
+        Assert.AreEqual("2a07:a8c0::", preset.Servers.Ipv6Primary);
+        Assert.AreEqual("2a07:a8c1::", preset.Servers.Ipv6Secondary);
+        // Linked IP はアカウント別サブドメインが必要なため DoH/DoT は固定値で表現できず非対応。
+        Assert.IsNull(preset.DohTemplate);
+        Assert.IsNull(preset.DotHost);
+    }
+
+    [TestMethod]
+    public void CloudflareTiers_HaveDistinctDotHostsMatchingTheirDohTier()
+    {
+        // DoH と同じ「ティアごとにホスト名が異なる」罠 (security./family. サブドメイン) が
+        // DoT にもそのまま存在するため、標準ホストの使い回しになっていないことを確認する。
+        Assert.AreEqual("cloudflare-dns.com", DnsPresetCatalog.CloudflareStandard.DotHost);
+        Assert.AreEqual("security.cloudflare-dns.com", DnsPresetCatalog.CloudflareMalwareBlock.DotHost);
+        Assert.AreEqual("family.cloudflare-dns.com", DnsPresetCatalog.CloudflareMalwareAdultBlock.DotHost);
+        Assert.AreEqual("dns.google", DnsPresetCatalog.GooglePublicDns.DotHost);
+    }
+
+    [TestMethod]
     public void Custom_HasNoPresetAddresses()
     {
         Assert.IsTrue(DnsPresetCatalog.Custom.Servers.IsEmpty);

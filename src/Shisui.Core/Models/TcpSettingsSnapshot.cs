@@ -23,7 +23,8 @@ public enum Bbr2Status
 /// </summary>
 public sealed record TcpSettingsSnapshot(
     Bbr2Status Bbr2,
-    IReadOnlyDictionary<TcpGlobalOption, string> GlobalOptions)
+    IReadOnlyDictionary<TcpGlobalOption, string> GlobalOptions,
+    string AutoTuningLevel = "")
 {
     public static readonly TcpSettingsSnapshot Unknown =
         new(Bbr2Status.Unknown, new Dictionary<TcpGlobalOption, string>());

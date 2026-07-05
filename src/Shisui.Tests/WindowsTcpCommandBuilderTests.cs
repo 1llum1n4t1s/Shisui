@@ -52,4 +52,27 @@ public class WindowsTcpCommandBuilderTests
     {
         Assert.AreEqual(expected, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled));
     }
+
+    [TestMethod]
+    [DataRow(AutoTuningLevel.Disabled, "int tcp set global autotuninglevel=disabled")]
+    [DataRow(AutoTuningLevel.HighlyRestricted, "int tcp set global autotuninglevel=highlyrestricted")]
+    [DataRow(AutoTuningLevel.Restricted, "int tcp set global autotuninglevel=restricted")]
+    [DataRow(AutoTuningLevel.Normal, "int tcp set global autotuninglevel=normal")]
+    [DataRow(AutoTuningLevel.Experimental, "int tcp set global autotuninglevel=experimental")]
+    public void BuildSetAutoTuningLevel_ProducesExpectedCommand(AutoTuningLevel level, string expected)
+    {
+        Assert.AreEqual(expected, WindowsTcpCommandBuilder.BuildSetAutoTuningLevel(level));
+    }
+
+    [TestMethod]
+    public void BuildSetMtu_QuotesAdapterName_AndSetsBothIpv4AndIpv6()
+    {
+        var commands = WindowsTcpCommandBuilder.BuildSetMtu("Wi-Fi 2", 9000);
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "interface ipv4 set subinterface name=\"Wi-Fi 2\" mtu=9000 store=persistent",
+            "interface ipv6 set subinterface name=\"Wi-Fi 2\" mtu=9000 store=persistent",
+        }, commands.ToList());
+    }
 }

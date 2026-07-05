@@ -24,6 +24,7 @@ public static class WindowsTcpStateCommandBuilder
         "'ECN='+$t.EcnCapability;" +
         "'TIMESTAMPS='+$t.Timestamps;" +
         "'FASTOPEN='+$t.FastOpen;" +
+        "'AUTOTUNE='+$t.AutoTuningLevelLocal;" +
         "Get-NetTCPSetting -SettingName Internet,InternetCustom,Datacenter,DatacenterCustom,Compat|%{'CC='+$_.CongestionProvider}" +
         "\"";
 }

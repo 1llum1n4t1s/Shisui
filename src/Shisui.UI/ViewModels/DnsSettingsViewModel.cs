@@ -12,8 +12,10 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDnsConfigurationService _dnsService;
     private readonly IDnsCacheService _cacheService;
     private readonly ISettingsService _settingsService;
+    private readonly INetworkDiagnosticsService _diagnosticsService;
     private readonly IGhostAdapterService? _ghostAdapterService;
     private readonly IDohConfigurationService? _dohService;
+    private readonly IDotConfigurationService? _dotService;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -27,6 +29,9 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private NetworkAdapterInfo? selectedAdapter;
+
+    [ObservableProperty]
+    private NetworkAdapterDetails? adapterDetails;
 
     [ObservableProperty]
     private DnsProviderPreset selectedPreset = DnsPresetCatalog.CloudflareStandard;
@@ -61,25 +66,44 @@ public partial class DnsSettingsViewModel : ObservableObject
     [ObservableProperty]
     private string dohStateText = string.Empty;
 
+    [ObservableProperty]
+    private bool useDot;
+
+    [ObservableProperty]
+    private bool isPinging;
+
+    [ObservableProperty]
+    private string pingStatusText = string.Empty;
+
     public bool IsCustomPresetSelected => SelectedPreset.Id == DnsPresetCatalog.Custom.Id;
 
     /// <summary>DoH チェックボックスを表示するか (Windows かつサービス登録済みかつ選択中プリセットが対応)。</summary>
     public bool IsDohAvailable => IsWindows && _dohService is not null && SelectedPreset.DohTemplate is not null;
+
+    /// <summary>DoT チェックボックスを表示するか (Windows かつサービス登録済みかつ選択中プリセットが対応)。</summary>
+    public bool IsDotAvailable => IsWindows && _dotService is not null && SelectedPreset.DotHost is not null;
+
+    /// <summary>DoH/DoT 併用時の説明キャプションを表示するか (両方のチェックボックスが表示されているときだけ)。</summary>
+    public bool ShowDohDotInteractionNote => IsDohAvailable && IsDotAvailable;
 
     public DnsSettingsViewModel(
         INetworkAdapterService adapterService,
         IDnsConfigurationService dnsService,
         IDnsCacheService cacheService,
         ISettingsService settingsService,
+        INetworkDiagnosticsService diagnosticsService,
         IGhostAdapterService? ghostAdapterService = null,
-        IDohConfigurationService? dohService = null)
+        IDohConfigurationService? dohService = null,
+        IDotConfigurationService? dotService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
         _cacheService = cacheService;
         _settingsService = settingsService;
+        _diagnosticsService = diagnosticsService;
         _ghostAdapterService = ghostAdapterService;
         _dohService = dohService;
+        _dotService = dotService;
 
         // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
         // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
@@ -93,6 +117,15 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
         }
 
+        // カスタムプリセットの前回入力 IP を復元する (フィールド直接代入、OnChanged 不要)。
+        if (selectedPreset.Id == DnsPresetCatalog.Custom.Id)
+        {
+            customIpv4Primary = _settingsService.Current.CustomIpv4Primary ?? string.Empty;
+            customIpv4Secondary = _settingsService.Current.CustomIpv4Secondary ?? string.Empty;
+            customIpv6Primary = _settingsService.Current.CustomIpv6Primary ?? string.Empty;
+            customIpv6Secondary = _settingsService.Current.CustomIpv6Secondary ?? string.Empty;
+        }
+
         _ = LoadAdaptersAsync();
         if (_ghostAdapterService is not null)
         {
@@ -104,12 +137,65 @@ public partial class DnsSettingsViewModel : ObservableObject
         _ = RefreshDohStateAsync(SelectedPreset.Servers);
     }
 
+    partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshAdapterDetailsAsync(value);
+
+    private async Task RefreshAdapterDetailsAsync(NetworkAdapterInfo? adapter)
+    {
+        if (adapter is null)
+        {
+            AdapterDetails = null;
+            return;
+        }
+
+        try
+        {
+            AdapterDetails = await _adapterService.GetAdapterDetailsAsync(adapter.Id);
+        }
+        catch
+        {
+            // 詳細情報の取得失敗は致命的ではない (DNS 設定自体は選択・適用できる) ので握りつぶす。
+            AdapterDetails = null;
+        }
+    }
+
     partial void OnSelectedPresetChanged(DnsProviderPreset value)
     {
         OnPropertyChanged(nameof(IsCustomPresetSelected));
         OnPropertyChanged(nameof(IsDohAvailable));
+        OnPropertyChanged(nameof(IsDotAvailable));
+        OnPropertyChanged(nameof(ShowDohDotInteractionNote));
         // プリセットを切り替えたら、その宛先の DoH 実状態を取り直してチェックボックス・バッジへ反映する。
         _ = RefreshDohStateAsync(value.Servers);
+        // DoT は OS 側に状態読み取り手段が無いため (IDotConfigurationService 参照)、
+        // 前のプリセットのチェック状態を持ち越さないよう明示的にリセットする。
+        UseDot = false;
+        // 前のプリセットに対する疎通テスト結果を持ち越さない。
+        PingStatusText = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task PingSelectedDnsAsync()
+    {
+        var servers = ResolveServers();
+        var target = servers.Ipv4Primary ?? servers.Ipv6Primary;
+        if (target is null)
+        {
+            PingStatusText = "疎通テストする DNS アドレスがありません";
+            return;
+        }
+
+        IsPinging = true;
+        try
+        {
+            var result = await _diagnosticsService.PingAsync(target, count: 4);
+            PingStatusText = result.Success
+                ? $"🟢 応答あり ({target}, 平均 {result.AverageRoundtripMs:F0} ms, {result.Received}/{result.Sent} 件)"
+                : $"🔴 応答なし ({target})";
+        }
+        finally
+        {
+            IsPinging = false;
+        }
     }
 
     [RelayCommand]
@@ -169,6 +255,14 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.AddRange(dohResults);
             }
 
+            if (IsDotAvailable)
+            {
+                var dotResults = UseDot
+                    ? await _dotService!.EnableAsync(servers, SelectedPreset.DotHost!)
+                    : await _dotService!.DisableAsync(servers);
+                results.AddRange(dotResults);
+            }
+
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
@@ -176,6 +270,14 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             _settingsService.Current.LastSelectedAdapterId = SelectedAdapter.Id;
             _settingsService.Current.LastSelectedPresetId = SelectedPreset.Id;
+            if (IsCustomPresetSelected)
+            {
+                _settingsService.Current.CustomIpv4Primary = NullIfEmpty(CustomIpv4Primary);
+                _settingsService.Current.CustomIpv4Secondary = NullIfEmpty(CustomIpv4Secondary);
+                _settingsService.Current.CustomIpv6Primary = NullIfEmpty(CustomIpv6Primary);
+                _settingsService.Current.CustomIpv6Secondary = NullIfEmpty(CustomIpv6Secondary);
+            }
+
             await _settingsService.SaveAsync();
 
             StatusText = results.All(r => r.Success)

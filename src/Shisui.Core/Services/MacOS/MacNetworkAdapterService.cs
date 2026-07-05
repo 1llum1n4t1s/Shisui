@@ -39,6 +39,28 @@ public sealed class MacNetworkAdapterService(ICommandExecutor executor) : INetwo
         return adapters;
     }
 
+    /// <summary>
+    /// networksetup が扱うサービス名からは MAC アドレス等が直接読めないため、
+    /// -listnetworkserviceorder で裏の BSD デバイス名 (en0 等) に変換してから ifconfig に問い合わせる。
+    /// </summary>
+    public async Task<NetworkAdapterDetails?> GetAdapterDetailsAsync(string adapterId, CancellationToken ct = default)
+    {
+        var orderResult = await executor.RunAsync("networksetup", "-listnetworkserviceorder", ct);
+        if (!orderResult.Success)
+        {
+            return null;
+        }
+
+        var serviceToDevice = MacNetworkServiceOrderParser.ParseServiceNameToDevice(orderResult.StandardOutput);
+        if (!serviceToDevice.TryGetValue(adapterId, out var device))
+        {
+            return null;
+        }
+
+        var ifconfigResult = await executor.RunAsync("ifconfig", MacShellQuote.Quote(device), ct);
+        return ifconfigResult.Success ? MacIfConfigParser.Parse(ifconfigResult.StandardOutput, adapterId) : null;
+    }
+
     private async Task<(List<string> Ipv4, List<string> Ipv6)> GetCurrentDnsAsync(string serviceName, CancellationToken ct)
     {
         var result = await executor.RunAsync("networksetup", MacDnsCommandBuilder.BuildGetCurrent(serviceName), ct);

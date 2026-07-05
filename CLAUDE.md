@@ -5,10 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Shisui is a cross-platform (Windows / macOS) desktop app for network configuration. It lets the user switch
-DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google Public DNS, or custom IPv4/IPv6),
-flush the DNS cache, and — on Windows only — toggle DNS over HTTPS (DoH) for the selected preset, toggle BBR2
-congestion control / TCP global options, run a catalog of `netsh` / `ipconfig` / `nbtstat` network maintenance
-commands, and clean up disconnected "ghost" network devices.
+DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google Public DNS, Quad9, NextDNS, or
+custom IPv4/IPv6), flush the DNS cache, run a Ping/Traceroute diagnostics tool, and — on Windows only — toggle
+DNS over HTTPS (DoH) and DNS over TLS (DoT) for the selected preset, toggle BBR2 congestion control / TCP global
+options (including receive-window auto-tuning and MTU/jumbo-frame size), run a catalog of `netsh` / `ipconfig` /
+`nbtstat` network maintenance commands, view read-only adapter details (MAC address / link speed), and clean up
+disconnected "ghost" network devices.
 
 **Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This CLAUDE.md is in English
 to match the reference project's documentation conventions; code comments and user-facing text remain Japanese.
@@ -66,17 +68,23 @@ never holds the single-instance lock while its elevated replacement starts.
 
 - **Shisui.Core** — Interfaces, models, and all OS-interacting services. No UI dependency.
   - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDohConfigurationService`,
-    `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`, `IGhostAdapterService`,
-    `ICommandExecutor`, `ISettingsService`.
-  - `Models/` — `NetworkAdapterInfo`, `DnsServerSet`, `DnsProviderPreset` (has a nullable `DohTemplate`),
-    `DnsPresetCatalog` (hardcoded official Cloudflare/Google IPs + DoH templates), `DohStatus`,
-    `TcpSettingsSnapshot`, `GhostAdapterInfo`, `MaintenanceCommandDefinition`, `CommandExecutionResult`, `AppSettings`.
-  - `Services/Windows/` — netsh/ipconfig-backed implementations. Command *building* (pure string formatting) is
-    split from command *execution* (`ICommandExecutor`) so the exact command strings are unit-testable without
-    touching the OS. See `WindowsDnsCommandBuilder`, `WindowsTcpCommandBuilder`, `WindowsMaintenanceCommandCatalog`.
-  - `Services/MacOS/` — `networksetup`/`dscacheutil`-backed implementations, plus `MacElevatedCommandExecutor`
-    which wraps every command through `osascript -e 'do shell script "..." with administrator privileges'`
-    (macOS apps should not request a blanket admin launch the way Windows apps do via manifest).
+    `IDotConfigurationService`, `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`,
+    `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `ICommandExecutor`,
+    `ISettingsService`.
+  - `Models/` — `NetworkAdapterInfo`, `NetworkAdapterDetails` (MAC/link speed, read-only), `DnsServerSet`,
+    `DnsProviderPreset` (has nullable `DohTemplate` / `DotHost`), `DnsPresetCatalog` (hardcoded official
+    Cloudflare/Google/Quad9/NextDNS IPs + DoH/DoT hostnames), `DohStatus`, `TcpSettingsSnapshot` (includes
+    `AutoTuningLevel`), `PingResult`, `TraceRouteResult`/`TraceRouteHop`, `GhostAdapterInfo`,
+    `MaintenanceCommandDefinition`, `CommandExecutionResult`, `AppSettings`.
+  - `Services/Windows/` — netsh/ipconfig/PowerShell-backed implementations. Command *building* (pure string
+    formatting) is split from command *execution* (`ICommandExecutor`) so the exact command strings are
+    unit-testable without touching the OS. See `WindowsDnsCommandBuilder`, `WindowsTcpCommandBuilder`,
+    `WindowsMaintenanceCommandCatalog`, and the `*CommandBuilder`/`*Parser` pairs for DoT/ping/traceroute/MTU/
+    adapter-details covered in the sections below.
+  - `Services/MacOS/` — `networksetup`/`dscacheutil`/`ifconfig`-backed implementations, plus
+    `MacElevatedCommandExecutor` which wraps every command through `osascript -e 'do shell script "..." with
+    administrator privileges'` (macOS apps should not request a blanket admin launch the way Windows apps do via
+    manifest).
 - **Shisui.UI** — Avalonia desktop app. Views/ViewModels (CommunityToolkit.Mvvm `[ObservableProperty]` /
   `[RelayCommand]`), DI setup in `App.axaml.cs`.
 - **Shisui.Tests** — MSTest unit tests. Covers command builders and the DNS preset catalog's exact IP values —
@@ -127,18 +135,24 @@ gated on `IsVisible="{Binding IsWindows}"`) and to `DnsSettingsViewModel` (`IGho
 
 ### DNS Preset Catalog (`Core/Models/DnsPresetCatalog.cs`)
 
-Hardcoded official addresses + DoH templates — do not "correct" these without checking the provider's current
-documentation. **The DoH template hostname differs per Cloudflare filtering tier** (`security.` / `family.`
-subdomains, verified against developers.cloudflare.com): using the plain `cloudflare-dns.com` template for the
-malware / malware+adult tiers would silently give *unfiltered* DoH resolution — a functional bug that defeats the
-preset. Google uses one hostname for all its IPs; the custom preset has no DoH template (DoH is hidden for it).
+Hardcoded official addresses + DoH/DoT hostnames — do not "correct" these without checking the provider's current
+documentation. **The DoH/DoT hostname differs per Cloudflare filtering tier** (`security.` / `family.`
+subdomains, verified against developers.cloudflare.com): using the plain `cloudflare-dns.com` hostname for the
+malware / malware+adult tiers would silently give *unfiltered* encrypted resolution — a functional bug that
+defeats the preset. Google and Quad9 each use one hostname for all their IPs; **NextDNS has neither `DohTemplate`
+nor `DotHost`** (both left `null`) because its encrypted-DNS endpoints are per-account subdomains that can't be
+expressed as a fixed value — the plain IPs are "Linked IP" addresses that only apply filtering once the user
+links their current IP in the NextDNS dashboard; the custom preset likewise has no DoH/DoT hostname (both hidden
+in the UI for it).
 
-| Preset | IPv4 | IPv6 | DoH template |
-|---|---|---|---|
-| Cloudflare 標準 | 1.1.1.1 / 1.0.0.1 | 2606:4700:4700::1111 / ::1001 | `https://cloudflare-dns.com/dns-query` |
-| Cloudflare マルウェアブロック | 1.1.1.2 / 1.0.0.2 | 2606:4700:4700::1112 / ::1002 | `https://security.cloudflare-dns.com/dns-query` |
-| Cloudflare マルウェア+アダルトブロック | 1.1.1.3 / 1.0.0.3 | 2606:4700:4700::1113 / ::1003 | `https://family.cloudflare-dns.com/dns-query` |
-| Google Public DNS | 8.8.8.8 / 8.8.4.4 | 2001:4860:4860::8888 / ::8844 | `https://dns.google/dns-query` |
+| Preset | IPv4 | IPv6 | DoH template | DoT host |
+|---|---|---|---|---|
+| Cloudflare 標準 | 1.1.1.1 / 1.0.0.1 | 2606:4700:4700::1111 / ::1001 | `https://cloudflare-dns.com/dns-query` | `cloudflare-dns.com` |
+| Cloudflare マルウェアブロック | 1.1.1.2 / 1.0.0.2 | 2606:4700:4700::1112 / ::1002 | `https://security.cloudflare-dns.com/dns-query` | `security.cloudflare-dns.com` |
+| Cloudflare マルウェア+アダルトブロック | 1.1.1.3 / 1.0.0.3 | 2606:4700:4700::1113 / ::1003 | `https://family.cloudflare-dns.com/dns-query` | `family.cloudflare-dns.com` |
+| Google Public DNS | 8.8.8.8 / 8.8.4.4 | 2001:4860:4860::8888 / ::8844 | `https://dns.google/dns-query` | `dns.google` |
+| Quad9 | 9.9.9.9 / 149.112.112.112 | 2620:fe::fe / ::9 | `https://dns.quad9.net/dns-query` | `dns.quad9.net` |
+| NextDNS (Linked IP) | 45.90.28.0 / 45.90.30.0 | 2a07:a8c0:: / 2a07:a8c1:: | — | — |
 
 ### DNS over HTTPS (DoH) toggle (`IDohConfigurationService`, Windows)
 
@@ -146,8 +160,8 @@ The DNS tab shows a DoH checkbox for presets that have a `DohTemplate` (all buil
 registers each of the preset's IPs via `netsh dnsclient add encryption server=<ip> dohtemplate=<url>
 autoupgrade=yes udpfallback=yes` and then `netsh dnsclient set global doh=yes`; disabling runs `netsh dnsclient
 delete encryption server=<ip> protocol=doh` per IP (global `doh` is left alone — it can affect other
-registrations). Windows also supports DoT via the same `netsh dnsclient` family, but Shisui only ships DoH (DoT
-has no state-read cmdlet and unclear version support).
+registrations). See the next section for the DoT sibling toggle, which uses the same `netsh dnsclient` family
+but is architecturally different because it has no state-read cmdlet.
 
 **The checkbox reflects real OS state, it is not a saved preference.** `WindowsDohStateCommandBuilder` /
 `WindowsDohStateParser` (pure, unit-tested, same locale-independent `KEY=VALUE` PowerShell pattern as the TCP tab)
@@ -156,6 +170,26 @@ read `Get-DnsClientDohServerAddress -ServerAddress <ips>` and classify `DohStatu
 and on preset change, setting `UseDoh = (status == Enabled)`. The *selected preset* is persisted
 (`AppSettings.LastSelectedPresetId`, restored via direct field assignment to avoid firing `OnSelectedPresetChanged`)
 so that the DoH state is read against the preset the user last used, not always the default.
+
+### DNS over TLS (DoT) toggle (`IDotConfigurationService`, Windows)
+
+The DoT checkbox sits next to DoH's for presets that have a `DotHost`, driving the same
+`netsh dnsclient add/delete encryption ... dothost=<host>` shape as DoH's `dohtemplate=`. Unlike
+`IDohConfigurationService`, **it has no `GetStatusAsync` and is deliberately state-less**: no
+`Get-DnsClientDotServerAddress` cmdlet exists (only DoH got one), and `netsh dnsclient show encryption`'s text
+can't fill the gap either — its labels are Japanese-localized on this machine (e.g. 「DNS-over-TLS ホスト」), the
+exact locale trap this project's "PowerShell English-fixed properties only" rule exists to avoid. So the checkbox
+is **fire-and-forget**: always unchecked on load/preset-change, just fires enable/disable on click, unlike DoH's
+checkbox which reflects real OS state.
+
+Enabling DoH and DoT on the same IP simultaneously is safe — confirmed empirically (2026-07, real machine): the
+two `add encryption` calls merge into independent per-protocol blocks instead of one overwriting the other, and a
+`pktmon` capture showed Windows using **both** at once (no exclusive priority, zero plaintext/port-53 fallback).
+Their connection shapes differ, though: DoH's connections stay open and get reused, DoT reconnects (fresh TLS
+handshake) roughly every 1.5–1.8s — and that asymmetry showed up in a `Resolve-DnsName` latency benchmark on this
+machine as DoH being slightly faster and more consistent (~53ms avg) than DoT (~58ms avg), contrary to the common
+"DoT is lighter/faster" claim. Full methodology/caveats (single machine, single run — not a general benchmark) are
+in the XML doc on `IDotConfigurationService`.
 
 ### Reading current state is locale-independent (PowerShell cmdlets, NOT netsh text)
 
@@ -170,6 +204,87 @@ English-fixed by us and the enum values are English, so the whole output is loca
 property exists → shown as 「取得非対応」) and **loopbacklargemtu** (only in fully-localized netsh output, unreadable
 locale-independently → the BBR2 enable button still sets it, but its live state isn't tracked).
 
+**Auto-tuning level** rides in the same one-line script (an `AUTOTUNE=` token added to the existing
+`Get-NetTCPSetting` call, parsed from `AutoTuningLevelLocal`), so reading it costs no extra process spawn. **MTU
+is different**: it's per-adapter rather than global, so `WindowsMtuStateCommandBuilder`/`WindowsMtuStateParser`
+are a separate one-line `Get-NetIPInterface -InterfaceAlias <adapter>` command taking an adapter name, invoked
+whenever the MTU card's own adapter selection changes rather than folded into the global TCP snapshot. That MTU
+card also keeps **its own adapter selector** in `TcpTuningViewModel`, independent of the DNS tab's — the two
+tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP options apply system-wide).
+
+### Auto-tuning benchmark (`IAutoTuningBenchmarkService`, Windows)
+
+Lets the user measure, rather than guess, which auto-tuning level suits their connection: it cycles through all
+5 levels, and for each one downloads a configurable-size payload to measure real throughput. **Ping/latency
+can't reveal any difference between levels** — auto-tuning only affects TCP receive window scaling, which ICMP
+never touches — so this had to be a real download-throughput measurement, unlike the DoH/DoT latency benchmarks
+elsewhere in this doc.
+
+Two correctness points worth knowing before touching this code: (1) **a fresh `HttpClient` per level is
+required**, not just per run — the window scale is negotiated once at the TCP handshake and does not change for
+a connection's lifetime, so reusing a client across a level switch would silently measure the *previous* level's
+window; and (2) the original level (read via `GetCurrentStateAsync` before the loop starts) is restored in a
+`finally` around the whole loop, so it's put back on completion, cancellation, or exception alike, never left on
+whatever the last-tested level happened to be. The ViewModel applies the "best" result as a mere *suggestion* to
+the existing level `ComboBox`, not an auto-apply — and it does so only *after* calling the existing
+`LoadStateAsync()` refresh, because that refresh's own `SelectedAutoTuningLevel` write would otherwise clobber
+the suggestion if done in the other order.
+
+**Each level is sampled `samplesPerLevel` times (default 5) and averaged, not measured once** — a single
+download is noisy enough that it changed the "winner" between runs (user-reported 2026-07-06). `RunAsync` →
+`MeasureLevelAsync` (loops samples, with a 300ms `InterSampleDelayMs` between them; no per-sample *settle* delay
+is needed since the netsh level doesn't change within a level's samples) → `MeasureOnceAsync` (one raw download,
+returns a private `SingleMeasurement`). `WindowsAutoTuningBenchmarkMath.Summarize` (pure, tested) turns the
+successful samples into average/min/max; a level only reports `Success = false` if *every* sample in it failed.
+`AutoTuningBenchmarkResult` carries `MinThroughputMbps`/`MaxThroughputMbps`/`SampleCount` alongside the average
+specifically so the UI can show the spread, not just hide it behind a single number. `AutoTuningBenchmarkProgress`'s
+`CompletedCount`/`TotalCount` count individual samples across *all* levels (e.g. `12/25` for 5 levels × 5
+samples), not per-level.
+
+**Downloads come from Hetzner's public speed-test files, not Cloudflare — Cloudflare was tried first and dropped
+entirely after hitting two separate undocumented limits in quick succession on 2026-07-06.** Cloudflare's
+`speed.cloudflare.com/__down?bytes=N` (the same endpoint Cloudflare's own official `speedtest` library and
+speed.cloudflare.com use) hard-caps `bytes` at 100,000,000 — confirmed via `curl`: `99,999,999` → 200,
+`100,000,000` → 403. Then, once averaging made each run issue up to 25 requests against that single endpoint, a
+real 80MB/5-sample run got `429 Too Many Requests` on every level, with a `Retry-After: 2811` (~47 minute)
+header — small (~1MB) requests still succeeded during the same lockout, meaning this reads as a bandwidth/volume
+budget, not a plain request-count limit. An initial fix rotated between Cloudflare and Hetzner to spread the
+load, but the user's follow-up ask was more direct: use a destination that plain isn't affected by this kind of
+throttling, not just dilute the one that is. **A search for an equivalent official Google endpoint (the user's
+suggested example) turned up nothing usable** — no documented Google download-speed API exists; a Google Cloud
+Storage sample file returned 403 and `www.gstatic.com/generate_204` is a connectivity check (0 bytes), not a
+bandwidth-test target. Cloudflare's `__down` is a dedicated, consumer-facing "speed test" tool, and reasonably
+throttles the "many rapid automated requests" pattern much more tightly than a plain static-file host would;
+**Hetzner's `https://<region>-speed.hetzner.com/100MB.bin` files are officially published "Test Files"** (a
+large European hosting provider, unrelated to Cloudflare) served as ordinary static content (`Server: nginx`),
+fetched here via HTTP `Range` requests since the file is fixed-size rather than query-parameterized — as of
+2026-07-06 neither a size cap nor a 429 has been observed against it. `Targets` now lists only the 5 Hetzner
+regions (fsn1/nbg1/hil/sin/ash); **the rotation index is `sampleIndex % Targets.Count` where `sampleIndex` resets
+to 0 for every level**, not a global counter — every level's 1st sample always hits the same region, every
+level's 2nd sample always hits the same (different) region, and so on, so a given region's geographic latency
+doesn't bias the comparison *between* levels. A non-2xx response (429 or otherwise) is just a normal failed
+sample — logged with the target's name prefixed (e.g. `[Hetzner sin] HTTP 429 ...`) and excluded from that
+level's average, not fatal to the whole run. `MaxSafeTestSizeBytes` (90,000,000) is sized against Hetzner's own
+104,857,600-byte file now, not Cloudflare's cap, but the constant and its safety margin carried over unchanged.
+The UI's `NumericUpDown` maximums (size 50, samples 5) are still deliberately conservative — Hetzner hasn't been
+stress-tested at the scale that broke Cloudflare, so don't assume it's rate-limit-proof, just untested at that
+volume; re-verify with `curl`/a real run before loosening either.
+
+### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
+
+Same locale trap as the TCP-state badges, different tool: `ping.exe`/`tracert.exe` text output is localized, so
+neither Windows parser touches it directly. `WindowsPingCommandBuilder` uses `Test-Connection` (`StatusCode`/
+`ResponseTime`, English-fixed numeric properties) instead of `ping.exe`; `WindowsTraceRouteCommandBuilder` gets
+the hop path from `Test-NetConnection -TraceRoute`'s `.TraceRoute` property (a plain ordered IP-address array,
+not text) and then, since that cmdlet doesn't also report per-hop RTT, issues one follow-up
+`WindowsPingCommandBuilder` ping per discovered hop to time it (a Service-layer responsibility, not the pure
+builder's). macOS's `MacPingResultParser`/`MacTraceRouteParser` parse `ping`/`traceroute` output directly instead
+— BSD ping/traceroute's own text (`X packets transmitted, Y packets received`, `round-trip min/avg/max/stddev`)
+is a fixed English format regardless of macOS's system language, so the locale trap doesn't apply there.
+`INetworkDiagnosticsService` is one abstraction shared by two call sites: the DNS tab's 疎通テスト button (pings
+whichever DNS IP is currently selected) and the standalone ネットワーク診断 tab (free-form host/IP input for both
+ping and traceroute).
+
 ### Adapter list filtering (`WindowsNetworkAdapterFilter`, pure)
 
 `NetworkInterface.GetAllNetworkInterfaces()` returns real adapters plus a lot of noise: NDIS filter/binding
@@ -178,6 +293,17 @@ adapters, and `NotPresent` pseudo-devices. The DNS dropdown must match what `ncp
 Ethernet/Wireless80211 that are Present, drops a "binding child" if its Description is `<another adapter's
 Description>-...` (structural — works for unknown antivirus/VPN LWFs without a hardcoded name list), and drops
 `Wi-Fi Direct Virtual Adapter` by its (locale-stable, English) driver description. VPN TAP / Hyper-V vEthernet stay.
+
+### Adapter details (`NetworkAdapterDetails`, read-only, both platforms)
+
+Windows reads MAC address / link speed / media type / status in one call: `WindowsAdapterDetailsCommandBuilder`
+runs `Get-NetAdapter -Name <adapter>` and emits `KEY=VALUE` lines (same locale-independent pattern as the TCP/DoH
+state readers), parsed by `WindowsAdapterDetailsParser`. **macOS needs two calls, not one**, because
+`networksetup`'s "network service" names (what `-listallnetworkservices` and the DNS dropdown use) aren't the BSD
+device names `ifconfig` expects: `MacNetworkAdapterService.GetAdapterDetailsAsync` first runs
+`networksetup -listnetworkserviceorder` and parses it (`MacNetworkServiceOrderParser`) into a service-name→device
+(e.g. `en0`) map, then runs `ifconfig <device>` and parses *that* (`MacIfConfigParser`) for the actual details —
+a service name alone can't be `ifconfig`'d directly.
 
 ### Ghost (disconnected) network device cleanup (`IGhostAdapterService`, Windows)
 
@@ -199,9 +325,14 @@ proper PnP uninstall path rather than raw registry edits.
   glass panel), the `HeaderedContentControl` glass-card template used for every settings section, and unified
   corner radii. The window uses `TransparencyLevelHint="AcrylicBlur"` + `ExperimentalAcrylicBorder`. When adding UI,
   reuse `HeaderedContentControl` for cards and the `h1`/`caption` TextBlock classes rather than inventing styles.
-- Main view: `MainWindow` is a sidebar `TabControl` — DNS 設定 / BBR2・TCP 調整 / メンテナンス (last two
-  `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent 実行ログ card fed by each tab ViewModel's
-  `CommandExecuted` event, one `UserControl` per tab.
+- Main view: `MainWindow` (880×620, min 760×500) is a sidebar `TabControl` — DNS 設定 / ネットワーク診断 /
+  BBR2・TCP 調整 / メンテナンス (last two `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent
+  実行ログ card fed by each tab ViewModel's `CommandExecuted` event, one `UserControl` per tab. Sidebar tab icons
+  are hand-drawn with plain Avalonia primitives (`Ellipse`/`Line`/`Path`/`Polyline`/`Rectangle`+`RotateTransform`)
+  bound to `{DynamicResource Brush.FG1}` — no icon font/package, no `PathIcon`. Before committing hand-computed
+  coordinates to XAML, preview the shape first (write it as standalone SVG, publish via the `Artifact` tool,
+  screenshot it) — a first-draft wrench icon for メンテナンス read as a magnifying glass once rendered and was
+  redrawn as an 8-tooth gear before it ever reached `MainWindow.axaml`.
 - Destructive maintenance commands are visually flagged (red button via `Classes.danger="{Binding
   Definition.IsDestructive}"`) but run immediately on click — no confirmation checkbox or modal dialog gates them.
 - Some maintenance categories also expose a "まとめて実行" (run-all) button that runs every command in the
@@ -230,9 +361,10 @@ proper PnP uninstall path rather than raw registry edits.
 - **Command builders are pure functions**: no `Process`/OS calls inside `*CommandBuilder` / `*Catalog` classes —
   keeps them unit-testable. Only the `*Service` classes (annotated `[SupportedOSPlatform(...)]`) touch the OS.
 - **macOS paths are implemented but unverified on real hardware**: this repo was built entirely on a Windows
-  machine. The Windows command catalog was empirically tested (unit tests + a couple of live `netsh` invocations
-  during development); the macOS `networksetup`/`osascript` code compiles and is written carefully against known
-  command syntax, but has not been run on an actual Mac. Verify before shipping a macOS build.
+  machine. The Windows command catalog was empirically tested (unit tests + a couple of live `netsh`/PowerShell
+  invocations during development); the macOS `networksetup`/`osascript`/`ifconfig`/`ping`/`traceroute` code
+  compiles, is unit-tested at the parser level, and is written carefully against known command syntax, but has
+  not been run end-to-end on an actual Mac. Verify before shipping a macOS build.
 
 ## Auto-update & Release (Velopack + Cloudflare R2, Windows-only signed distribution)
 

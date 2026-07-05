@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Shisui.UI.ViewModels"
+             xmlns:models="using:Shisui.Core.Models"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             x:Class="Shisui.UI.Views.NetworkDiagnosticsView"
+             x:DataType="vm:NetworkDiagnosticsViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="8,0">
+      <TextBlock Classes="h1" Text="ネットワーク診断" />
+
+      <primitives:HeaderedContentControl Header="対象ホスト">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="IP アドレスまたはホスト名を指定して、簡易疎通テスト (ping) やトレースルートを行えます。" />
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <TextBox Grid.Column="0" Text="{Binding Host}" PlaceholderText="例: 1.1.1.1 または example.com" />
+            <Button Grid.Column="1" Content="Ping" Command="{Binding PingCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
+            <Button Grid.Column="2" Content="トレースルート" Command="{Binding TraceRouteCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
+          </Grid>
+          <TextBlock Text="{Binding StatusText}" Classes="caption" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="Ping 結果">
+        <TextBlock Text="{Binding PingResultText}" FontFamily="Consolas,Menlo,monospace" />
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="トレースルート結果">
+        <ItemsControl ItemsSource="{Binding TraceRouteHops}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="models:TraceRouteHop">
+              <Grid ColumnDefinitions="40,*,100" Margin="0,3">
+                <TextBlock Grid.Column="0" Text="{Binding HopNumber}" FontFamily="Consolas,Menlo,monospace" />
+                <TextBlock Grid.Column="1" Text="{Binding Address, TargetNullValue='(応答なし)'}" FontFamily="Consolas,Menlo,monospace" />
+                <TextBlock Grid.Column="2" Text="{Binding RoundtripMs, StringFormat='{}{0:F1} ms', TargetNullValue='-'}" FontFamily="Consolas,Menlo,monospace" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </primitives:HeaderedContentControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
