@@ -18,10 +18,6 @@ public sealed class AppSettings
 
     public string? CustomIpv6Secondary { get; set; }
 
-    public List<DnsProviderPreset> CustomPresets { get; set; } = [];
-    public double WindowWidth { get; set; } = 900;
-    public double WindowHeight { get; set; } = 640;
-
     /// <summary>起動時に自動で更新を確認するか。</summary>
     public bool CheckForUpdatesOnStartup { get; set; } = true;
 

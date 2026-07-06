@@ -191,6 +191,26 @@ machine as DoH being slightly faster and more consistent (~53ms avg) than DoT (~
 "DoT is lighter/faster" claim. Full methodology/caveats (single machine, single run — not a general benchmark) are
 in the XML doc on `IDotConfigurationService`.
 
+### One-click optimization (`OneClickOptimizeAsync`, `DnsSettingsViewModel`)
+
+Next to the adapter selector on the DNS tab, a 「おまかせ高速化設定」(recommended one-click setup) button targets
+users who don't want to understand each individual toggle. On click it: switches the selected preset to
+Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — only when
+`ITcpTuningService` is available (Windows; injected as `ITcpTuningService? = null` the same way
+`IGhostAdapterService?`/`IDohConfigurationService?` are, so macOS silently skips this step) — enables BBR2 and
+resets receive-window auto-tuning to Normal. DoT is deliberately left untouched (see the DoT section above: DoH
+measured slightly faster and more consistent, so there's little benefit to enabling both), and destructive
+maintenance actions (ghost adapter removal, MTU changes) are intentionally excluded from this button — the
+one-click flow only touches operations judged safe for a user who doesn't know what they're doing. Since BBR2 /
+auto-tuning are global TCP settings (not scoped to the selected adapter, unlike the DNS change), the button's
+description text calls this out explicitly for multi-NIC environments.
+
+Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
+`RefreshDohStateAsync` call (racing against this method's own `await`ed call at the end), the preset switch here
+assigns the backing field directly and raises the needed `OnPropertyChanged` notifications by hand instead of
+going through the property setter (2026-07-06, found via `/rere` review — the two `RefreshDohStateAsync` calls
+could complete out of order and leave the DoH checkbox showing a stale state).
+
 ### Reading current state is locale-independent (PowerShell cmdlets, NOT netsh text)
 
 `netsh int tcp show global` / `show supplemental` values are stable English tokens (`enabled` / `bbr2`) but the
@@ -266,9 +286,14 @@ doesn't bias the comparison *between* levels. A non-2xx response (429 or otherwi
 sample — logged with the target's name prefixed (e.g. `[Hetzner sin] HTTP 429 ...`) and excluded from that
 level's average, not fatal to the whole run. `MaxSafeTestSizeBytes` (90,000,000) is sized against Hetzner's own
 104,857,600-byte file now, not Cloudflare's cap, but the constant and its safety margin carried over unchanged.
-The UI's `NumericUpDown` maximums (size 50, samples 5) are still deliberately conservative — Hetzner hasn't been
-stress-tested at the scale that broke Cloudflare, so don't assume it's rate-limit-proof, just untested at that
-volume; re-verify with `curl`/a real run before loosening either.
+**Update (2026-07-06)**: the test size is no longer user-configurable. Real-world measurement showed the 20MB
+default per-sample download exceeding `MeasureOnceAsync`'s 30s `HttpClient` timeout whenever a restricted
+auto-tuning level (Disabled/HighlyRestricted/Restricted) shrank the receive window against a high-RTT Hetzner
+target — the size `NumericUpDown` was removed from the UI and replaced with a fixed
+`TcpTuningViewModel.BenchmarkTestSizeBytes = 5_000_000` (5MB) constant, small enough to stay within the timeout
+even on the slowest level/target combination. Only `samplesPerLevel`'s `NumericUpDown` (max 5) remains
+user-facing. Hetzner still hasn't been stress-tested at the scale that broke Cloudflare, so don't assume it's
+rate-limit-proof at a larger fixed size either; re-verify with `curl`/a real run before loosening the constant.
 
 ### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
 

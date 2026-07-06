@@ -18,19 +18,19 @@ public static class WindowsDnsCommandBuilder
 
         if (servers.HasIpv4)
         {
-            commands.Add($"interface ipv4 set dnsservers name={name} source=static address={servers.Ipv4Primary} register=primary validate=no");
+            commands.Add($"interface ipv4 set dnsservers name={name} source=static address={Quote(servers.Ipv4Primary!)} register=primary validate=no");
             if (!string.IsNullOrWhiteSpace(servers.Ipv4Secondary))
             {
-                commands.Add($"interface ipv4 add dnsservers name={name} address={servers.Ipv4Secondary} index=2 validate=no");
+                commands.Add($"interface ipv4 add dnsservers name={name} address={Quote(servers.Ipv4Secondary)} index=2 validate=no");
             }
         }
 
         if (servers.HasIpv6)
         {
-            commands.Add($"interface ipv6 set dnsservers name={name} source=static address={servers.Ipv6Primary} register=primary validate=no");
+            commands.Add($"interface ipv6 set dnsservers name={name} source=static address={Quote(servers.Ipv6Primary!)} register=primary validate=no");
             if (!string.IsNullOrWhiteSpace(servers.Ipv6Secondary))
             {
-                commands.Add($"interface ipv6 add dnsservers name={name} address={servers.Ipv6Secondary} index=2 validate=no");
+                commands.Add($"interface ipv6 add dnsservers name={name} address={Quote(servers.Ipv6Secondary)} index=2 validate=no");
             }
         }
 
@@ -51,5 +51,5 @@ public static class WindowsDnsCommandBuilder
     /// netsh は CommandLineToArgvW ではなく生コマンドラインを独自再パースするため、
     /// スペースを含みうる値はここで netsh 流の二重引用符で囲む。
     /// </summary>
-    private static string Quote(string value) => $"\"{value}\"";
+    internal static string Quote(string value) => $"\"{value}\"";
 }

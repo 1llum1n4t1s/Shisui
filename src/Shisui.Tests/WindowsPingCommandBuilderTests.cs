@@ -23,4 +23,13 @@ public class WindowsPingCommandBuilderTests
 
         Assert.IsTrue(args.Contains("evil''; Remove-Item C:\\"));
     }
+
+    [TestMethod]
+    public void BuildArguments_HostContainsDoubleQuote_Throws()
+    {
+        // 生の " は外側の -Command "..." の引用符コンテキストを破り、後続テキストが別コマンドとして
+        // 注入される (2026-07-06 /rere レビューで発見)。シングルクオートの二重化では防げないため拒否する。
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            WindowsPingCommandBuilder.BuildArguments("x\" ; Start-Process calc ; \"", 4));
+    }
 }

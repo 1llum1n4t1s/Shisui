@@ -115,6 +115,13 @@ public sealed class WindowsAutoTuningBenchmarkService(ITcpTuningService tcpTunin
         var throughputs = new List<double>(samplesPerLevel);
         string? lastError = null;
 
+        // レベルごとに新規 HttpClient を使う (クラスの remarks の通り、ウィンドウスケールは接続確立時に
+        // のみ決まるため、レベルが変わるたびに新規コネクションが必要)。同一レベル内の複数サンプルでは
+        // auto-tuning 設定が変わらずウィンドウスケールも変わらないため、ここで使い回して構わない
+        // (2026-07-06 /rere レビューで発見: 従来はサンプルごとに新規生成しており、同一レベル内でも
+        // 毎回無駄な TCP/TLS ハンドシェイクが発生していた)。
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
         for (var i = 0; i < samplesPerLevel; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -128,7 +135,7 @@ public sealed class WindowsAutoTuningBenchmarkService(ITcpTuningService tcpTunin
             // サンプル番号 (レベル内での通し番号) で計測先を固定する。こうすることで、どのレベルも
             // 同じ並びの計測先で計測されるため、計測先ごとの速度差がレベル間比較を歪めない。
             var target = Targets[i % Targets.Count];
-            var sample = await MeasureOnceAsync(target, testSizeBytes, ct);
+            var sample = await MeasureOnceAsync(client, target, testSizeBytes, ct);
             if (sample.Success && sample.ThroughputMbps is { } mbps)
             {
                 throughputs.Add(mbps);
@@ -145,9 +152,8 @@ public sealed class WindowsAutoTuningBenchmarkService(ITcpTuningService tcpTunin
             : new AutoTuningBenchmarkResult(level, false, null, null, null, 0, lastError);
     }
 
-    private static async Task<SingleMeasurement> MeasureOnceAsync(DownloadTarget target, int testSizeBytes, CancellationToken ct)
+    private static async Task<SingleMeasurement> MeasureOnceAsync(HttpClient client, DownloadTarget target, int testSizeBytes, CancellationToken ct)
     {
-        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         var stopwatch = Stopwatch.StartNew();
         try
         {

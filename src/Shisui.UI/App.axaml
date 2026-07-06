@@ -128,6 +128,16 @@
       <Setter Property="Background" Value="#E6352B" />
     </Style>
 
+    <!--  推奨・強調操作用ボタン (「おまかせ高速化設定」等、初心者に一番目立ってほしい操作)  -->
+    <Style Selector="Button.accent">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SystemAccentColorDark1}" />
+    </Style>
+
     <!--  ComboBox：Tahoe 風の角丸  -->
     <Style Selector="ComboBox">
       <Setter Property="CornerRadius" Value="10" />

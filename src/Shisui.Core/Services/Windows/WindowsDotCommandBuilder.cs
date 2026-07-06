@@ -23,7 +23,7 @@ public static class WindowsDotCommandBuilder
     public static IReadOnlyList<string> BuildEnable(DnsServerSet servers, string dotHost)
     {
         var commands = WindowsDohCommandBuilder.CollectAddresses(servers)
-            .Select(address => $"dnsclient add encryption server={address} dothost={dotHost}:{DefaultPort} autoupgrade=yes udpfallback=yes")
+            .Select(address => $"dnsclient add encryption server={WindowsDnsCommandBuilder.Quote(address)} dothost={dotHost}:{DefaultPort} autoupgrade=yes udpfallback=yes")
             .ToList();
 
         commands.Add("dnsclient set global dot=yes");
@@ -36,6 +36,6 @@ public static class WindowsDotCommandBuilder
     /// </summary>
     public static IReadOnlyList<string> BuildDisable(DnsServerSet servers) =>
         WindowsDohCommandBuilder.CollectAddresses(servers)
-            .Select(address => $"dnsclient delete encryption server={address} protocol=dot")
+            .Select(address => $"dnsclient delete encryption server={WindowsDnsCommandBuilder.Quote(address)} protocol=dot")
             .ToList();
 }

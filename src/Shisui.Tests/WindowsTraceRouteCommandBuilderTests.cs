@@ -23,4 +23,11 @@ public class WindowsTraceRouteCommandBuilderTests
 
         Assert.IsTrue(args.Contains("evil''; Remove-Item C:\\"));
     }
+
+    [TestMethod]
+    public void BuildArguments_HostContainsDoubleQuote_Throws()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            WindowsTraceRouteCommandBuilder.BuildArguments("x\" ; Start-Process calc ; \"", 20));
+    }
 }

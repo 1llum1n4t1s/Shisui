@@ -19,7 +19,7 @@ public static class WindowsDohCommandBuilder
     public static IReadOnlyList<string> BuildEnable(DnsServerSet servers, string dohTemplate)
     {
         var commands = CollectAddresses(servers)
-            .Select(address => $"dnsclient add encryption server={address} dohtemplate={dohTemplate} autoupgrade=yes udpfallback=yes")
+            .Select(address => $"dnsclient add encryption server={WindowsDnsCommandBuilder.Quote(address)} dohtemplate={dohTemplate} autoupgrade=yes udpfallback=yes")
             .ToList();
 
         commands.Add("dnsclient set global doh=yes");
@@ -32,7 +32,7 @@ public static class WindowsDohCommandBuilder
     /// </summary>
     public static IReadOnlyList<string> BuildDisable(DnsServerSet servers) =>
         CollectAddresses(servers)
-            .Select(address => $"dnsclient delete encryption server={address} protocol=doh")
+            .Select(address => $"dnsclient delete encryption server={WindowsDnsCommandBuilder.Quote(address)} protocol=doh")
             .ToList();
 
     /// <summary>設定対象アドレスを列挙する (null/空はスキップ)。状態読み取り側でも共有する。</summary>

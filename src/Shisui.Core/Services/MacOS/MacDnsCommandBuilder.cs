@@ -18,7 +18,8 @@ public static class MacDnsCommandBuilder
         if (!string.IsNullOrWhiteSpace(servers.Ipv6Primary)) addresses.Add(servers.Ipv6Primary);
         if (!string.IsNullOrWhiteSpace(servers.Ipv6Secondary)) addresses.Add(servers.Ipv6Secondary);
 
-        return $"-setdnsservers {MacShellQuote.Quote(serviceName)} {string.Join(' ', addresses)}";
+        var quotedAddresses = addresses.Select(MacShellQuote.Quote);
+        return $"-setdnsservers {MacShellQuote.Quote(serviceName)} {string.Join(' ', quotedAddresses)}";
     }
 
     /// <summary>

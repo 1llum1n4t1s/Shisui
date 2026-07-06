@@ -15,8 +15,8 @@ public class WindowsDotCommandBuilderTests
 
         CollectionAssert.AreEqual(new[]
         {
-            "dnsclient add encryption server=1.1.1.1 dothost=cloudflare-dns.com:853 autoupgrade=yes udpfallback=yes",
-            "dnsclient add encryption server=1.0.0.1 dothost=cloudflare-dns.com:853 autoupgrade=yes udpfallback=yes",
+            "dnsclient add encryption server=\"1.1.1.1\" dothost=cloudflare-dns.com:853 autoupgrade=yes udpfallback=yes",
+            "dnsclient add encryption server=\"1.0.0.1\" dothost=cloudflare-dns.com:853 autoupgrade=yes udpfallback=yes",
             "dnsclient set global dot=yes",
         }, commands.ToList());
     }
@@ -28,10 +28,10 @@ public class WindowsDotCommandBuilderTests
         var commands = WindowsDotCommandBuilder.BuildEnable(servers, "dns.quad9.net");
 
         Assert.AreEqual(5, commands.Count); // 4 アドレス + グローバル設定 1 件
-        Assert.IsTrue(commands[0].Contains("server=9.9.9.9") && commands[0].Contains("dothost=dns.quad9.net:853"));
-        Assert.IsTrue(commands[1].Contains("server=149.112.112.112"));
-        Assert.IsTrue(commands[2].Contains("server=2620:fe::fe"));
-        Assert.IsTrue(commands[3].Contains("server=2620:fe::9"));
+        Assert.IsTrue(commands[0].Contains("server=\"9.9.9.9\"") && commands[0].Contains("dothost=dns.quad9.net:853"));
+        Assert.IsTrue(commands[1].Contains("server=\"149.112.112.112\""));
+        Assert.IsTrue(commands[2].Contains("server=\"2620:fe::fe\""));
+        Assert.IsTrue(commands[3].Contains("server=\"2620:fe::9\""));
         Assert.AreEqual("dnsclient set global dot=yes", commands[4]);
     }
 
@@ -43,8 +43,8 @@ public class WindowsDotCommandBuilderTests
 
         CollectionAssert.AreEqual(new[]
         {
-            "dnsclient delete encryption server=1.1.1.1 protocol=dot",
-            "dnsclient delete encryption server=1.0.0.1 protocol=dot",
+            "dnsclient delete encryption server=\"1.1.1.1\" protocol=dot",
+            "dnsclient delete encryption server=\"1.0.0.1\" protocol=dot",
         }, commands.ToList());
     }
 }

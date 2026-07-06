@@ -20,6 +20,8 @@ public partial class TcpTuningViewModel(
     [ObservableProperty]
     private bool isBusy;
 
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsOperationRunning));
+
     [ObservableProperty]
     private string statusText = string.Empty;
 
@@ -53,14 +55,25 @@ public partial class TcpTuningViewModel(
 
     public IReadOnlyList<AutoTuningLevel> AutoTuningLevels { get; } = Enum.GetValues<AutoTuningLevel>();
 
-    [ObservableProperty]
-    private int benchmarkSizeMb = 20;
+    // 固定 5MB。既定 20MB だと、Disabled 等の auto-tuning 制限レベルで受信ウィンドウが縮小された際に
+    // 海外の計測先 (Hetzner) への実効スループットが数百 KB/s まで落ち込み、MeasureOnceAsync の
+    // HttpClient タイムアウト (30秒) を超えて計測1回あたりの所要時間が跳ね上がっていた (2026-07-06 実測で特定)。
+    // タイムアウト内に収まるサイズへ固定し、ユーザーが調整できないようにした。
+    private const int BenchmarkTestSizeBytes = 5_000_000;
 
     [ObservableProperty]
     private int benchmarkSamplesPerLevel = 5;
 
     [ObservableProperty]
     private bool isBenchmarkRunning;
+
+    partial void OnIsBenchmarkRunningChanged(bool value) => OnPropertyChanged(nameof(IsOperationRunning));
+
+    /// <summary>BBR2・TCPオプション・Auto-Tuning設定ボタンの排他制御用。ベンチマーク実行中に他の
+    /// netsh操作を許すと、ベンチマーク終了時の設定復元(finally)と競合し、ユーザーの手動設定が
+    /// 静かに上書きされて消える(2026-07-06 /rere レビューで発見)。IsBusy と IsBenchmarkRunning は
+    /// 独立したフラグのままにし、UI側の判定だけをここに集約する。</summary>
+    public bool IsOperationRunning => IsBusy || IsBenchmarkRunning;
 
     [ObservableProperty]
     private string benchmarkStatusText = string.Empty;
@@ -234,7 +247,7 @@ public partial class TcpTuningViewModel(
         IReadOnlyList<AutoTuningBenchmarkResult> results = [];
         try
         {
-            results = await autoTuningBenchmarkService.RunAsync(BenchmarkSizeMb * 1_000_000, BenchmarkSamplesPerLevel, progress, benchmarkCts.Token);
+            results = await autoTuningBenchmarkService.RunAsync(BenchmarkTestSizeBytes, BenchmarkSamplesPerLevel, progress, benchmarkCts.Token);
         }
         catch (OperationCanceledException)
         {

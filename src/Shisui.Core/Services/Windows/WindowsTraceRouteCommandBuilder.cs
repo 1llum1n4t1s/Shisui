@@ -13,6 +13,13 @@ public static class WindowsTraceRouteCommandBuilder
 
     public static string BuildArguments(string host, int maxHops)
     {
+        // WindowsPingCommandBuilder と同じ理由 (外側の -Command "..." を host 内の生の " で破られる
+        // コマンドインジェクション経路、2026-07-06 /rere レビューで発見) で明示的に拒否する。
+        if (host.Contains('"'))
+        {
+            throw new ArgumentException("ホスト名にダブルクオート (\") を含めることはできません。", nameof(host));
+        }
+
         var safeHost = host.Replace("'", "''");
         return "-NoProfile -NonInteractive -Command \"" +
                $"$r=Test-NetConnection -ComputerName '{safeHost}' -TraceRoute -Hops {maxHops} " +

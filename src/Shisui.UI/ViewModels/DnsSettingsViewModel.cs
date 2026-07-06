@@ -16,6 +16,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IGhostAdapterService? _ghostAdapterService;
     private readonly IDohConfigurationService? _dohService;
     private readonly IDotConfigurationService? _dotService;
+    private readonly ITcpTuningService? _tcpTuningService;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -86,6 +87,14 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>DoH/DoT 併用時の説明キャプションを表示するか (両方のチェックボックスが表示されているときだけ)。</summary>
     public bool ShowDohDotInteractionNote => IsDohAvailable && IsDotAvailable;
 
+    /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御・受信ウィンドウ自動調整もあわせて行うか (Windows かつサービス登録済みのときだけ)。</summary>
+    public bool IsTcpOptimizationAvailable => _tcpTuningService is not null;
+
+    /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
+    public string OneClickOptimizeDescription => IsTcpOptimizationAvailable
+        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。あわせて BBR2 輻輳制御を有効化し、受信ウィンドウ自動調整を既定 (Normal) に戻します (この2つは選択中のアダプタに限らず PC 全体に適用されます)。"
+        : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
+
     public DnsSettingsViewModel(
         INetworkAdapterService adapterService,
         IDnsConfigurationService dnsService,
@@ -94,7 +103,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         INetworkDiagnosticsService diagnosticsService,
         IGhostAdapterService? ghostAdapterService = null,
         IDohConfigurationService? dohService = null,
-        IDotConfigurationService? dotService = null)
+        IDotConfigurationService? dotService = null,
+        ITcpTuningService? tcpTuningService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -104,6 +114,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _ghostAdapterService = ghostAdapterService;
         _dohService = dohService;
         _dotService = dotService;
+        _tcpTuningService = tcpTuningService;
 
         // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
         // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
@@ -283,6 +294,83 @@ public partial class DnsSettingsViewModel : ObservableObject
             StatusText = results.All(r => r.Success)
                 ? $"{SelectedAdapter.DisplayName} に DNS を適用しました"
                 : "一部のコマンドが失敗しました。ログを確認してください";
+
+            await LoadAdaptersAsync();
+            await RefreshDohStateAsync(servers);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+
+    /// <summary>
+    /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
+    /// (Windows では) BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
+    /// </summary>
+    [RelayCommand]
+    private async Task OneClickOptimizeAsync()
+    {
+        if (SelectedAdapter is null)
+        {
+            StatusText = "アダプタを選択してください";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            // SelectedPreset のセッターではなくバッキングフィールドへ直接代入する。セッター経由だと
+            // OnSelectedPresetChanged が同期発火し、その中の fire-and-forget な RefreshDohStateAsync
+            // (旧プリセット向けの無駄な呼び出し)が、この後 EnableAsync 実行後に await する
+            // RefreshDohStateAsync より後に完了することがあり、UseDoh の表示が古い状態で上書きされる
+            // レースになっていた (2026-07-06 /rere レビューで発見)。必要な通知はここで明示的に行い、
+            // RefreshDohStateAsync はこのメソッド内で最後に一度だけ (await 済みで) 呼ぶ。
+#pragma warning disable MVVMTK0034 // 上記の理由で意図的にセッターを経由せず、通知は次行以降で明示的に行う
+            selectedPreset = DnsPresetCatalog.CloudflareStandard;
+#pragma warning restore MVVMTK0034
+            OnPropertyChanged(nameof(SelectedPreset));
+            OnPropertyChanged(nameof(IsCustomPresetSelected));
+            OnPropertyChanged(nameof(IsDohAvailable));
+            OnPropertyChanged(nameof(IsDotAvailable));
+            OnPropertyChanged(nameof(ShowDohDotInteractionNote));
+            // DoT は DoH と比べて速度上のメリットが無いため (下の解説キャプション参照) ここでは触れないが、
+            // 前のプリセットのチェック状態を持ち越さないよう明示的にリセットする (OnSelectedPresetChanged と同じ扱い)。
+            UseDot = false;
+            PingStatusText = string.Empty;
+
+            var servers = SelectedPreset.Servers;
+            var results = new List<CommandExecutionResult>();
+
+            results.AddRange(await _dnsService.ApplyAsync(SelectedAdapter.Id, servers));
+
+            if (IsDohAvailable)
+            {
+                results.AddRange(await _dohService!.EnableAsync(servers, SelectedPreset.DohTemplate!));
+                UseDoh = true;
+            }
+
+            results.Add(await _cacheService.FlushAsync());
+
+            if (_tcpTuningService is not null)
+            {
+                results.AddRange(await _tcpTuningService.EnableBbr2Async());
+                results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
+            }
+
+            foreach (var result in results)
+            {
+                CommandExecuted?.Invoke(this, result);
+            }
+
+            _settingsService.Current.LastSelectedAdapterId = SelectedAdapter.Id;
+            _settingsService.Current.LastSelectedPresetId = SelectedPreset.Id;
+            await _settingsService.SaveAsync();
+
+            StatusText = results.All(r => r.Success)
+                ? "おまかせ高速化設定を適用しました"
+                : "一部の設定が失敗しました。ログを確認してください";
 
             await LoadAdaptersAsync();
             await RefreshDohStateAsync(servers);

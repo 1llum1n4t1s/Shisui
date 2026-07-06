@@ -49,6 +49,14 @@
               <TextBlock Text="{Binding AdapterDetails.LinkSpeedText, TargetNullValue='取得できません'}" Classes="caption" />
             </StackPanel>
           </StackPanel>
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10" Margin="0,4,0,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="何を設定すればいいか分からない場合は、これだけ押せば OK です" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
+              <Button Content="おまかせ高速化設定" Command="{Binding OneClickOptimizeCommand}" Classes="accent" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -100,7 +108,7 @@
               <CheckBox Content="DNS over TLS (DoT) を有効にする" IsChecked="{Binding UseDot}" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock Classes="caption" TextWrapping="Wrap"
-                       Text="※ Windows に DoT の登録状況を読み取る手段が無いため、このチェックボックスは実際の OS 状態を反映しません (適用のたびに有効化/無効化コマンドを実行するだけで、次回起動時は未チェックに戻ります)。" />
+                       Text="※ Windows に DoT の登録状況を読み取る手段が無いため、このチェックボックスは実際の OS 状態を反映しません (適用のたびに有効化/無効化コマンドを実行するだけで、プリセットを切り替えるたびや次回起動時には未チェックに戻ります)。" />
           </StackPanel>
 
           <TextBlock IsVisible="{Binding ShowDohDotInteractionNote}" Classes="caption" TextWrapping="Wrap" Margin="0,4,0,0"

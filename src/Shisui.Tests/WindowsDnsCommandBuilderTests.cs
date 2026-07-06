@@ -15,8 +15,8 @@ public class WindowsDnsCommandBuilderTests
 
         CollectionAssert.AreEqual(new[]
         {
-            "interface ipv4 set dnsservers name=\"Ethernet\" source=static address=1.1.1.1 register=primary validate=no",
-            "interface ipv4 add dnsservers name=\"Ethernet\" address=1.0.0.1 index=2 validate=no",
+            "interface ipv4 set dnsservers name=\"Ethernet\" source=static address=\"1.1.1.1\" register=primary validate=no",
+            "interface ipv4 add dnsservers name=\"Ethernet\" address=\"1.0.0.1\" index=2 validate=no",
         }, commands.ToList());
     }
 
@@ -52,7 +52,7 @@ public class WindowsDnsCommandBuilderTests
         var servers = new DnsServerSet("8.8.8.8", null, null, null);
         var commands = WindowsDnsCommandBuilder.BuildApply("イーサネット 2", servers);
 
-        Assert.AreEqual("interface ipv4 set dnsservers name=\"イーサネット 2\" source=static address=8.8.8.8 register=primary validate=no", commands[0]);
+        Assert.AreEqual("interface ipv4 set dnsservers name=\"イーサネット 2\" source=static address=\"8.8.8.8\" register=primary validate=no", commands[0]);
     }
 
     [TestMethod]
