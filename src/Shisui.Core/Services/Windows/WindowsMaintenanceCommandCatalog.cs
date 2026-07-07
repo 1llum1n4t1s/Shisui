@@ -31,6 +31,14 @@ public static class WindowsMaintenanceCommandCatalog
             "netsh", "http flush logbuffer"),
         new(new MaintenanceCommandDefinition("netsh-http-delete-cache", CategoryCache, "HTTP レスポンスキャッシュを削除", "netsh http delete cache", false, false),
             "netsh", "http delete cache"),
+        new(new MaintenanceCommandDefinition("arp-clear", CategoryCache, "ARP キャッシュをクリア", "arp -d * : ARP キャッシュの全エントリを削除する", false, false),
+            "arp", "-d *"),
+        new(new MaintenanceCommandDefinition("netsh-ipv4-delete-destinationcache", CategoryCache, "IPv4 経路キャッシュを削除", "netsh interface ipv4 delete destinationcache : 学習済みの次ホップ経路 (宛先キャッシュ) を削除する", false, false),
+            "netsh", "interface ipv4 delete destinationcache"),
+        new(new MaintenanceCommandDefinition("netsh-ipv6-delete-destinationcache", CategoryCache, "IPv6 経路キャッシュを削除", "netsh interface ipv6 delete destinationcache : 学習済みの次ホップ経路 (宛先キャッシュ) を削除する", false, false),
+            "netsh", "interface ipv6 delete destinationcache"),
+        new(new MaintenanceCommandDefinition("netsh-ipv6-delete-neighbors", CategoryCache, "IPv6 近隣探索キャッシュを削除", "netsh interface ipv6 delete neighbors : IPv6 近隣探索 (Neighbor Discovery) キャッシュを削除する (ARP の IPv6 版)", false, false),
+            "netsh", "interface ipv6 delete neighbors"),
 
         new(new MaintenanceCommandDefinition("ipconfig-release", CategoryReacquire, "IPv4 アドレスを解放", "ipconfig /release : 現在の IPv4 リースを解放する (解放中は通信が切れる)", true, false),
             "ipconfig", "/release"),
@@ -58,8 +66,6 @@ public static class WindowsMaintenanceCommandCatalog
             "netsh", "int ip reset"),
         new(new MaintenanceCommandDefinition("route-clear", CategoryStackReset, "ルーティングテーブルをクリア", "route /f : ホスト経路・ループバック・マルチキャスト以外の経路をすべて削除する", true, false),
             "route", "/f"),
-        new(new MaintenanceCommandDefinition("arp-clear", CategoryStackReset, "ARP キャッシュをクリア", "arp -d * : ARP キャッシュの全エントリを削除する", false, false),
-            "arp", "-d *"),
 
         new(new MaintenanceCommandDefinition("netcfg-delete", CategoryComponent, "ネットワークコンポーネントを再検出", "netcfg -d : ネットワークコンポーネントを一旦すべて削除し、再起動後に Windows が再検出する。他の手段で直らない場合の最終手段", true, true),
             "netcfg", "-d"),

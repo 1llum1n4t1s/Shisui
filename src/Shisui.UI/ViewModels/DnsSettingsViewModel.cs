@@ -17,6 +17,13 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDohConfigurationService? _dohService;
     private readonly IDotConfigurationService? _dotService;
     private readonly ITcpTuningService? _tcpTuningService;
+    private readonly INetworkMaintenanceService? _maintenanceService;
+
+    /// <summary>「おまかせ高速化設定」で追加クリアするキャッシュ・登録カテゴリ名 (WindowsMaintenanceCommandCatalog 側の定義と一致させる)。</summary>
+    private const string CacheMaintenanceCategory = "キャッシュ・登録";
+
+    /// <summary>同カテゴリのうち DNS キャッシュクリアは _cacheService.FlushAsync() で既に行うため、二重実行を避けるため除外する。</summary>
+    private const string DnsFlushCommandId = "ipconfig-flushdns";
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -90,9 +97,12 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御・受信ウィンドウ自動調整もあわせて行うか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsTcpOptimizationAvailable => _tcpTuningService is not null;
 
+    /// <summary>「おまかせ高速化設定」で NetBIOS/HTTP キャッシュ等の追加メンテナンスコマンドもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
+    public bool IsCacheMaintenanceAvailable => _maintenanceService is not null;
+
     /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
     public string OneClickOptimizeDescription => IsTcpOptimizationAvailable
-        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。あわせて BBR2 輻輳制御を有効化し、受信ウィンドウ自動調整を既定 (Normal) に戻します (この2つは選択中のアダプタに限らず PC 全体に適用されます)。"
+        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前キャッシュ・HTTP キャッシュ・ARP/経路キャッシュを丸ごとクリアします。あわせて BBR2 輻輳制御を有効化し、受信ウィンドウ自動調整を既定 (Normal) に戻します (この2つは選択中のアダプタに限らず PC 全体に適用されます)。長く使い込んだ PC ほど効果を感じやすい掃除です。"
         : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
 
     public DnsSettingsViewModel(
@@ -104,7 +114,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         IGhostAdapterService? ghostAdapterService = null,
         IDohConfigurationService? dohService = null,
         IDotConfigurationService? dotService = null,
-        ITcpTuningService? tcpTuningService = null)
+        ITcpTuningService? tcpTuningService = null,
+        INetworkMaintenanceService? maintenanceService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -115,6 +126,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _dohService = dohService;
         _dotService = dotService;
         _tcpTuningService = tcpTuningService;
+        _maintenanceService = maintenanceService;
 
         // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
         // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
@@ -307,7 +319,8 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
-    /// (Windows では) BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
+    /// (Windows では) NetBIOS 名前キャッシュ/HTTP キャッシュ/ARP・経路キャッシュの追加クリア・
+    /// BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
     /// </summary>
     [RelayCommand]
     private async Task OneClickOptimizeAsync()
@@ -352,6 +365,21 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             results.Add(await _cacheService.FlushAsync());
+
+            if (_maintenanceService is not null)
+            {
+                // 「キャッシュ・登録」カテゴリを丸ごと実行 (NetBIOS 名前キャッシュ再読込・再登録、DNS 登録更新、
+                // HTTP ログバッファ/レスポンスキャッシュ削除、ARP キャッシュ、IPv4/IPv6 経路キャッシュ、IPv6 近隣
+                // 探索キャッシュ)。DNS キャッシュクリアは上の _cacheService.FlushAsync() と同じ ipconfig /flushdns
+                // なので二重実行を避けて除外する。長期間使い込んだ PC ほど溜まりやすいキャッシュ類なので、ここで
+                // まとめて掃除する。
+                var cacheMaintenanceCommands = _maintenanceService.GetAvailableCommands()
+                    .Where(c => c.Category == CacheMaintenanceCategory && c.Id != DnsFlushCommandId);
+                foreach (var command in cacheMaintenanceCommands)
+                {
+                    results.Add(await _maintenanceService.RunAsync(command.Id));
+                }
+            }
 
             if (_tcpTuningService is not null)
             {

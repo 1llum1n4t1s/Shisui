@@ -195,15 +195,25 @@ in the XML doc on `IDotConfigurationService`.
 
 Next to the adapter selector on the DNS tab, a 「おまかせ高速化設定」(recommended one-click setup) button targets
 users who don't want to understand each individual toggle. On click it: switches the selected preset to
-Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — only when
-`ITcpTuningService` is available (Windows; injected as `ITcpTuningService? = null` the same way
-`IGhostAdapterService?`/`IDohConfigurationService?` are, so macOS silently skips this step) — enables BBR2 and
+Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — when
+`INetworkMaintenanceService` is available (Windows; injected as `INetworkMaintenanceService? = null` the same
+way the other Windows-only services are, so macOS silently skips this step) — also runs every command in the
+maintenance catalog's 「キャッシュ・登録」category except `ipconfig-flushdns` (already covered by the DNS cache
+flush above; excluded by command ID via `DnsFlushCommandId` to avoid running it twice): NetBIOS name cache
+purge/re-register, a DNS registration refresh, the HTTP.sys log buffer/response cache, the ARP cache
+(`arp-clear` — moved into this category from 「ファイアウォール・スタックリセット」, since it was always a
+non-destructive, single-adapter-independent cache clear and never belonged in the destructive-reset bucket),
+and the IPv4/IPv6 destination cache (learned next-hop routes) plus the IPv6 neighbor-discovery cache (`arp`'s
+IPv6 equivalent). This targets PCs that have accumulated stale cache/route state over a long uptime — the DNS
+flush alone doesn't touch any of these. Finally
+— only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — enables BBR2 and
 resets receive-window auto-tuning to Normal. DoT is deliberately left untouched (see the DoT section above: DoH
 measured slightly faster and more consistent, so there's little benefit to enabling both), and destructive
-maintenance actions (ghost adapter removal, MTU changes) are intentionally excluded from this button — the
-one-click flow only touches operations judged safe for a user who doesn't know what they're doing. Since BBR2 /
-auto-tuning are global TCP settings (not scoped to the selected adapter, unlike the DNS change), the button's
-description text calls this out explicitly for multi-NIC environments.
+maintenance actions (ghost adapter removal, MTU changes, the 「ファイアウォール・スタックリセット」category) are
+intentionally excluded from this button — the one-click flow only touches operations judged safe for a user who
+doesn't know what they're doing. Since BBR2 / auto-tuning / the cache-maintenance commands are global, not scoped
+to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
+multi-NIC environments.
 
 Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
 `RefreshDohStateAsync` call (racing against this method's own `await`ed call at the end), the preset switch here

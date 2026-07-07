@@ -25,6 +25,9 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netcfg-delete", "netcfg", "-d")]
     [DataRow("netsh-http-flush-logbuffer", "netsh", "http flush logbuffer")]
     [DataRow("netsh-http-delete-cache", "netsh", "http delete cache")]
+    [DataRow("netsh-ipv4-delete-destinationcache", "netsh", "interface ipv4 delete destinationcache")]
+    [DataRow("netsh-ipv6-delete-destinationcache", "netsh", "interface ipv6 delete destinationcache")]
+    [DataRow("netsh-ipv6-delete-neighbors", "netsh", "interface ipv6 delete neighbors")]
     [DataRow("netsh-winhttp-reset-proxy", "netsh", "winhttp reset proxy")]
     [DataRow("netsh-winhttp-reset-autoproxy", "netsh", "winhttp reset autoproxy")]
     [DataRow("netsh-advfirewall-reset", "netsh", "advfirewall reset")]
@@ -71,6 +74,25 @@ public class WindowsMaintenanceCommandCatalogTests
         {
             Assert.IsFalse(string.IsNullOrWhiteSpace(label), "ボタンラベルは非空であるべき");
         }
+    }
+
+    [TestMethod]
+    public void ArpAndRouteCacheCommands_AreInCacheCategory()
+    {
+        // ARP・経路・近隣探索キャッシュは (かつて ARP キャッシュがそうだったように) 「危険なスタックリセット」と
+        // 誤って同居させず、非破壊なキャッシュクリア群として「キャッシュ・登録」カテゴリに置く。
+        string CategoryOf(string id) => WindowsMaintenanceCommandCatalog.Find(id)!.Definition.Category;
+        var cacheCategory = CategoryOf("ipconfig-flushdns");
+
+        Assert.AreEqual(cacheCategory, CategoryOf("arp-clear"), "ARP キャッシュクリアはキャッシュ・登録カテゴリに属するべき");
+        Assert.AreEqual(cacheCategory, CategoryOf("netsh-ipv4-delete-destinationcache"), "IPv4 経路キャッシュ削除はキャッシュ・登録カテゴリに属するべき");
+        Assert.AreEqual(cacheCategory, CategoryOf("netsh-ipv6-delete-destinationcache"), "IPv6 経路キャッシュ削除はキャッシュ・登録カテゴリに属するべき");
+        Assert.AreEqual(cacheCategory, CategoryOf("netsh-ipv6-delete-neighbors"), "IPv6 近隣探索キャッシュ削除はキャッシュ・登録カテゴリに属するべき");
+
+        Assert.IsFalse(WindowsMaintenanceCommandCatalog.Find("arp-clear")!.Definition.IsDestructive, "ARP キャッシュクリアは非破壊コマンドであるべき");
+        Assert.IsFalse(WindowsMaintenanceCommandCatalog.Find("netsh-ipv4-delete-destinationcache")!.Definition.IsDestructive, "IPv4 経路キャッシュ削除は非破壊コマンドであるべき");
+        Assert.IsFalse(WindowsMaintenanceCommandCatalog.Find("netsh-ipv6-delete-destinationcache")!.Definition.IsDestructive, "IPv6 経路キャッシュ削除は非破壊コマンドであるべき");
+        Assert.IsFalse(WindowsMaintenanceCommandCatalog.Find("netsh-ipv6-delete-neighbors")!.Definition.IsDestructive, "IPv6 近隣探索キャッシュ削除は非破壊コマンドであるべき");
     }
 
     [TestMethod]

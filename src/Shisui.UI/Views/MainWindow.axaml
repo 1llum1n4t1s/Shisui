@@ -25,7 +25,13 @@
       </ExperimentalAcrylicBorder.Material>
     </ExperimentalAcrylicBorder>
 
-    <Grid Margin="16,36,16,16" RowDefinitions="*,Auto">
+    <!--  実行ログ行は GridSplitter でドラッグ調節可能 (初期 180px)。タブ側 (Row 0) は MinHeight で潰れ防止。  -->
+    <Grid Margin="16,36,16,16">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" MinHeight="220" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="180" MinHeight="60" />
+      </Grid.RowDefinitions>
       <!--  ═══ サイドバー + コンテンツ ═══  -->
       <TabControl Grid.Row="0" Classes="sidebar">
         <TabItem>
@@ -147,16 +153,29 @@
         </TabItem>
       </TabControl>
 
+      <!--  ドラッグで実行ログの高さを調節するスプリッター (ガラス背景に馴染む細いグリップ)  -->
+      <GridSplitter Grid.Row="1" Height="12" Margin="0,2,0,-2"
+                    Background="Transparent" ResizeDirection="Rows"
+                    HorizontalAlignment="Stretch" VerticalAlignment="Center">
+        <GridSplitter.Template>
+          <ControlTemplate>
+            <Border Background="Transparent" Height="12">
+              <Border Width="48" Height="4" CornerRadius="2" VerticalAlignment="Center"
+                      Background="{DynamicResource Brush.Border}" />
+            </Border>
+          </ControlTemplate>
+        </GridSplitter.Template>
+      </GridSplitter>
+
       <!--  ═══ 実行ログ (Lhamiel のガラスカードと同じ質感)  ═══  -->
       <Border
-          Grid.Row="1"
-          Margin="0,12,0,0"
+          Grid.Row="2"
           Padding="12"
           Background="{DynamicResource Brush.Container}"
           BorderBrush="{DynamicResource Brush.Border}"
           BorderThickness="1"
           CornerRadius="14">
-        <Grid RowDefinitions="Auto,*" MaxHeight="180">
+        <Grid RowDefinitions="Auto,*">
           <TextBlock Grid.Row="0" Text="実行ログ" FontSize="13" FontWeight="SemiBold"
                      Foreground="{DynamicResource Brush.FG2}" Margin="0,0,0,8" />
           <ScrollViewer Grid.Row="1">
