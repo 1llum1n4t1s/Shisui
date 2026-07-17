@@ -414,6 +414,10 @@ need separate Apple notarization and is not set up).
   with `[JsonIgnore]` (not overridable from settings.json — closes the third-party-host redirection attack surface).
   Channel is `win` only (`releases.win.json`).
 - **Client wiring**: `Program.cs` calls `VelopackApp.Build().Run()` first (before the single-instance guard).
+  Its `OnAfterUpdateFastCallback` moves the legacy `StartMenu\\ゆろち\\Shisui.lnk` shortcut made through
+  v1.0.7 into `StartMenuRoot` before Velopack recalculates shortcuts; normal startup retries the same idempotent
+  migration if the hook encountered a transient file lock. The migrator never overwrites an existing root shortcut
+  and only removes the legacy folder when it is empty.
   The check/download/apply **UI is the `VelopackUpdateDialog.Avalonia` package** (`UpdateDialogWindow.ShowAsync`),
   not hand-rolled — `UI/Services/UpdateService.cs` only builds the `UpdateManager(SimpleWebSource)` and exposes
   `TryCreateInstalledManager()` (returns null on dev/uninstalled builds). `VersionViewModel.ShowUpdateDialogAsync`
