@@ -29,6 +29,26 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
         return results;
     }
 
+    public Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) =>
+        executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.ResetAllToDefault, ct);
+
+    public async Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default)
+    {
+        var results = new List<CommandExecutionResult>();
+        foreach (var args in WindowsTcpCommandBuilder.BuildRevertGlobalOptionsToDefault())
+        {
+            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
+        }
+
+        return results;
+    }
+
+    public Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default) =>
+        executor.RunAsync(
+            WindowsLegacyTcpRegistryCommandBuilder.FileName,
+            WindowsLegacyTcpRegistryCommandBuilder.Arguments,
+            ct);
+
     public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled), ct);
 

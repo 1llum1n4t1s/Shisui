@@ -36,7 +36,7 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netsh-int-tcp-set-global-default", "netsh", "int tcp set global default")]
     [DataRow("netsh-int-ip-reset", "netsh", "int ip reset")]
     [DataRow("route-clear", "route", "/f")]
-    [DataRow("arp-clear", "arp", "-d *")]
+    [DataRow("arp-clear", "netsh", "interface ipv4 delete arpcache")]
     public void Find_ProducesExpectedFileNameAndArguments(string id, string expectedFileName, string expectedArguments)
     {
         var command = WindowsMaintenanceCommandCatalog.Find(id);
@@ -96,6 +96,30 @@ public class WindowsMaintenanceCommandCatalogTests
     }
 
     [TestMethod]
+    public void OneClickOptimization_IncludesOnlyTroubleshootingCaches()
+    {
+        var includedIds = WindowsMaintenanceCommandCatalog.All
+            .Where(c => c.Definition.IncludeInOneClickOptimization)
+            .Select(c => c.Definition.Id)
+            .ToArray();
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "nbtstat-purge-reload",
+            "arp-clear",
+            "netsh-ipv4-delete-destinationcache",
+            "netsh-ipv6-delete-destinationcache",
+            "netsh-ipv6-delete-neighbors",
+        }, includedIds);
+
+        CollectionAssert.DoesNotContain(includedIds, "nbtstat-reregister");
+        CollectionAssert.DoesNotContain(includedIds, "ipconfig-registerdns");
+        CollectionAssert.DoesNotContain(includedIds, "netsh-http-flush-logbuffer");
+        CollectionAssert.DoesNotContain(includedIds, "netsh-http-delete-cache");
+        CollectionAssert.DoesNotContain(includedIds, "ipconfig-flushdns");
+    }
+
+    [TestMethod]
     public void DestructiveCommands_AreFlaggedCorrectly()
     {
         string[] destructiveIds =
@@ -111,5 +135,14 @@ public class WindowsMaintenanceCommandCatalogTests
             Assert.IsNotNull(command);
             Assert.IsTrue(command.Definition.IsDestructive, $"{id} は破壊的コマンドとしてマークされているべきです");
         }
+    }
+
+    [TestMethod]
+    public void TcpReset_DoesNotRequireRestart()
+    {
+        var command = WindowsMaintenanceCommandCatalog.Find("netsh-int-tcp-reset")!.Definition;
+
+        Assert.IsTrue(command.IsDestructive, "ユーザー構成を削除するため破壊的操作として警告するべきです");
+        Assert.IsFalse(command.RequiresReboot, "netsh interface tcp reset 自体は再起動を要求しません");
     }
 }

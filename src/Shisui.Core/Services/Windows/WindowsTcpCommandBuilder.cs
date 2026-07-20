@@ -10,6 +10,9 @@ public static class WindowsTcpCommandBuilder
 {
     public const string FileName = "netsh";
 
+    /// <summary>ユーザー構成の TCP パラメーターを削除し、Windows の既定値へ戻す公式 netsh コマンド。</summary>
+    public const string ResetAllToDefault = "int tcp reset";
+
     private static readonly string[] SupplementalTemplates = ["Internet", "InternetCustom", "Datacenter", "DatacenterCustom", "Compat"];
 
     public static IReadOnlyList<string> BuildEnableBbr2()
@@ -33,6 +36,28 @@ public static class WindowsTcpCommandBuilder
         commands.Add("int ipv4 set global loopbacklargemtu=enabled");
         return commands;
     }
+
+    /// <summary>
+    /// よくあるチューニングツールが変更する TCP グローバル設定を、Windows が現在のバージョンで定義する
+    /// システム既定値へ戻す。<see cref="ResetAllToDefault"/> の後にも個別実行し、全体リセットが一部失敗した環境でも
+    /// 復元できる項目を増やし、実行ログから失敗項目を判別できるようにする。
+    /// </summary>
+    public static IReadOnlyList<string> BuildRevertGlobalOptionsToDefault() =>
+    [
+        "int tcp set global rss=default",
+        "int tcp set global rsc=default",
+        "int tcp set global ecncapability=default",
+        "int tcp set global timestamps=default",
+        "int tcp set global initialrto=3000",
+        "int tcp set global nonsackrttresiliency=default",
+        "int tcp set global maxsynretransmissions=2",
+        "int tcp set global fastopen=default",
+        "int tcp set global fastopenfallback=default",
+        "int tcp set global hystart=default",
+        "int tcp set global prr=default",
+        "int tcp set global pacingprofile=default",
+        "int tcp set heuristics forcews=default",
+    ];
 
     public static string BuildSetGlobalOption(TcpGlobalOption option, bool enabled)
     {

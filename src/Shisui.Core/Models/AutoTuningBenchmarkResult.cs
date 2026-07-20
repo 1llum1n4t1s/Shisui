@@ -4,15 +4,15 @@ namespace Shisui.Core.Models;
 
 /// <summary>
 /// 受信ウィンドウ自動調整 (auto-tuning) の 1 レベル分のベンチマーク結果。回線状況によるブレを均すため
-/// 複数回計測した平均値であり、<see cref="MinThroughputMbps"/>/<see cref="MaxThroughputMbps"/> でその
+/// TCP ダウンロード負荷中の Ping を複数回計測した平均値であり、<see cref="MinPingMs"/>/<see cref="MaxPingMs"/> でその
 /// ブレの幅も分かるようにしている。
 /// </summary>
 public sealed record AutoTuningBenchmarkResult(
     AutoTuningLevel Level,
     bool Success,
-    double? ThroughputMbps,
-    double? MinThroughputMbps,
-    double? MaxThroughputMbps,
+    double? AveragePingMs,
+    double? MinPingMs,
+    double? MaxPingMs,
     int SampleCount,
     string? ErrorMessage);
 

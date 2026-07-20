@@ -10,4 +10,5 @@ public sealed record MaintenanceCommandDefinition(
     string Label,
     string Description,
     bool IsDestructive,
-    bool RequiresReboot);
+    bool RequiresReboot,
+    bool IncludeInOneClickOptimization = false);

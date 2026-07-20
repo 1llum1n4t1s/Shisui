@@ -69,7 +69,8 @@ never holds the single-instance lock while its elevated replacement starts.
 - **Shisui.Core** — Interfaces, models, and all OS-interacting services. No UI dependency.
   - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDohConfigurationService`,
     `IDotConfigurationService`, `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`,
-    `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `ICommandExecutor`,
+    `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
+    `ILoadedPingMeasurementService`, `ICommandExecutor`,
     `ISettingsService`.
   - `Models/` — `NetworkAdapterInfo`, `NetworkAdapterDetails` (MAC/link speed, read-only), `DnsServerSet`,
     `DnsProviderPreset` (has nullable `DohTemplate` / `DotHost`), `DnsPresetCatalog` (hardcoded official
@@ -197,21 +198,34 @@ Next to the adapter selector on the DNS tab, a 「おまかせ高速化設定」
 users who don't want to understand each individual toggle. On click it: switches the selected preset to
 Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — when
 `INetworkMaintenanceService` is available (Windows; injected as `INetworkMaintenanceService? = null` the same
-way the other Windows-only services are, so macOS silently skips this step) — also runs every command in the
-maintenance catalog's 「キャッシュ・登録」category except `ipconfig-flushdns` (already covered by the DNS cache
-flush above; excluded by command ID via `DnsFlushCommandId` to avoid running it twice): NetBIOS name cache
-purge/re-register, a DNS registration refresh, the HTTP.sys log buffer/response cache, the ARP cache
-(`arp-clear` — moved into this category from 「ファイアウォール・スタックリセット」, since it was always a
-non-destructive, single-adapter-independent cache clear and never belonged in the destructive-reset bucket),
-and the IPv4/IPv6 destination cache (learned next-hop routes) plus the IPv6 neighbor-discovery cache (`arp`'s
-IPv6 equivalent). This targets PCs that have accumulated stale cache/route state over a long uptime — the DNS
-flush alone doesn't touch any of these. Finally
-— only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — enables BBR2 and
-resets receive-window auto-tuning to Normal. DoT is deliberately left untouched (see the DoT section above: DoH
+way the other Windows-only services are, so macOS silently skips this step) — also runs only maintenance commands
+whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true: NetBIOS name-cache purge/reload,
+all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
+and the IPv6 neighbor-discovery cache flush. This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys
+log-buffer/server-response-cache operations remain available in the maintenance tab but are deliberately excluded
+from one-click because they do not optimize ordinary client or game traffic. DNS cache flushing is already handled
+once through `IDnsCacheService`. Finally
+— only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — restores all five TCP
+templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
+runs explicit fallback resets for congestion providers and common tweak-tool targets (RSS, RSC, ECN, timestamps,
+initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
+removes only the per-interface legacy tweak values `TcpAckFrequency`, `TCPNoDelay`, and `TcpDelAckTicks` from
+`HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` so Windows falls back to its defaults,
+enables IPv4/IPv6 loopback Large MTU, and resets receive-window auto-tuning to Normal. The registry command emits
+`REMOVED=N`, never deletes an interface key, and deliberately does not touch the unrelated MSMQ `TCPNoDelay` value.
+Because Microsoft documents these delayed-ACK registry changes as requiring a restart, the one-click description
+and success status tell Windows users to restart the PC. The explicit netsh commands make
+partial failures visible in the execution log and recover supported settings even if the aggregate reset fails.
+The TCP tab exposes the aggregate TCP reset, explicit global-option reset, and legacy ACK/Nagle registry cleanup
+as three separate commands as well; one-click must not be the only UI path to any setting mutation it performs.
+This normalization intentionally stops at documented TCP/netsh state and those three specifically named legacy
+per-interface values: it does not delete arbitrary registry values,
+change NIC driver advanced properties, alter BCD, or replace power plans. DoT is deliberately left untouched (see the DoT section above: DoH
 measured slightly faster and more consistent, so there's little benefit to enabling both), and destructive
 maintenance actions (ghost adapter removal, MTU changes, the 「ファイアウォール・スタックリセット」category) are
 intentionally excluded from this button — the one-click flow only touches operations judged safe for a user who
-doesn't know what they're doing. Since BBR2 / auto-tuning / the cache-maintenance commands are global, not scoped
+doesn't know what they're doing. Since the congestion-provider reset / TCP global-option reset / loopback Large MTU / auto-tuning /
+cache-maintenance commands are global, not scoped
 to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
 multi-NIC environments.
 
@@ -245,10 +259,16 @@ tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP op
 ### Auto-tuning benchmark (`IAutoTuningBenchmarkService`, Windows)
 
 Lets the user measure, rather than guess, which auto-tuning level suits their connection: it cycles through all
-5 levels, and for each one downloads a configurable-size payload to measure real throughput. **Ping/latency
-can't reveal any difference between levels** — auto-tuning only affects TCP receive window scaling, which ICMP
-never touches — so this had to be a real download-throughput measurement, unlike the DoH/DoT latency benchmarks
-elsewhere in this doc.
+5 levels and reports **loaded Ping latency rather than download throughput**. A plain idle ICMP Ping still cannot
+reveal an auto-tuning difference — auto-tuning affects TCP receive-window scaling, not ICMP — so each sample
+starts a 5MB TCP download from a Hetzner test-file host and sends an ICMP Ping to `1.1.1.1` while that receive is
+active. This makes the displayed value a Ping-under-download-load measurement. The download is only the load
+generator; its speed is not calculated, displayed, or used to choose the best level.
+
+The HTTP/Ping measurement itself lives in `WindowsLoadedPingMeasurementService` and is shared with the RSC A/B
+benchmark. Each call creates a fresh `HttpClient`, starts the same per-sample Hetzner target sequence, and reports
+average/min/max Ping. Setting-specific services own only their switch/restore loop, so both benchmarks use identical
+load and Ping semantics without duplicating the network code.
 
 Two correctness points worth knowing before touching this code: (1) **a fresh `HttpClient` per level is
 required**, not just per run — the window scale is negotiated once at the TCP handshake and does not change for
@@ -260,50 +280,38 @@ the existing level `ComboBox`, not an auto-apply — and it does so only *after*
 `LoadStateAsync()` refresh, because that refresh's own `SelectedAutoTuningLevel` write would otherwise clobber
 the suggestion if done in the other order.
 
-**Each level is sampled `samplesPerLevel` times (default 5) and averaged, not measured once** — a single
-download is noisy enough that it changed the "winner" between runs (user-reported 2026-07-06). `RunAsync` →
-`MeasureLevelAsync` (loops samples, with a 300ms `InterSampleDelayMs` between them; no per-sample *settle* delay
-is needed since the netsh level doesn't change within a level's samples) → `MeasureOnceAsync` (one raw download,
-returns a private `SingleMeasurement`). `WindowsAutoTuningBenchmarkMath.Summarize` (pure, tested) turns the
-successful samples into average/min/max; a level only reports `Success = false` if *every* sample in it failed.
-`AutoTuningBenchmarkResult` carries `MinThroughputMbps`/`MaxThroughputMbps`/`SampleCount` alongside the average
-specifically so the UI can show the spread, not just hide it behind a single number. `AutoTuningBenchmarkProgress`'s
+**Each level is always sampled 5 times and averaged, not measured once.** The sample count is deliberately fixed:
+it is high enough to smooth one-off network jitter without exposing a tuning control that can unnecessarily inflate
+traffic and runtime. `RunAsync` switches
+each level, then `WindowsLoadedPingMeasurementService.MeasureAsync` loops samples with a 300ms inter-sample delay;
+its single-sample path starts the download, confirms that its first data arrived, drains the remainder concurrently
+with `Ping.SendPingAsync`, and cancels the unused remainder after the Ping returns.
+`WindowsAutoTuningBenchmarkMath.SummarizePingMilliseconds` (pure,
+tested) turns successful Ping samples into average/min/max; a level only reports `Success = false` if every sample
+failed. `AutoTuningBenchmarkResult` carries `AveragePingMs`/`MinPingMs`/`MaxPingMs`/`SampleCount`, and the UI marks
+the **lowest average Ping** as best. `AutoTuningBenchmarkProgress`'s
 `CompletedCount`/`TotalCount` count individual samples across *all* levels (e.g. `12/25` for 5 levels × 5
 samples), not per-level.
 
-**Downloads come from Hetzner's public speed-test files, not Cloudflare — Cloudflare was tried first and dropped
-entirely after hitting two separate undocumented limits in quick succession on 2026-07-06.** Cloudflare's
-`speed.cloudflare.com/__down?bytes=N` (the same endpoint Cloudflare's own official `speedtest` library and
-speed.cloudflare.com use) hard-caps `bytes` at 100,000,000 — confirmed via `curl`: `99,999,999` → 200,
-`100,000,000` → 403. Then, once averaging made each run issue up to 25 requests against that single endpoint, a
-real 80MB/5-sample run got `429 Too Many Requests` on every level, with a `Retry-After: 2811` (~47 minute)
-header — small (~1MB) requests still succeeded during the same lockout, meaning this reads as a bandwidth/volume
-budget, not a plain request-count limit. An initial fix rotated between Cloudflare and Hetzner to spread the
-load, but the user's follow-up ask was more direct: use a destination that plain isn't affected by this kind of
-throttling, not just dilute the one that is. **A search for an equivalent official Google endpoint (the user's
-suggested example) turned up nothing usable** — no documented Google download-speed API exists; a Google Cloud
-Storage sample file returned 403 and `www.gstatic.com/generate_204` is a connectivity check (0 bytes), not a
-bandwidth-test target. Cloudflare's `__down` is a dedicated, consumer-facing "speed test" tool, and reasonably
-throttles the "many rapid automated requests" pattern much more tightly than a plain static-file host would;
-**Hetzner's `https://<region>-speed.hetzner.com/100MB.bin` files are officially published "Test Files"** (a
-large European hosting provider, unrelated to Cloudflare) served as ordinary static content (`Server: nginx`),
-fetched here via HTTP `Range` requests since the file is fixed-size rather than query-parameterized — as of
-2026-07-06 neither a size cap nor a 429 has been observed against it. `Targets` now lists only the 5 Hetzner
-regions (fsn1/nbg1/hil/sin/ash); **the rotation index is `sampleIndex % Targets.Count` where `sampleIndex` resets
-to 0 for every level**, not a global counter — every level's 1st sample always hits the same region, every
-level's 2nd sample always hits the same (different) region, and so on, so a given region's geographic latency
-doesn't bias the comparison *between* levels. A non-2xx response (429 or otherwise) is just a normal failed
-sample — logged with the target's name prefixed (e.g. `[Hetzner sin] HTTP 429 ...`) and excluded from that
-level's average, not fatal to the whole run. `MaxSafeTestSizeBytes` (90,000,000) is sized against Hetzner's own
-104,857,600-byte file now, not Cloudflare's cap, but the constant and its safety margin carried over unchanged.
-**Update (2026-07-06)**: the test size is no longer user-configurable. Real-world measurement showed the 20MB
-default per-sample download exceeding `MeasureOnceAsync`'s 30s `HttpClient` timeout whenever a restricted
-auto-tuning level (Disabled/HighlyRestricted/Restricted) shrank the receive window against a high-RTT Hetzner
-target — the size `NumericUpDown` was removed from the UI and replaced with a fixed
-`TcpTuningViewModel.BenchmarkTestSizeBytes = 5_000_000` (5MB) constant, small enough to stay within the timeout
-even on the slowest level/target combination. Only `samplesPerLevel`'s `NumericUpDown` (max 5) remains
-user-facing. Hetzner still hasn't been stress-tested at the scale that broke Cloudflare, so don't assume it's
-rate-limit-proof at a larger fixed size either; re-verify with `curl`/a real run before loosening the constant.
+`Targets` lists five Hetzner regions (fsn1/nbg1/hil/sin/ash). The rotation index is the sample index within each
+level, so every level sees the same target sequence and a regional load-source difference does not privilege one
+level. The load size is fixed by `TcpTuningViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the sample count is
+fixed at 5 in `WindowsAutoTuningBenchmarkService`; neither is user-configurable. A non-2xx HTTP response or unsuccessful Ping is excluded
+from that level's average. Keep the Ping target identical across every sample when changing the load targets.
+
+### RSC low-latency A/B benchmark (`IRscBenchmarkService`, Windows)
+
+The TCP global-options card can compare RSC enabled versus disabled with the same loaded-Ping method used by the
+auto-tuning benchmark. It measures each state `samplesPerState` times (default 5), using the same 5MB load size and
+the same Hetzner target sequence for both states. This tests whether TCP receive coalescing changes latency while a
+TCP receive is active; it does not claim to measure OW2's UDP game packets directly. A difference below 1ms is
+treated as inconclusive and the UI recommends leaving the default enabled state unchanged.
+
+`WindowsRscBenchmarkService` reads the effective RSC state before changing anything, refuses to run if that state
+cannot be read safely, and restores it with `CancellationToken.None` in a `finally` on completion, cancellation, or
+exception. A failed restore is surfaced as an error rather than reported as a successful benchmark. Auto-tuning and
+RSC benchmarks participate in the same `TcpTuningViewModel.IsOperationRunning` exclusion so their temporary global
+TCP changes cannot overlap.
 
 ### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
 

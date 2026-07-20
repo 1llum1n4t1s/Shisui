@@ -42,6 +42,29 @@ public class WindowsTcpCommandBuilderTests
     }
 
     [TestMethod]
+    public void BuildRevertGlobalOptionsToDefault_ResetsCommonTweakValuesIndividually()
+    {
+        var commands = WindowsTcpCommandBuilder.BuildRevertGlobalOptionsToDefault();
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "int tcp set global rss=default",
+            "int tcp set global rsc=default",
+            "int tcp set global ecncapability=default",
+            "int tcp set global timestamps=default",
+            "int tcp set global initialrto=3000",
+            "int tcp set global nonsackrttresiliency=default",
+            "int tcp set global maxsynretransmissions=2",
+            "int tcp set global fastopen=default",
+            "int tcp set global fastopenfallback=default",
+            "int tcp set global hystart=default",
+            "int tcp set global prr=default",
+            "int tcp set global pacingprofile=default",
+            "int tcp set heuristics forcews=default",
+        }, commands.ToList());
+    }
+
+    [TestMethod]
     [DataRow(TcpGlobalOption.Rsc, true, "int tcp set global rsc=enabled")]
     [DataRow(TcpGlobalOption.Rsc, false, "int tcp set global rsc=disabled")]
     [DataRow(TcpGlobalOption.EcnCapability, true, "int tcp set global ecncapability=enabled")]

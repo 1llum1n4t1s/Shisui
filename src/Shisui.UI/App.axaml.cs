@@ -58,7 +58,9 @@ public partial class App : Application
             services.AddSingleton<IDotConfigurationService, Core.Services.Windows.WindowsDotConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
+            services.AddSingleton<ILoadedPingMeasurementService, Core.Services.Windows.WindowsLoadedPingMeasurementService>();
             services.AddSingleton<IAutoTuningBenchmarkService, Core.Services.Windows.WindowsAutoTuningBenchmarkService>();
+            services.AddSingleton<IRscBenchmarkService, Core.Services.Windows.WindowsRscBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();

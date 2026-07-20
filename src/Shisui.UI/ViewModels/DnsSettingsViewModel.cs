@@ -19,12 +19,6 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly ITcpTuningService? _tcpTuningService;
     private readonly INetworkMaintenanceService? _maintenanceService;
 
-    /// <summary>「おまかせ高速化設定」で追加クリアするキャッシュ・登録カテゴリ名 (WindowsMaintenanceCommandCatalog 側の定義と一致させる)。</summary>
-    private const string CacheMaintenanceCategory = "キャッシュ・登録";
-
-    /// <summary>同カテゴリのうち DNS キャッシュクリアは _cacheService.FlushAsync() で既に行うため、二重実行を避けるため除外する。</summary>
-    private const string DnsFlushCommandId = "ipconfig-flushdns";
-
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
@@ -94,15 +88,15 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>DoH/DoT 併用時の説明キャプションを表示するか (両方のチェックボックスが表示されているときだけ)。</summary>
     public bool ShowDohDotInteractionNote => IsDohAvailable && IsDotAvailable;
 
-    /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御・受信ウィンドウ自動調整もあわせて行うか (Windows かつサービス登録済みのときだけ)。</summary>
+    /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御・ループバック Large MTU・受信ウィンドウ自動調整も既定構成へ戻すか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsTcpOptimizationAvailable => _tcpTuningService is not null;
 
-    /// <summary>「おまかせ高速化設定」で NetBIOS/HTTP キャッシュ等の追加メンテナンスコマンドもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
+    /// <summary>「おまかせ高速化設定」で NetBIOS 名前・ARP・経路キャッシュもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsCacheMaintenanceAvailable => _maintenanceService is not null;
 
     /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
     public string OneClickOptimizeDescription => IsTcpOptimizationAvailable
-        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前キャッシュ・HTTP キャッシュ・ARP/経路キャッシュを丸ごとクリアします。あわせて BBR2 輻輳制御を有効化し、受信ウィンドウ自動調整を既定 (Normal) に戻します (この2つは選択中のアダプタに限らず PC 全体に適用されます)。長く使い込んだ PC ほど効果を感じやすい掃除です。"
+        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
         : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
 
     public DnsSettingsViewModel(
@@ -319,8 +313,8 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
-    /// (Windows では) NetBIOS 名前キャッシュ/HTTP キャッシュ/ARP・経路キャッシュの追加クリア・
-    /// BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
+    /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・BBR2 輻輳制御・TCP 詳細設定・
+    /// ループバック Large MTU・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
     /// </summary>
     [RelayCommand]
     private async Task OneClickOptimizeAsync()
@@ -368,13 +362,12 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (_maintenanceService is not null)
             {
-                // 「キャッシュ・登録」カテゴリを丸ごと実行 (NetBIOS 名前キャッシュ再読込・再登録、DNS 登録更新、
-                // HTTP ログバッファ/レスポンスキャッシュ削除、ARP キャッシュ、IPv4/IPv6 経路キャッシュ、IPv6 近隣
-                // 探索キャッシュ)。DNS キャッシュクリアは上の _cacheService.FlushAsync() と同じ ipconfig /flushdns
-                // なので二重実行を避けて除外する。長期間使い込んだ PC ほど溜まりやすいキャッシュ類なので、ここで
-                // まとめて掃除する。
+                // カタログでワンクリック対象と明示されたキャッシュだけを実行する。許可リスト方式にすることで、
+                // 手動メンテナンス用コマンドを今後同じカテゴリへ追加しても、意図せず初心者向けボタンへ混入しない。
+                // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。DNS/NetBIOS 再登録と HTTP.sys の
+                // ログ/サーバー応答キャッシュはゲーム用途の高速化にならないため対象外。
                 var cacheMaintenanceCommands = _maintenanceService.GetAvailableCommands()
-                    .Where(c => c.Category == CacheMaintenanceCategory && c.Id != DnsFlushCommandId);
+                    .Where(c => c.IncludeInOneClickOptimization);
                 foreach (var command in cacheMaintenanceCommands)
                 {
                     results.Add(await _maintenanceService.RunAsync(command.Id));
@@ -383,7 +376,13 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (_tcpTuningService is not null)
             {
-                results.AddRange(await _tcpTuningService.EnableBbr2Async());
+                // まず公式の TCP 全体リセットで、他のチューニングツールが変更した supplemental template や
+                // フィルターを含むユーザー構成を削除する。その後の個別コマンドは、全体リセットが一部失敗した
+                // 環境でのフォールバックと、実行ログ上で各項目の成否を確認できるようにするため意図的に重ねる。
+                results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
+                results.AddRange(await _tcpTuningService.RevertBbr2ToDefaultAsync());
+                results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
+                results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
             }
 
@@ -397,7 +396,9 @@ public partial class DnsSettingsViewModel : ObservableObject
             await _settingsService.SaveAsync();
 
             StatusText = results.All(r => r.Success)
-                ? "おまかせ高速化設定を適用しました"
+                ? IsTcpOptimizationAvailable
+                    ? "おまかせ高速化設定を適用しました。TCP ACK 関連の既定値復元を反映するため PC を再起動してください"
+                    : "おまかせ高速化設定を適用しました"
                 : "一部の設定が失敗しました。ログを確認してください";
 
             await LoadAdaptersAsync();

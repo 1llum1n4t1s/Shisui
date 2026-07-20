@@ -6,7 +6,8 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+  <!-- 環境変数 OS は未定義になりうるため、MSBuild 自身の実行 OS 判定を使う。 -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>icon\app.ico</ApplicationIcon>
   </PropertyGroup>
@@ -31,6 +32,16 @@
   <ItemGroup>
     <AvaloniaResource Include="icon/app.ico" />
   </ItemGroup>
+
+  <!-- Windows ビルドでアイコン/manifest 条件が誤って無効化される回帰をビルド時に検出する。 -->
+  <Target Name="ValidateWindowsApplicationMetadata"
+          BeforeTargets="CoreCompile"
+          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Error Condition="'$(ApplicationIcon)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationIcon)')"
+           Text="Windows アプリの ApplicationIcon が未設定か、ファイルが存在しません。" />
+    <Error Condition="'$(ApplicationManifest)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationManifest)')"
+           Text="Windows アプリの ApplicationManifest が未設定か、ファイルが存在しません。" />
+  </Target>
 
   <!-- アイコンを Publish 出力にコピー (vpk pack の icon 引数用) -->
   <Target Name="CopyAppIcon" AfterTargets="Publish">

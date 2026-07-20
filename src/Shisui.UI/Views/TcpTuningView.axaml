@@ -31,6 +31,43 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="高速化ツール設定の復元">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="「おまかせ高速化設定」で実行する TCP 復元処理を、それぞれ個別に実行できます。通常は上から順にすべて実行すれば Windows の既定構成へ戻せます。BBR2・ループバック Large MTU と受信ウィンドウ自動調整は、上の各カードから個別に戻せます。" />
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="TCP スタック全体" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="netsh int tcp reset を実行し、ユーザーや高速化ツールが構成した TCP パラメーターをまとめて Windows の既定値へ戻します。" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="全体を既定値に戻す" Command="{Binding ResetAllTcpSettingsCommand}"
+                    IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="TCP グローバル詳細設定" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="RSS、RSC、ECN、Timestamps、Initial RTO、Fast Open、HyStart、PRR など、よく変更される詳細項目を個別コマンドで既定値へ戻します。" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="詳細設定を既定値に戻す" Command="{Binding RevertGlobalOptionsCommand}"
+                    IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
+              <TextBlock Text="TCP ACK / Nagle 関連設定" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="各インターフェースの TcpAckFrequency、TCPNoDelay、TcpDelAckTicks の明示値だけを削除し、Windows の既定動作へ戻します。反映には PC の再起動が必要です。" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="ACK 設定を既定値に戻す" Command="{Binding RevertLegacyTcpRegistryTweaksCommand}"
+                    IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
+          </Grid>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="受信ウィンドウ自動調整 (Auto-Tuning)">
         <StackPanel Spacing="8">
           <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,8">
@@ -47,14 +84,9 @@
           </StackPanel>
 
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="0,8,0,0"
-                     Text="どのレベルが実際に速いかは回線環境によって変わります。下のボタンで各レベルを順番に切り替えながら実際にダウンロード速度を計測して比較できます (Hetzner の公開スピードテストファイルを使用)。1回だけの計測は瞬間的な回線のブレを拾いやすいため、レベルごとに複数回計測して平均を取ります。計測回数を増やしすぎると計測サーバー側の一時的な利用制限にかかることがあります。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
+                     Text="各レベルを順番に切り替え、5MB の TCP ダウンロード負荷をかけている最中の Ping 値を比較します。受信ウィンドウ自動調整は TCP に作用し、無負荷の Ping だけでは差が出ないため、速度ではなく負荷時の遅延を測ります。回線の瞬間的なブレを均すため各レベルを5回ずつ計測し、平均を取ります。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="1 段階あたりの計測回数:" VerticalAlignment="Center" />
-            <NumericUpDown Value="{Binding BenchmarkSamplesPerLevel}" Minimum="1" Maximum="5" Increment="1" Width="130" FormatString="0"
-                           IsEnabled="{Binding !IsBenchmarkRunning}" />
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="計測して比較" Command="{Binding RunAutoTuningBenchmarkCommand}" IsEnabled="{Binding !IsBenchmarkRunning}" />
+            <Button Content="計測して比較" Command="{Binding RunAutoTuningBenchmarkCommand}" IsEnabled="{Binding !IsOperationRunning}" />
             <Button Content="キャンセル" Command="{Binding CancelAutoTuningBenchmarkCommand}" IsVisible="{Binding IsBenchmarkRunning}" />
           </StackPanel>
           <TextBlock Text="{Binding BenchmarkStatusText}" Classes="caption" TextWrapping="Wrap" />
@@ -66,7 +98,7 @@
                   <Grid ColumnDefinitions="140,24,*">
                     <TextBlock Grid.Column="0" Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="{Binding ThroughputText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="2" Text="{Binding PingText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -147,6 +179,41 @@
             <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
             <Button Grid.Row="4" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
           </Grid>
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12" Margin="0,4,0,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="RSC 低遅延 A/B 計測" FontWeight="SemiBold" FontSize="15" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="RSC 有効・無効を順番に切り替え、それぞれ5MBのTCPダウンロード負荷中に1.1.1.1へのPingを測って比較します。RSCはTCP受信に作用するため、OW2のUDP通信そのものではなく、TCP受信負荷が遅延へ与える影響の検証です。完了・キャンセル・失敗時は開始前のRSC状態へ戻します。" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="各状態の計測回数:" VerticalAlignment="Center" />
+                <NumericUpDown Value="{Binding RscBenchmarkSamplesPerState}" Minimum="1" Maximum="5" Increment="1"
+                               Width="130" FormatString="0" IsEnabled="{Binding !IsOperationRunning}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="RSC 有効 / 無効を比較" Command="{Binding RunRscBenchmarkCommand}"
+                        IsEnabled="{Binding !IsOperationRunning}" />
+                <Button Content="キャンセル" Command="{Binding CancelRscBenchmarkCommand}"
+                        IsVisible="{Binding IsRscBenchmarkRunning}" />
+              </StackPanel>
+              <TextBlock Text="{Binding RscBenchmarkStatusText}" Classes="caption" TextWrapping="Wrap" />
+
+              <ItemsControl ItemsSource="{Binding RscBenchmarkResults}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:RscBenchmarkRow">
+                    <Border Background="{DynamicResource Brush.Container}" CornerRadius="6" Padding="10,6" Margin="0,2">
+                      <Grid ColumnDefinitions="120,24,*">
+                        <TextBlock Grid.Column="0" Text="{Binding StateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding PingText}" FontFamily="Consolas,Menlo,monospace"
+                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </primitives:HeaderedContentControl>
 

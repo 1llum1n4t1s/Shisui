@@ -12,6 +12,15 @@ public interface ITcpTuningService
 
     Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default);
 
+    /// <summary>ユーザーまたは他のチューニングツールが構成した TCP パラメーターを Windows の既定値へ一括リセットする。</summary>
+    Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default);
+
+    /// <summary>よく変更される TCP グローバル詳細設定を Windows のシステム既定値へ個別に戻す。</summary>
+    Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default);
+
+    /// <summary>インターフェース別の TcpAckFrequency/TCPNoDelay/TcpDelAckTicks 明示値を削除して Windows 既定へ戻す。</summary>
+    Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default);
+
     Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default);
 
     Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default);
