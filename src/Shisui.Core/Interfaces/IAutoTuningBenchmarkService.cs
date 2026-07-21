@@ -11,7 +11,7 @@ public interface IAutoTuningBenchmarkService
 {
     /// <summary>
     /// 全レベルを順に切り替えながら <paramref name="testSizeBytes"/> バイトの TCP ダウンロード速度を
-    /// レベルごとに固定5回計測して平均値を返す。
+    /// レベルごとに固定3回計測して平均値を返す。
     /// 計測開始前のレベルは完了・キャンセル・例外いずれの場合も自動的に復元される。
     /// </summary>
     Task<IReadOnlyList<AutoTuningBenchmarkResult>> RunAsync(

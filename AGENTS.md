@@ -85,6 +85,7 @@ HKCU uninstall entry, and per-user shortcuts. A pending marker and HKCU RunOnce 
     `IDotConfigurationService`, `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`,
     `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
     `IBbr2BenchmarkService`, `ITcpOptionBenchmarkService`,
+    `ILegacyNetworkDiagnosticsService`,
     `ILoadedPingMeasurementService`, `ICommandExecutor`,
     `ISettingsService`.
   - `Models/` — `NetworkAdapterInfo`, `NetworkAdapterDetails` (MAC/link speed, read-only), `DnsServerSet`,
@@ -218,7 +219,8 @@ Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cach
 way the other Windows-only services are, so macOS silently skips this step) — also runs only maintenance commands
 whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true: NetBIOS name-cache purge/reload,
 all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
-and the IPv6 neighbor-discovery cache flush. This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys
+the IPv6 neighbor-discovery cache flush, and `netsh winsock set autotuning on` so old tweak tools cannot leave
+Winsock's independent send-buffer autotuning disabled. This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys
 log-buffer/server-response-cache operations remain available in the maintenance tab but are deliberately excluded
 from one-click because they do not optimize ordinary client or game traffic. DNS cache flushing is already handled
 once through `IDnsCacheService`. Finally
@@ -233,7 +235,8 @@ enables IPv4/IPv6 loopback Large MTU, and resets receive-window auto-tuning to N
 Because Microsoft documents these delayed-ACK registry changes as requiring a restart, the one-click description
 and success status tell Windows users to restart the PC. The explicit netsh commands make
 partial failures visible in the execution log and recover supported settings even if the aggregate reset fails.
-The TCP tab exposes the aggregate TCP reset, explicit global-option reset, and legacy ACK/Nagle registry cleanup
+The TCP tab exposes the aggregate TCP reset, explicit global-option reset, and legacy ACK/Nagle registry cleanup,
+while the maintenance tab exposes Winsock send autotuning as a separate command,
 as three separate commands as well; one-click must not be the only UI path to any setting mutation it performs.
 This normalization intentionally stops at documented TCP/netsh state and those three specifically named legacy
 per-interface values: it does not delete arbitrary registry values,
@@ -278,8 +281,8 @@ tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP op
 All A/B measurement UI lives in the left-sidebar 「自動最適化」 tab, not in the manual BBR2/TCP tab. The single
 「すべて計測」 command runs Auto-Tuning, BBR2, RSC, ECN, RSS, and TCP Timestamps in that order and builds one
 recommended configuration. Auto-Tuning and RSS use download Mbps; the other four binary settings use loaded Ping.
-The fixed run is 25 Auto-Tuning samples plus 10 samples for each of five binary settings: 75 total, up to about
-375MB at 5MB per sample. Each benchmark restores its starting state before the next begins. Recommendations are
+The fixed run is 15 Auto-Tuning samples plus 6 samples for each of five binary settings: 45 total, up to about
+225MB at 5MB per sample. Each benchmark restores its starting state before the next begins. Recommendations are
 only suggestions until the user presses
 「推奨設定を一括適用」; that command applies whichever recommendations were successfully determined under one
 `INetworkMutationGate` lease and logs every resulting command. Loaded-Ping differences below 1ms and RSS speed
@@ -313,27 +316,26 @@ The original level is restored with `CancellationToken.None` in a `finally` arou
 failure is surfaced as an error rather than success. `AutoOptimizationViewModel` retains the best result as a
 recommendation; the benchmark itself never leaves that level applied.
 
-**Each level is always sampled 5 times and averaged, not measured once.** The sample count is deliberately fixed:
-it is high enough to smooth one-off network jitter without exposing a tuning control that can unnecessarily inflate
-traffic and runtime. `RunAsync` switches
-each level, then `WindowsDownloadSpeedMeasurementService.MeasureAsync` loops samples with a 300ms inter-sample
+**Each level is always sampled 3 times and averaged, not measured once.** The sample count is deliberately fixed:
+it retains multi-sample averaging while limiting traffic and runtime. `RunAsync` switches
+each level, then `WindowsDownloadSpeedMeasurementService.MeasureAsync` loops samples with a 150ms inter-sample
 delay, streams exactly the requested body size, and calculates decimal Mbps. The pure, tested benchmark math turns
 successful speed samples into average/min/max; a level only reports `Success = false` if every sample failed.
 `AutoTuningBenchmarkResult` carries `AverageMbps`/`MinMbps`/`MaxMbps`/`SampleCount`, and the UI marks the
 **highest average speed** as best. `AutoTuningBenchmarkProgress`'s
-`CompletedCount`/`TotalCount` count individual samples across *all* levels (e.g. `12/25` for 5 levels × 5
+`CompletedCount`/`TotalCount` count individual samples across *all* levels (e.g. `8/15` for 5 levels × 3
 samples), not per-level.
 
 `WindowsBenchmarkDownloadCatalog.Targets` lists five Hetzner regions (fsn1/nbg1/hil/sin/ash). The rotation index is the sample index within each
 level, so every level sees the same target sequence and a regional load-source difference does not privilege one
-level. The load size is fixed by `AutoOptimizationViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the sample count is
-fixed at 5 in `WindowsAutoTuningBenchmarkService`; neither is user-configurable. A non-2xx response or incomplete
+level. The load size is fixed by `AutoOptimizationViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the shared sample count is
+fixed at 3 in `WindowsBenchmarkDownloadCatalog`; neither is user-configurable. A non-2xx response or incomplete
 download is excluded from that level's average.
 
 ### RSC low-latency A/B benchmark (`IRscBenchmarkService`, Windows)
 
 The measured-optimization card compares RSC enabled versus disabled with loaded Ping. It measures each state a
-fixed 5 times (not user-configurable), using the same 5MB load size and
+fixed 3 times (not user-configurable), using the same 5MB load size and
 the same Hetzner target sequence for both states. This tests whether TCP receive coalescing changes latency while a
 TCP receive is active; it does not claim to measure OW2's UDP game packets directly. A difference below 1ms is
 treated as inconclusive and the UI recommends restoring the Windows default state.
@@ -351,11 +353,28 @@ can restore a mixed/custom starting configuration exactly in `finally`; it refus
 missing. Permanent application still uses the existing BBR2 enable/revert profile.
 
 `WindowsTcpOptionBenchmarkService` compares ECN and TCP Timestamps with loaded Ping and RSS with download speed.
-Each state is fixed at 5 samples. It accepts only an exact `Enabled` or `Disabled` starting value and restores that
-value with `CancellationToken.None`; values such as Timestamps `Allowed` are rejected before mutation because a
-boolean A/B command cannot reproduce them exactly. Fast Open remains manual because its current state is not
+Each state is fixed at 3 samples. It accepts only an exact `Enabled` or `Disabled` starting value and restores that
+value with `CancellationToken.None`. TCP Timestamps also accepts the documented Windows default `Allowed`; after
+the Enabled/Disabled comparison it restores that third state through `RevertTcpGlobalOptionToDefaultAsync`, which
+emits `timestamps=allowed`. Other unrecognized values are rejected before mutation. Fast Open remains manual because its current state is not
 available through the locale-independent state reader, and MTU remains manual because automatic probing can break
 connectivity.
+
+### Used-PC network diagnostics (`ILegacyNetworkDiagnosticsService`, Windows)
+
+The 「自動最適化」 tab has a read-only 「使い込んだPC向けネットワーク診断」 card. For the selected adapter,
+`WindowsLegacyNetworkDiagnosticsService` reads `Get-NetAdapterStatistics` and `Get-NetAdapter` through fixed
+`KEY=VALUE` PowerShell output, checks the global `DisableTaskOffload` value without changing it, reads Winsock send
+autotuning, counts `pnputil /enum-devices /problem /class Net /format xml` results, and reuses
+`IGhostAdapterService` for disconnected network devices. Packet errors always warn; discards warn only when at
+least 100 and at least 0.1% of observed packets, avoiding noisy single discards. A driver date over five years old
+is a check recommendation, not proof that the driver is wrong.
+
+Findings guide the user to the existing DNS-tab ghost-device list and maintenance-tab Winsock reset. NIC advanced
+property reset is offered only when the report recommends it and targets only the currently selected adapter via
+`Reset-NetAdapterAdvancedProperty -DisplayName '*'`; it is destructive, restarts the adapter, and is never part of
+one-click optimization. IP-stack reset and `netcfg -d` remain last-resort maintenance actions and are not run by
+the diagnostic flow.
 
 All mutating DNS/TCP/maintenance paths share the singleton `INetworkMutationGate` / `NetworkMutationGate`, including
 both benchmarks, one-click optimization, manual TCP changes, DNS apply/reset/cache flush, MTU changes, ghost-device
@@ -376,8 +395,10 @@ builder's). macOS's `MacPingResultParser`/`MacTraceRouteParser` parse `ping`/`tr
 — BSD ping/traceroute's own text (`X packets transmitted, Y packets received`, `round-trip min/avg/max/stddev`)
 is a fixed English format regardless of macOS's system language, so the locale trap doesn't apply there.
 `INetworkDiagnosticsService` is one abstraction shared by two call sites: the DNS tab's 疎通テスト button (pings
-whichever DNS IP is currently selected) and the standalone ネットワーク診断 tab (free-form host/IP input for both
-ping and traceroute).
+whichever DNS IP is currently selected) and the standalone ネットワーク診断 tab. The standalone tab offers
+`NetworkDiagnosticTargetCatalog` presets (local loopback, three public DNS targets, Google, and GitHub); selecting
+one copies its host into the same field used by Ping and traceroute. Free-form host/IP input remains available,
+and editing it clears the preset selection so the UI never implies that a custom value is still the selected preset.
 
 ### Adapter list filtering (`WindowsNetworkAdapterFilter`, pure)
 

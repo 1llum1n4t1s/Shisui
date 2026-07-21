@@ -14,8 +14,27 @@
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="IP アドレスまたはホスト名を指定して、簡易疎通テスト (ping) やトレースルートを行えます。" />
+          <TextBlock Text="よく使う対象" FontWeight="SemiBold" />
+          <ComboBox ItemsSource="{Binding TargetPresets}"
+                    SelectedItem="{Binding SelectedTargetPreset}"
+                    PlaceholderText="よく使う対象から選択"
+                    IsEnabled="{Binding !IsBusy}"
+                    HorizontalAlignment="Stretch">
+            <ComboBox.ItemTemplate>
+              <DataTemplate DataType="models:NetworkDiagnosticTargetPreset">
+                <Grid ColumnDefinitions="180,*">
+                  <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1" Text="{Binding Host}" Classes="caption"
+                             FontFamily="Consolas,Menlo,monospace" Margin="12,0,0,0"
+                             HorizontalAlignment="Left" />
+                </Grid>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Text="またはホストを直接入力" FontWeight="SemiBold" Margin="0,2,0,0" />
           <Grid ColumnDefinitions="*,Auto,Auto">
-            <TextBox Grid.Column="0" Text="{Binding Host}" PlaceholderText="例: 1.1.1.1 または example.com" />
+            <TextBox Grid.Column="0" Text="{Binding Host}" PlaceholderText="例: 1.1.1.1 または example.com"
+                     IsEnabled="{Binding !IsBusy}" />
             <Button Grid.Column="1" Content="Ping" Command="{Binding PingCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
             <Button Grid.Column="2" Content="トレースルート" Command="{Binding TraceRouteCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
           </Grid>

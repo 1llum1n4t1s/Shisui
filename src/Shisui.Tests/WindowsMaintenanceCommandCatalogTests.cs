@@ -30,6 +30,7 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netsh-ipv6-delete-neighbors", "netsh", "interface ipv6 delete neighbors")]
     [DataRow("netsh-winhttp-reset-proxy", "netsh", "winhttp reset proxy")]
     [DataRow("netsh-winhttp-reset-autoproxy", "netsh", "winhttp reset autoproxy")]
+    [DataRow("netsh-winsock-autotuning-on", "netsh", "winsock set autotuning on")]
     [DataRow("netsh-advfirewall-reset", "netsh", "advfirewall reset")]
     [DataRow("netsh-winsock-reset", "netsh", "winsock reset")]
     [DataRow("netsh-int-tcp-reset", "netsh", "int tcp reset")]
@@ -96,7 +97,7 @@ public class WindowsMaintenanceCommandCatalogTests
     }
 
     [TestMethod]
-    public void OneClickOptimization_IncludesOnlyTroubleshootingCaches()
+    public void OneClickOptimization_IncludesOnlySafeAllowlistedMaintenance()
     {
         var includedIds = WindowsMaintenanceCommandCatalog.All
             .Where(c => c.Definition.IncludeInOneClickOptimization)
@@ -110,6 +111,7 @@ public class WindowsMaintenanceCommandCatalogTests
             "netsh-ipv4-delete-destinationcache",
             "netsh-ipv6-delete-destinationcache",
             "netsh-ipv6-delete-neighbors",
+            "netsh-winsock-autotuning-on",
         }, includedIds);
 
         CollectionAssert.DoesNotContain(includedIds, "nbtstat-reregister");

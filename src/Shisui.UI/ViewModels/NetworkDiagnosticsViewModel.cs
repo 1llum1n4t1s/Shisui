@@ -18,6 +18,9 @@ public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diag
     private string host = string.Empty;
 
     [ObservableProperty]
+    private NetworkDiagnosticTargetPreset? selectedTargetPreset;
+
+    [ObservableProperty]
     private bool isBusy;
 
     [ObservableProperty]
@@ -27,6 +30,24 @@ public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diag
     private string pingResultText = string.Empty;
 
     public ObservableCollection<TraceRouteHop> TraceRouteHops { get; } = [];
+    public IReadOnlyList<NetworkDiagnosticTargetPreset> TargetPresets => NetworkDiagnosticTargetCatalog.All;
+
+    partial void OnSelectedTargetPresetChanged(NetworkDiagnosticTargetPreset? value)
+    {
+        if (value is not null)
+        {
+            Host = value.Host;
+        }
+    }
+
+    partial void OnHostChanged(string value)
+    {
+        if (SelectedTargetPreset is { } selected &&
+            !string.Equals(value.Trim(), selected.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedTargetPreset = null;
+        }
+    }
 
     [RelayCommand]
     private async Task PingAsync()

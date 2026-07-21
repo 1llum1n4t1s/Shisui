@@ -27,7 +27,7 @@ public class WindowsRscBenchmarkServiceTests
         Assert.AreEqual(10, results[0].AveragePingMs);
         Assert.IsFalse(results[1].Enabled);
         Assert.AreEqual(13, results[1].AveragePingMs);
-        CollectionAssert.AreEqual(new[] { 5, 5 }, loadedPing.SampleCounts);
+        CollectionAssert.AreEqual(new[] { 3, 3 }, loadedPing.SampleCounts);
         CollectionAssert.AreEqual(new[] { true, false, true }, tcp.RscSetCalls);
     }
 

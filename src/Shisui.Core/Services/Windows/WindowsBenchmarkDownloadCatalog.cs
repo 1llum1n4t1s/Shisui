@@ -7,6 +7,9 @@ namespace Shisui.Core.Services.Windows;
 internal static class WindowsBenchmarkDownloadCatalog
 {
     public const int MaxSafeTestSizeBytes = 90_000_000;
+    public const int SamplesPerCandidate = 3;
+    public const int SettingSettleDelayMs = 250;
+    public const int InterSampleDelayMs = 150;
 
     public static IReadOnlyList<DownloadTarget> Targets { get; } =
     [

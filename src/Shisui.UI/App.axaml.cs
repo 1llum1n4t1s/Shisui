@@ -67,6 +67,7 @@ public partial class App : Application
             services.AddSingleton<ITcpOptionBenchmarkService, Core.Services.Windows.WindowsTcpOptionBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
+            services.AddSingleton<ILegacyNetworkDiagnosticsService, Core.Services.Windows.WindowsLegacyNetworkDiagnosticsService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
             services.AddSingleton<TcpTuningViewModel>();
             services.AddSingleton<MaintenanceViewModel>();

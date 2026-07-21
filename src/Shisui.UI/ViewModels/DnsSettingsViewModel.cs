@@ -97,7 +97,7 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
     public string OneClickOptimizeDescription => IsTcpOptimizationAvailable
-        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
+        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
         : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
 
     public DnsSettingsViewModel(
@@ -390,13 +390,14 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (_maintenanceService is not null)
             {
-                // カタログでワンクリック対象と明示されたキャッシュだけを実行する。許可リスト方式にすることで、
+                // カタログでワンクリック対象と明示された安全なメンテナンスだけを実行する。許可リスト方式にすることで、
                 // 手動メンテナンス用コマンドを今後同じカテゴリへ追加しても、意図せず初心者向けボタンへ混入しない。
                 // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。DNS/NetBIOS 再登録と HTTP.sys の
-                // ログ/サーバー応答キャッシュはゲーム用途の高速化にならないため対象外。
-                var cacheMaintenanceCommands = _maintenanceService.GetAvailableCommands()
+                // ログ/サーバー応答キャッシュはゲーム用途の高速化にならないため対象外。送信自動調整は受信側の
+                // Auto-Tuning とは別系統なので、古い高速化ツールで無効化された状態をここで明示的に有効へ戻す。
+                var oneClickMaintenanceCommands = _maintenanceService.GetAvailableCommands()
                     .Where(c => c.IncludeInOneClickOptimization);
-                foreach (var command in cacheMaintenanceCommands)
+                foreach (var command in oneClickMaintenanceCommands)
                 {
                     results.Add(await _maintenanceService.RunAsync(command.Id));
                 }

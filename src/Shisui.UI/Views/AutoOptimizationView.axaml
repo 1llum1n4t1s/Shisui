@@ -46,11 +46,53 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="使い込んだPC向けネットワーク診断"
+                                         IsVisible="{Binding IsLegacyDiagnosticsAvailable}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="選択中NICのエラー・破棄パケット、ドライバー日付、問題デバイス、切断済みNIC、古い送信・オフロード設定を読み取り専用で確認します。診断だけでは設定を変更しません。" />
+          <Button Content="診断する" Command="{Binding RunLegacyNetworkDiagnosticsCommand}"
+                  IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
+          <TextBlock Text="{Binding LegacyDiagnosticsStatusText}" Classes="caption" TextWrapping="Wrap" />
+
+          <ItemsControl ItemsSource="{Binding LegacyNetworkFindings}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="models:LegacyNetworkDiagnosticFinding">
+                <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,9" Margin="0,2">
+                  <Grid ColumnDefinitions="24,*">
+                    <TextBlock Grid.Column="0" Text="{Binding Icon}" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="1" Spacing="2">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding Detail}" Classes="caption" TextWrapping="Wrap" />
+                      <TextBlock Text="{Binding ActionText}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                 IsVisible="{Binding HasAction}" />
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10"
+                  IsVisible="{Binding HasLegacyDiagnosticsWarnings}">
+            <StackPanel Spacing="6">
+              <TextBlock Text="修復先" FontWeight="SemiBold" />
+              <TextBlock Classes="caption" TextWrapping="Wrap"
+                         Text="切断済みデバイスは「DNS設定」、Winsockカタログの破損が疑われる場合は「メンテナンス」タブから修復できます。IPスタックやネットワークコンポーネントの全初期化は、ほかの手段で直らない場合だけ使用してください。" />
+              <Button Content="選択中NICの詳細設定を工場出荷値へ戻す"
+                      Command="{Binding ResetSelectedNicAdvancedPropertiesCommand}"
+                      Classes="danger" IsVisible="{Binding CanResetSelectedNic}"
+                      IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="計測して最適化">
         <Panel>
           <StackPanel Spacing="10" IsVisible="{Binding IsBenchmarkAvailable}">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Auto-Tuning・BBR2・RSC・ECN・RSS・TCPタイムスタンプの6項目をまとめて比較します。各候補は固定5回、合計75回・最大約375MBを受信します。速度に効く項目はダウンロード速度、遅延に効く項目はダウンロード負荷時Pingで判定します。計測中の一時設定は終了・キャンセル・失敗時に開始前へ戻り、下の適用ボタンを押すまで確定しません。" />
+                     Text="Auto-Tuning・BBR2・RSC・ECN・RSS・TCPタイムスタンプの6項目をまとめて比較します。各候補は固定3回、合計45回・最大約225MBを受信します。速度に効く項目はダウンロード速度、遅延に効く項目はダウンロード負荷時Pingで判定します。計測中の一時設定は終了・キャンセル・失敗時に開始前へ戻り、下の適用ボタンを押すまで確定しません。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="すべて計測" Command="{Binding RunAllBenchmarksCommand}"
                     Classes="accent" IsEnabled="{Binding !IsOperationRunning}" />

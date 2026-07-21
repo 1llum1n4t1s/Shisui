@@ -11,7 +11,6 @@ namespace Shisui.Core.Services.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurementService
 {
-    private const int InterSampleDelayMs = 300;
     private const string PingTarget = "1.1.1.1";
     private static readonly TimeSpan PingTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MeasurementTimeout = TimeSpan.FromSeconds(30);
@@ -35,7 +34,7 @@ public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurement
 
             if (i > 0)
             {
-                await Task.Delay(InterSampleDelayMs, ct);
+                await Task.Delay(WindowsBenchmarkDownloadCatalog.InterSampleDelayMs, ct);
             }
 
             // 各構成で同じサンプル番号に同じリージョンを割り当て、地理的な条件差を揃える。

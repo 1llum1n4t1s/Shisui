@@ -9,7 +9,6 @@ namespace Shisui.Core.Services.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsDownloadSpeedMeasurementService : IDownloadSpeedMeasurementService
 {
-    private const int InterSampleDelayMs = 300;
     private static readonly TimeSpan MeasurementTimeout = TimeSpan.FromSeconds(30);
 
     public async Task<DownloadSpeedMeasurementResult> MeasureAsync(
@@ -31,7 +30,7 @@ public sealed class WindowsDownloadSpeedMeasurementService : IDownloadSpeedMeasu
 
             if (i > 0)
             {
-                await Task.Delay(InterSampleDelayMs, ct);
+                await Task.Delay(WindowsBenchmarkDownloadCatalog.InterSampleDelayMs, ct);
             }
 
             // 全レベルで同じサンプル番号に同じリージョンを割り当て、地理的な条件差を揃える。

@@ -12,6 +12,7 @@ public sealed record WindowsMaintenanceCommand(MaintenanceCommandDefinition Defi
 public static class WindowsMaintenanceCommandCatalog
 {
     private const string CategoryCache = "キャッシュ・登録";
+    private const string CategoryOptimization = "送信最適化";
     private const string CategoryReacquire = "IP アドレス再取得";
     private const string CategoryProxy = "プロキシ設定リセット";
     private const string CategoryStackReset = "ファイアウォール・スタックリセット (危険)";
@@ -39,6 +40,16 @@ public static class WindowsMaintenanceCommandCatalog
             "netsh", "interface ipv6 delete destinationcache"),
         new(new MaintenanceCommandDefinition("netsh-ipv6-delete-neighbors", CategoryCache, "IPv6 近隣探索キャッシュを削除", "netsh interface ipv6 delete neighbors : IPv6 近隣探索 (Neighbor Discovery) キャッシュを削除する (ARP の IPv6 版)", false, false, true),
             "netsh", "interface ipv6 delete neighbors"),
+
+        new(new MaintenanceCommandDefinition(
+                "netsh-winsock-autotuning-on",
+                CategoryOptimization,
+                "Winsock 送信自動調整を有効化",
+                "netsh winsock set autotuning on : アプリの送信バッファーを通信状況に合わせて自動調整する",
+                false,
+                false,
+                true),
+            "netsh", "winsock set autotuning on"),
 
         new(new MaintenanceCommandDefinition("ipconfig-release", CategoryReacquire, "IPv4 アドレスを解放", "ipconfig /release : 現在の IPv4 リースを解放する (解放中は通信が切れる)", true, false),
             "ipconfig", "/release"),

@@ -22,8 +22,6 @@ public sealed class WindowsAutoTuningBenchmarkService(
     IDownloadSpeedMeasurementService downloadSpeedMeasurementService,
     INetworkMutationGate networkMutationGate) : IAutoTuningBenchmarkService
 {
-    private const int SamplesPerLevel = 5;
-
     private static readonly IReadOnlyList<AutoTuningLevel> LevelsToTest =
     [
         AutoTuningLevel.Disabled,
@@ -44,7 +42,7 @@ public sealed class WindowsAutoTuningBenchmarkService(
                 "Auto-Tuning の現在値を取得できないため、安全に計測できませんでした");
         }
 
-        var totalSteps = LevelsToTest.Count * SamplesPerLevel;
+        var totalSteps = LevelsToTest.Count * WindowsBenchmarkDownloadCatalog.SamplesPerCandidate;
         var results = new List<AutoTuningBenchmarkResult>(LevelsToTest.Count);
         try
         {
@@ -63,9 +61,16 @@ public sealed class WindowsAutoTuningBenchmarkService(
                     continue;
                 }
 
-                await Task.Delay(500, ct);
+                await Task.Delay(WindowsBenchmarkDownloadCatalog.SettingSettleDelayMs, ct);
 
-                results.Add(await MeasureLevelAsync(level, testSizeBytes, SamplesPerLevel, i * SamplesPerLevel, totalSteps, progress, ct));
+                results.Add(await MeasureLevelAsync(
+                    level,
+                    testSizeBytes,
+                    WindowsBenchmarkDownloadCatalog.SamplesPerCandidate,
+                    i * WindowsBenchmarkDownloadCatalog.SamplesPerCandidate,
+                    totalSteps,
+                    progress,
+                    ct));
             }
         }
         finally

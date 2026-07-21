@@ -23,7 +23,8 @@ public class WindowsBbr2BenchmarkServiceTests
             ["Compat"] = "NewReno",
         };
         var tcp = new FakeTcp(original);
-        var service = new WindowsBbr2BenchmarkService(tcp, new FakePing(), new NetworkMutationGate());
+        var ping = new FakePing();
+        var service = new WindowsBbr2BenchmarkService(tcp, ping, new NetworkMutationGate());
 
         var results = await service.RunAsync(5_000_000);
 
@@ -32,6 +33,7 @@ public class WindowsBbr2BenchmarkServiceTests
         Assert.IsTrue(tcp.ProviderCalls[0].Values.All(v => v == "BBR2"));
         Assert.IsTrue(tcp.ProviderCalls[1].Values.All(v => v == "default"));
         CollectionAssert.AreEquivalent(original.ToList(), tcp.ProviderCalls[2].ToList());
+        CollectionAssert.AreEqual(new[] { 3, 3 }, ping.SampleCounts);
     }
 
     private sealed class FakeTcp(IReadOnlyDictionary<string, string> original) : TcpTuningServiceTestStub
@@ -49,7 +51,13 @@ public class WindowsBbr2BenchmarkServiceTests
 
     private sealed class FakePing : ILoadedPingMeasurementService
     {
-        public Task<LoadedPingMeasurementResult> MeasureAsync(int testSizeBytes, int sampleCount, IProgress<int>? progress = null, CancellationToken ct = default) =>
-            Task.FromResult(new LoadedPingMeasurementResult(true, 12, 10, 14, sampleCount, null));
+        public List<int> SampleCounts { get; } = [];
+
+        public Task<LoadedPingMeasurementResult> MeasureAsync(
+            int testSizeBytes, int sampleCount, IProgress<int>? progress = null, CancellationToken ct = default)
+        {
+            SampleCounts.Add(sampleCount);
+            return Task.FromResult(new LoadedPingMeasurementResult(true, 12, 10, 14, sampleCount, null));
+        }
     }
 }

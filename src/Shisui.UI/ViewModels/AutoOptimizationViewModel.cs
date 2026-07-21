@@ -20,6 +20,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
     private readonly IBbr2BenchmarkService? _bbr2BenchmarkService;
     private readonly ITcpOptionBenchmarkService? _tcpOptionBenchmarkService;
     private readonly ITcpTuningService? _tcpTuningService;
+    private readonly ILegacyNetworkDiagnosticsService? _legacyNetworkDiagnosticsService;
     private readonly TcpTuningViewModel? _tcpTuningViewModel;
     private CancellationTokenSource? _benchmarkCts;
 
@@ -31,6 +32,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
         IBbr2BenchmarkService? bbr2BenchmarkService = null,
         ITcpOptionBenchmarkService? tcpOptionBenchmarkService = null,
         ITcpTuningService? tcpTuningService = null,
+        ILegacyNetworkDiagnosticsService? legacyNetworkDiagnosticsService = null,
         TcpTuningViewModel? tcpTuningViewModel = null)
     {
         DnsSettings = dnsSettings;
@@ -40,6 +42,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
         _bbr2BenchmarkService = bbr2BenchmarkService;
         _tcpOptionBenchmarkService = tcpOptionBenchmarkService;
         _tcpTuningService = tcpTuningService;
+        _legacyNetworkDiagnosticsService = legacyNetworkDiagnosticsService;
         _tcpTuningViewModel = tcpTuningViewModel;
 
         BinaryGroups =
@@ -58,6 +61,13 @@ public partial class AutoOptimizationViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsOperationRunning));
                 OnPropertyChanged(nameof(CanApplyRecommendations));
             }
+            else if (e.PropertyName == nameof(DnsSettingsViewModel.SelectedAdapter))
+            {
+                LegacyNetworkFindings.Clear();
+                LegacyDiagnosticsStatusText = string.Empty;
+                HasLegacyDiagnosticsWarnings = false;
+                CanResetSelectedNic = false;
+            }
         };
     }
 
@@ -65,6 +75,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
     public DnsSettingsViewModel DnsSettings { get; }
     public ObservableCollection<AutoTuningBenchmarkRow> AutoTuningResults { get; } = [];
     public ObservableCollection<BinaryOptimizationGroup> BinaryGroups { get; }
+    public ObservableCollection<LegacyNetworkDiagnosticFinding> LegacyNetworkFindings { get; } = [];
     private BinaryOptimizationGroup Bbr2Group => BinaryGroups[0];
     private BinaryOptimizationGroup RscGroup => BinaryGroups[1];
     private BinaryOptimizationGroup EcnGroup => BinaryGroups[2];
@@ -76,7 +87,10 @@ public partial class AutoOptimizationViewModel : ObservableObject
         _bbr2BenchmarkService is not null && _tcpOptionBenchmarkService is not null &&
         _tcpTuningService is not null;
 
-    public bool IsOperationRunning => DnsSettings.IsBusy || IsBenchmarkRunning || IsApplyingRecommendations;
+    public bool IsLegacyDiagnosticsAvailable => _legacyNetworkDiagnosticsService is not null;
+
+    public bool IsOperationRunning => DnsSettings.IsBusy || IsBenchmarkRunning || IsApplyingRecommendations ||
+        IsLegacyDiagnosticsRunning || IsResettingNic;
     public bool CanApplyRecommendations => IsBenchmarkAvailable && !IsOperationRunning && HasAnyRecommendation;
     private bool HasAnyRecommendation => RecommendedAutoTuningLevel is not null || RecommendedBbr2 is not null ||
         RecommendedRsc is not null || RecommendedEcn is not null || RecommendedRss is not null ||
@@ -89,7 +103,12 @@ public partial class AutoOptimizationViewModel : ObservableObject
     [ObservableProperty] private bool isBenchmarkRunning;
     [ObservableProperty] private bool hasMeasurementRun;
     [ObservableProperty] private bool isApplyingRecommendations;
+    [ObservableProperty] private bool isLegacyDiagnosticsRunning;
+    [ObservableProperty] private bool isResettingNic;
+    [ObservableProperty] private bool hasLegacyDiagnosticsWarnings;
+    [ObservableProperty] private bool canResetSelectedNic;
     [ObservableProperty] private string overallStatusText = string.Empty;
+    [ObservableProperty] private string legacyDiagnosticsStatusText = string.Empty;
     [ObservableProperty] private string autoTuningStatusText = string.Empty;
     [ObservableProperty] private AutoTuningLevel? recommendedAutoTuningLevel;
     [ObservableProperty] private BinaryOptimizationRecommendation? recommendedBbr2;
@@ -100,6 +119,8 @@ public partial class AutoOptimizationViewModel : ObservableObject
 
     partial void OnIsBenchmarkRunningChanged(bool value) => NotifyOperationState();
     partial void OnIsApplyingRecommendationsChanged(bool value) => NotifyOperationState();
+    partial void OnIsLegacyDiagnosticsRunningChanged(bool value) => NotifyOperationState();
+    partial void OnIsResettingNicChanged(bool value) => NotifyOperationState();
     partial void OnHasMeasurementRunChanged(bool value) => OnPropertyChanged(nameof(AutoTuningRecommendationText));
     partial void OnRecommendedAutoTuningLevelChanged(AutoTuningLevel? value) => NotifyRecommendations();
     partial void OnRecommendedBbr2Changed(BinaryOptimizationRecommendation? value) => NotifyRecommendations();
@@ -126,6 +147,85 @@ public partial class AutoOptimizationViewModel : ObservableObject
     {
         await DnsSettings.RunOneClickOptimizationAsync();
         if (_tcpTuningViewModel is not null) await _tcpTuningViewModel.RefreshStateAfterExternalChangeAsync();
+    }
+
+    [RelayCommand]
+    private async Task RunLegacyNetworkDiagnosticsAsync()
+    {
+        if (_legacyNetworkDiagnosticsService is null)
+        {
+            LegacyDiagnosticsStatusText = "使い込んだPC向け診断はWindowsでのみ利用できます";
+            return;
+        }
+
+        if (DnsSettings.SelectedAdapter is not { } adapter)
+        {
+            LegacyDiagnosticsStatusText = "診断するネットワークアダプターを選択してください";
+            return;
+        }
+
+        IsLegacyDiagnosticsRunning = true;
+        LegacyNetworkFindings.Clear();
+        HasLegacyDiagnosticsWarnings = false;
+        CanResetSelectedNic = false;
+        LegacyDiagnosticsStatusText = "NIC・ドライバー・古いネットワーク設定を診断しています…";
+        try
+        {
+            var report = await _legacyNetworkDiagnosticsService.DiagnoseAsync(adapter.Id);
+            foreach (var finding in report.Findings)
+            {
+                LegacyNetworkFindings.Add(finding);
+            }
+
+            HasLegacyDiagnosticsWarnings = report.HasWarnings;
+            CanResetSelectedNic = report.RecommendNicReset;
+            LegacyDiagnosticsStatusText = report.HasWarnings
+                ? $"{report.Findings.Count(f => f.IsWarning)} 件の確認項目があります。案内に沿って必要なものだけ修復してください"
+                : "診断が完了しました。明確なネットワーク残骸は見つかりませんでした";
+        }
+        catch (Exception ex)
+        {
+            LegacyDiagnosticsStatusText = $"診断に失敗しました: {ex.Message}";
+            LoggerBootstrap.Log.Error("使い込んだPC向けネットワーク診断に失敗しました", ex);
+        }
+        finally
+        {
+            IsLegacyDiagnosticsRunning = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ResetSelectedNicAdvancedPropertiesAsync()
+    {
+        if (_legacyNetworkDiagnosticsService is null || DnsSettings.SelectedAdapter is not { } adapter ||
+            !CanResetSelectedNic)
+        {
+            return;
+        }
+
+        IsResettingNic = true;
+        try
+        {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
+            var result = await _legacyNetworkDiagnosticsService.ResetAdapterAdvancedPropertiesAsync(adapter.Id);
+            CommandExecuted?.Invoke(this, result);
+            LegacyDiagnosticsStatusText = result.Success
+                ? $"{adapter.DisplayName} のNIC詳細設定を工場出荷値へ戻しました。接続が戻ってから再診断してください"
+                : $"{adapter.DisplayName} のNIC詳細設定を初期化できませんでした。実行ログを確認してください";
+            if (result.Success)
+            {
+                CanResetSelectedNic = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            LegacyDiagnosticsStatusText = $"NIC詳細設定の初期化に失敗しました: {ex.Message}";
+            LoggerBootstrap.Log.Error("NIC詳細設定の初期化に失敗しました", ex);
+        }
+        finally
+        {
+            IsResettingNic = false;
+        }
     }
 
     [RelayCommand]

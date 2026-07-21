@@ -12,7 +12,6 @@ public sealed class WindowsBbr2BenchmarkService(
     ILoadedPingMeasurementService loadedPingMeasurementService,
     INetworkMutationGate networkMutationGate) : IBbr2BenchmarkService
 {
-    private const int SamplesPerState = 5;
     private static readonly bool[] StatesToTest = [true, false];
 
     public async Task<IReadOnlyList<Bbr2BenchmarkResult>> RunAsync(
@@ -47,11 +46,18 @@ public sealed class WindowsBbr2BenchmarkService(
                     continue;
                 }
 
-                await Task.Delay(500, ct);
-                var offset = stateIndex * SamplesPerState;
+                await Task.Delay(WindowsBenchmarkDownloadCatalog.SettingSettleDelayMs, ct);
+                var offset = stateIndex * WindowsBenchmarkDownloadCatalog.SamplesPerCandidate;
                 var stateProgress = progress is null ? null : new InlineProgress<int>(sampleIndex =>
-                    progress.Report(new Bbr2BenchmarkProgress(enabled, offset + sampleIndex, StatesToTest.Length * SamplesPerState)));
-                var measurement = await loadedPingMeasurementService.MeasureAsync(testSizeBytes, SamplesPerState, stateProgress, ct);
+                    progress.Report(new Bbr2BenchmarkProgress(
+                        enabled,
+                        offset + sampleIndex,
+                        StatesToTest.Length * WindowsBenchmarkDownloadCatalog.SamplesPerCandidate)));
+                var measurement = await loadedPingMeasurementService.MeasureAsync(
+                    testSizeBytes,
+                    WindowsBenchmarkDownloadCatalog.SamplesPerCandidate,
+                    stateProgress,
+                    ct);
                 results.Add(new Bbr2BenchmarkResult(enabled, measurement.Success,
                     measurement.AveragePingMs, measurement.MinPingMs, measurement.MaxPingMs,
                     measurement.SampleCount, measurement.ErrorMessage));

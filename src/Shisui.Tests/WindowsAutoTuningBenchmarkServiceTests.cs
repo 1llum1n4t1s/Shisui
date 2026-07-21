@@ -22,7 +22,7 @@ public class WindowsAutoTuningBenchmarkServiceTests
 
         Assert.HasCount(5, results);
         Assert.AreEqual(5, downloadSpeed.CallCount);
-        CollectionAssert.AreEqual(new[] { 5, 5, 5, 5, 5 }, downloadSpeed.SampleCounts);
+        CollectionAssert.AreEqual(new[] { 3, 3, 3, 3, 3 }, downloadSpeed.SampleCounts);
         CollectionAssert.AreEqual(new[]
         {
             AutoTuningLevel.Disabled,
