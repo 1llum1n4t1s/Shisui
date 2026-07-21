@@ -56,8 +56,12 @@ public static class WindowsLegacyNetworkDiagnosticsParser
 
     public static bool? ParseWinsockSendAutoTuning(string output)
     {
+        // netsh は GUI プロセスからリダイレクト実行すると OS の表示言語で返す。
+        // 日本語 Windows では「有効にされています / 無効にされています」となる。
         if (output.Contains("disabled", StringComparison.OrdinalIgnoreCase)) return false;
+        if (output.Contains("無効", StringComparison.Ordinal)) return false;
         if (output.Contains("enabled", StringComparison.OrdinalIgnoreCase)) return true;
+        if (output.Contains("有効", StringComparison.Ordinal)) return true;
         return null;
     }
 

@@ -30,6 +30,8 @@ public class WindowsLegacyNetworkDiagnosticsTests
         var args = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildAdapterSnapshotArguments("Wi-Fi 'Test'");
 
         StringAssert.Contains(args, "Get-NetAdapterStatistics -Name 'Wi-Fi ''Test'''", args);
+        StringAssert.Contains(args, "[string]$a.DriverDate", args);
+        Assert.IsFalse(args.Contains("DriverDate.ToString", StringComparison.Ordinal), args);
         StringAssert.Contains(args, "'RX_ERRORS='", args);
         StringAssert.Contains(args, "'TASK_OFFLOAD_DISABLED='", args);
     }
@@ -58,12 +60,16 @@ public class WindowsLegacyNetworkDiagnosticsTests
     }
 
     [TestMethod]
-    public void ParseWinsockSendAutoTuning_RecognizesStableValueTokens()
+    public void ParseWinsockSendAutoTuning_RecognizesEnglishAndJapaneseValueTokens()
     {
         Assert.IsTrue(WindowsLegacyNetworkDiagnosticsParser.ParseWinsockSendAutoTuning(
             "Winsock send autotuning is enabled."));
         Assert.IsFalse(WindowsLegacyNetworkDiagnosticsParser.ParseWinsockSendAutoTuning(
             "Winsock send autotuning is disabled."));
+        Assert.IsTrue(WindowsLegacyNetworkDiagnosticsParser.ParseWinsockSendAutoTuning(
+            "Winsock 送信自動チューニングは有効にされています。"));
+        Assert.IsFalse(WindowsLegacyNetworkDiagnosticsParser.ParseWinsockSendAutoTuning(
+            "Winsock 送信自動チューニングは無効にされています。"));
         Assert.IsNull(WindowsLegacyNetworkDiagnosticsParser.ParseWinsockSendAutoTuning("状態不明"));
     }
 
@@ -118,7 +124,7 @@ public class WindowsLegacyNetworkDiagnosticsTests
             var output = arguments switch
             {
                 WindowsLegacyNetworkDiagnosticsCommandBuilder.WinsockArguments =>
-                    "Winsock send autotuning is disabled.",
+                    "Winsock 送信自動チューニングは無効にされています。",
                 WindowsLegacyNetworkDiagnosticsCommandBuilder.ProblemDevicesArguments =>
                     "<PnpUtil><Device InstanceId=\"PROBLEM\"/></PnpUtil>",
                 _ when arguments.Contains("Get-NetAdapterStatistics", StringComparison.Ordinal) => AdapterOutput,

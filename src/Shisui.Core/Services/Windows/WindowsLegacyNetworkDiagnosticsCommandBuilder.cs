@@ -22,7 +22,7 @@ public static class WindowsLegacyNetworkDiagnosticsCommandBuilder
             "$task=(Get-ItemProperty -LiteralPath 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters' -Name DisableTaskOffload -ErrorAction SilentlyContinue).DisableTaskOffload;" +
             "'DESCRIPTION='+$a.InterfaceDescription;" +
             "'DRIVER_VERSION='+$a.DriverVersion;" +
-            "'DRIVER_DATE='+$(if($null -eq $a.DriverDate){''}else{$a.DriverDate.ToString('yyyy-MM-dd')});" +
+            "'DRIVER_DATE='+$(if($null -eq $a.DriverDate){''}else{[string]$a.DriverDate});" +
             "'LINK_SPEED='+$a.LinkSpeed;" +
             "'RX_ERRORS='+[uint64]$s.ReceivedPacketErrors;" +
             "'TX_ERRORS='+[uint64]$s.OutboundPacketErrors;" +
