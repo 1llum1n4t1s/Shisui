@@ -122,10 +122,12 @@ public class WindowsAutoTuningBenchmarkServiceTests
 
         public Task<IReadOnlyList<CommandExecutionResult>> EnableBbr2Async(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<CommandExecutionResult>> SetCongestionProvidersAsync(IReadOnlyDictionary<string, string> providers, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<CommandExecutionResult> RevertTcpGlobalOptionToDefaultAsync(TcpGlobalOption option, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<CommandExecutionResult>> SetMtuAsync(string adapterId, int mtu, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default) => throw new NotSupportedException();

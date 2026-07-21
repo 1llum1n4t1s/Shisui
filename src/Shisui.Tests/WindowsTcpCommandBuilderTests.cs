@@ -42,6 +42,28 @@ public class WindowsTcpCommandBuilderTests
     }
 
     [TestMethod]
+    public void BuildSetCongestionProviders_RestoresEachTemplateExactly()
+    {
+        var providers = new Dictionary<string, string>
+        {
+            ["Internet"] = "CUBIC",
+            ["InternetCustom"] = "BBR2",
+            ["Datacenter"] = "DCTCP",
+            ["DatacenterCustom"] = "CUBIC",
+            ["Compat"] = "NewReno",
+        };
+
+        CollectionAssert.AreEqual(new[]
+        {
+            "int tcp set supplemental template=Internet congestionprovider=CUBIC",
+            "int tcp set supplemental template=InternetCustom congestionprovider=BBR2",
+            "int tcp set supplemental template=Datacenter congestionprovider=DCTCP",
+            "int tcp set supplemental template=DatacenterCustom congestionprovider=CUBIC",
+            "int tcp set supplemental template=Compat congestionprovider=NewReno",
+        }, WindowsTcpCommandBuilder.BuildSetCongestionProviders(providers).ToList());
+    }
+
+    [TestMethod]
     public void BuildRevertGlobalOptionsToDefault_ResetsCommonTweakValuesIndividually()
     {
         var commands = WindowsTcpCommandBuilder.BuildRevertGlobalOptionsToDefault();
@@ -51,7 +73,7 @@ public class WindowsTcpCommandBuilderTests
             "int tcp set global rss=default",
             "int tcp set global rsc=default",
             "int tcp set global ecncapability=default",
-            "int tcp set global timestamps=default",
+            "int tcp set global timestamps=allowed",
             "int tcp set global initialrto=3000",
             "int tcp set global nonsackrttresiliency=default",
             "int tcp set global maxsynretransmissions=2",
@@ -74,6 +96,19 @@ public class WindowsTcpCommandBuilderTests
     public void BuildSetGlobalOption_ProducesExpectedCommand(TcpGlobalOption option, bool enabled, string expected)
     {
         Assert.AreEqual(expected, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled));
+    }
+
+    [TestMethod]
+    [DataRow(TcpGlobalOption.Rsc, "int tcp set global rsc=default")]
+    [DataRow(TcpGlobalOption.EcnCapability, "int tcp set global ecncapability=default")]
+    [DataRow(TcpGlobalOption.Timestamps, "int tcp set global timestamps=allowed")]
+    [DataRow(TcpGlobalOption.Rss, "int tcp set global rss=default")]
+    [DataRow(TcpGlobalOption.FastOpen, "int tcp set global fastopen=default")]
+    public void BuildRevertGlobalOptionToDefault_ProducesWindowsDefaultCommand(
+        TcpGlobalOption option,
+        string expected)
+    {
+        Assert.AreEqual(expected, WindowsTcpCommandBuilder.BuildRevertGlobalOptionToDefault(option));
     }
 
     [TestMethod]

@@ -1,0 +1,137 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Shisui.UI.ViewModels"
+             xmlns:models="using:Shisui.Core.Models"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             x:Class="Shisui.UI.Views.AutoOptimizationView"
+             x:DataType="vm:AutoOptimizationViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="8,0">
+      <TextBlock Classes="h1" Text="自動最適化" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Margin="4,0,4,12"
+                 Text="推奨状態へ整えるクイック最適化と、実測結果から環境別の設定を決める一括計測をここで実行できます。Windowsではクイック最適化後にPCを再起動し、その後に一括計測する順序を推奨します。" />
+
+      <primitives:HeaderedContentControl Header="クイック最適化">
+        <StackPanel Spacing="10">
+          <TextBlock Text="対象ネットワークアダプター" FontWeight="SemiBold" />
+          <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Grid.Column="0"
+                      ItemsSource="{Binding DnsSettings.Adapters}"
+                      SelectedItem="{Binding DnsSettings.SelectedAdapter}"
+                      IsEnabled="{Binding !IsOperationRunning}"
+                      HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate DataType="models:NetworkAdapterInfo">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding DisplayName}" />
+                    <TextBlock Text="(無効)" Classes="caption" IsVisible="{Binding !IsUp}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding DnsSettings.LoadAdaptersCommand}"
+                    IsEnabled="{Binding !IsOperationRunning}" Margin="8,0,0,0" />
+          </Grid>
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10">
+            <StackPanel Spacing="8">
+              <TextBlock Text="何を設定すればいいか分からない場合の安全な初期設定です" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding DnsSettings.OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
+              <Button Content="おまかせ高速化設定" Command="{Binding RunQuickOptimizationCommand}"
+                      Classes="accent" IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+          <TextBlock Text="{Binding DnsSettings.StatusText}" Classes="caption" TextWrapping="Wrap" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="計測して最適化">
+        <Panel>
+          <StackPanel Spacing="10" IsVisible="{Binding IsBenchmarkAvailable}">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="Auto-Tuning・BBR2・RSC・ECN・RSS・TCPタイムスタンプの6項目をまとめて比較します。各候補は固定5回、合計75回・最大約375MBを受信します。速度に効く項目はダウンロード速度、遅延に効く項目はダウンロード負荷時Pingで判定します。計測中の一時設定は終了・キャンセル・失敗時に開始前へ戻り、下の適用ボタンを押すまで確定しません。" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="すべて計測" Command="{Binding RunAllBenchmarksCommand}"
+                    Classes="accent" IsEnabled="{Binding !IsOperationRunning}" />
+            <Button Content="キャンセル" Command="{Binding CancelBenchmarksCommand}"
+                    IsVisible="{Binding IsBenchmarkRunning}" />
+          </StackPanel>
+          <TextBlock Text="{Binding OverallStatusText}" Classes="caption" TextWrapping="Wrap" />
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10" Margin="0,4,0,0">
+            <StackPanel Spacing="8">
+              <TextBlock Text="Auto-Tuning — ダウンロード速度" FontWeight="SemiBold" FontSize="15" />
+              <TextBlock Text="{Binding AutoTuningStatusText}" Classes="caption" TextWrapping="Wrap" />
+              <ItemsControl ItemsSource="{Binding AutoTuningResults}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:AutoTuningBenchmarkRow">
+                    <Border Background="{DynamicResource Brush.Container}" CornerRadius="6" Padding="10,6" Margin="0,2">
+                      <Grid ColumnDefinitions="140,24,*">
+                        <TextBlock Grid.Column="0" Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding SpeedText}" FontFamily="Consolas,Menlo,monospace"
+                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding AutoTuningRecommendationText}" FontWeight="SemiBold" />
+            </StackPanel>
+          </Border>
+
+          <ItemsControl ItemsSource="{Binding BinaryGroups}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="vm:BinaryOptimizationGroup">
+                <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" />
+                    <TextBlock Text="{Binding StatusText}" Classes="caption" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Results}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:BinaryBenchmarkRow">
+                          <Border Background="{DynamicResource Brush.Container}" CornerRadius="6" Padding="10,6" Margin="0,2">
+                            <Grid ColumnDefinitions="190,24,*">
+                              <TextBlock Grid.Column="0" Text="{Binding StateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
+                              <TextBlock Grid.Column="2" Text="{Binding ResultText}" FontFamily="Consolas,Menlo,monospace"
+                                         VerticalAlignment="Center" TextWrapping="Wrap" />
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding RecommendationText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Grid.Column="0" Spacing="3" Margin="0,0,12,0">
+                <TextBlock Text="推奨構成" FontWeight="SemiBold" FontSize="15" />
+                <TextBlock Text="{Binding AutoTuningRecommendationText}" Classes="caption" />
+                <ItemsControl ItemsSource="{Binding BinaryGroups}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="vm:BinaryOptimizationGroup">
+                      <TextBlock Text="{Binding RecommendationText}" Classes="caption" TextWrapping="Wrap" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+              <Button Grid.Column="1" Content="推奨設定を一括適用" Command="{Binding ApplyRecommendationsCommand}"
+                      Classes="accent" IsEnabled="{Binding CanApplyRecommendations}" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          </StackPanel>
+
+          <TextBlock IsVisible="{Binding !IsBenchmarkAvailable}" Classes="caption" TextWrapping="Wrap"
+                     Text="計測によるTCP設定最適化はWindowsでのみ利用できます。" />
+        </Panel>
+      </primitives:HeaderedContentControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

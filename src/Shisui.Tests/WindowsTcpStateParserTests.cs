@@ -121,6 +121,25 @@ public class WindowsTcpStateParserTests
     }
 
     [TestMethod]
+    public void Parse_NamedProviders_PreservesEachTemplateForRestore()
+    {
+        const string sample = """
+            CC=Internet|CUBIC
+            CC=InternetCustom|BBR2
+            CC=Datacenter|DCTCP
+            CC=DatacenterCustom|CUBIC
+            CC=Compat|NewReno
+            """;
+
+        var providers = WindowsTcpStateParser.Parse(sample).GetCongestionProviders();
+
+        Assert.HasCount(5, providers);
+        Assert.AreEqual("CUBIC", providers["Internet"]);
+        Assert.AreEqual("BBR2", providers["InternetCustom"]);
+        Assert.AreEqual(Bbr2Status.Partial, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
     public void Parse_NoAutoTuneLine_ReturnsEmptyString()
     {
         var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample);

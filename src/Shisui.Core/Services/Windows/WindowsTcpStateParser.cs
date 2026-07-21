@@ -12,7 +12,8 @@ public static class WindowsTcpStateParser
     public static TcpSettingsSnapshot Parse(string stdout)
     {
         var options = new Dictionary<TcpGlobalOption, string>();
-        var providers = new List<string>();
+        var providerValues = new List<string>();
+        var providers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var autoTuningLevel = string.Empty;
 
         foreach (var rawLine in stdout.Split('\n'))
@@ -38,14 +39,29 @@ public static class WindowsTcpStateParser
                 case "CC":
                     if (value.Length > 0)
                     {
-                        providers.Add(value);
+                        var separator = value.IndexOf('|');
+                        if (separator > 0 && separator < value.Length - 1)
+                        {
+                            var template = value[..separator].Trim();
+                            var provider = value[(separator + 1)..].Trim();
+                            if (template.Length > 0 && provider.Length > 0)
+                            {
+                                providers[template] = provider;
+                                providerValues.Add(provider);
+                            }
+                        }
+                        else
+                        {
+                            // 旧形式のテスト採取値もBBR2状態判定には引き続き利用する。
+                            providerValues.Add(value);
+                        }
                     }
 
                     break;
             }
         }
 
-        return new TcpSettingsSnapshot(ResolveBbr2(providers), options, autoTuningLevel);
+        return new TcpSettingsSnapshot(ResolveBbr2(providerValues), options, autoTuningLevel, providers);
     }
 
     private static Bbr2Status ResolveBbr2(IReadOnlyList<string> providers)

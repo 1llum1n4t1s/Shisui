@@ -51,13 +51,6 @@
             </StackPanel>
           </StackPanel>
 
-          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10" Margin="0,4,0,0">
-            <StackPanel Spacing="8">
-              <TextBlock Text="何を設定すればいいか分からない場合は、これだけ押せば OK です" FontWeight="SemiBold" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
-              <Button Content="おまかせ高速化設定" Command="{Binding OneClickOptimizeCommand}" Classes="accent" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
-            </StackPanel>
-          </Border>
         </StackPanel>
       </primitives:HeaderedContentControl>
 

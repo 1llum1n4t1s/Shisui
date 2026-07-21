@@ -24,11 +24,15 @@ public enum Bbr2Status
 public sealed record TcpSettingsSnapshot(
     Bbr2Status Bbr2,
     IReadOnlyDictionary<TcpGlobalOption, string> GlobalOptions,
-    string AutoTuningLevel = "")
+    string AutoTuningLevel = "",
+    IReadOnlyDictionary<string, string>? CongestionProviders = null)
 {
     public static readonly TcpSettingsSnapshot Unknown =
         new(Bbr2Status.Unknown, new Dictionary<TcpGlobalOption, string>());
 
     public string GetOptionValue(TcpGlobalOption option) =>
         GlobalOptions.TryGetValue(option, out var value) ? value : string.Empty;
+
+    public IReadOnlyDictionary<string, string> GetCongestionProviders() =>
+        CongestionProviders ?? new Dictionary<string, string>();
 }

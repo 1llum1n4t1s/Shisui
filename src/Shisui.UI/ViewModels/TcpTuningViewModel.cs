@@ -13,8 +13,6 @@ namespace Shisui.UI.ViewModels;
 public partial class TcpTuningViewModel(
     ITcpTuningService tcpTuningService,
     INetworkAdapterService adapterService,
-    IAutoTuningBenchmarkService autoTuningBenchmarkService,
-    IRscBenchmarkService rscBenchmarkService,
     INetworkMutationGate networkMutationGate) : ObservableObject
 {
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
@@ -57,38 +55,9 @@ public partial class TcpTuningViewModel(
 
     public IReadOnlyList<AutoTuningLevel> AutoTuningLevels { get; } = Enum.GetValues<AutoTuningLevel>();
 
-    // Auto-Tuning の速度計測と RSC の負荷中Ping計測で共用する固定ダウンロードサイズ。
-    private const int BenchmarkLoadSizeBytes = 5_000_000;
-
-    [ObservableProperty]
-    private bool isBenchmarkRunning;
-
-    partial void OnIsBenchmarkRunningChanged(bool value) => OnPropertyChanged(nameof(IsOperationRunning));
-
-    /// <summary>BBR2・TCPオプション・Auto-Tuning設定ボタンの排他制御用。ベンチマーク実行中に他の
-    /// netsh操作を許すと、ベンチマーク終了時の設定復元(finally)と競合し、ユーザーの手動設定が
-    /// 静かに上書きされて消える(2026-07-06 /rere レビューで発見)。IsBusy と IsBenchmarkRunning は
-    /// 独立したフラグのままにし、UI側の判定だけをここに集約する。</summary>
-    public bool IsOperationRunning => IsBusy || IsBenchmarkRunning || IsRscBenchmarkRunning;
-
-    [ObservableProperty]
-    private string benchmarkStatusText = string.Empty;
-
-    public ObservableCollection<AutoTuningBenchmarkRow> BenchmarkResults { get; } = [];
-
-    private CancellationTokenSource? benchmarkCts;
-
-    [ObservableProperty]
-    private bool isRscBenchmarkRunning;
-
-    partial void OnIsRscBenchmarkRunningChanged(bool value) => OnPropertyChanged(nameof(IsOperationRunning));
-
-    [ObservableProperty]
-    private string rscBenchmarkStatusText = string.Empty;
-
-    public ObservableCollection<RscBenchmarkRow> RscBenchmarkResults { get; } = [];
-
-    private CancellationTokenSource? rscBenchmarkCts;
+    /// <summary>TCP 手動操作の排他制御用。計測側との競合は共有の
+    /// <see cref="INetworkMutationGate"/> がプロセス全体で防止する。</summary>
+    public bool IsOperationRunning => IsBusy;
 
     [ObservableProperty]
     private bool isMtuBusy;
@@ -260,141 +229,6 @@ public partial class TcpTuningViewModel(
     }
 
     [RelayCommand]
-    private async Task RunAutoTuningBenchmarkAsync()
-    {
-        benchmarkCts = new CancellationTokenSource();
-        IsBenchmarkRunning = true;
-        BenchmarkResults.Clear();
-        BenchmarkStatusText = "計測を開始します…";
-
-        var progress = new Progress<AutoTuningBenchmarkProgress>(p =>
-            BenchmarkStatusText = $"計測中: {p.Level} ({p.CompletedCount + 1}/{p.TotalCount})…");
-
-        IReadOnlyList<AutoTuningBenchmarkResult> results = [];
-        try
-        {
-            results = await autoTuningBenchmarkService.RunAsync(BenchmarkLoadSizeBytes, progress, benchmarkCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            BenchmarkStatusText = "計測をキャンセルしました (設定は元に戻しています)";
-        }
-        catch (Exception ex)
-        {
-            BenchmarkStatusText = $"計測に失敗しました: {ex.Message}";
-        }
-        finally
-        {
-            IsBenchmarkRunning = false;
-            benchmarkCts = null;
-            // 計測サービスは成功・キャンセル・例外のいずれでも開始前状態へ戻してから返る。
-            await LoadStateAsync();
-        }
-
-        if (results.Count == 0)
-        {
-            return;
-        }
-
-        var best = results
-            .Where(r => r.Success && r.AverageMbps is not null)
-            .OrderByDescending(r => r.AverageMbps)
-            .FirstOrDefault();
-
-        foreach (var result in results)
-        {
-            var speedText = result.Success && result.AverageMbps is { } averageMbps
-                ? $"平均 {averageMbps:F1} Mbps (最小{result.MinMbps:F1}〜最大{result.MaxMbps:F1}, {result.SampleCount}回平均)"
-                : $"失敗 ({result.ErrorMessage})";
-            BenchmarkResults.Add(new AutoTuningBenchmarkRow(result.Level, speedText, best is not null && result.Level == best.Level));
-        }
-
-        BenchmarkStatusText = best is not null
-            ? $"計測が完了しました。平均ダウンロード速度が最も高い {best.Level} を選択しました。「設定」を押すと適用されます"
-            : "計測に失敗しました。ネットワーク接続を確認してください";
-
-        if (best is not null)
-        {
-            SelectedAutoTuningLevel = best.Level;
-        }
-    }
-
-    [RelayCommand]
-    private void CancelAutoTuningBenchmark() => benchmarkCts?.Cancel();
-
-    [RelayCommand]
-    private async Task RunRscBenchmarkAsync()
-    {
-        rscBenchmarkCts = new CancellationTokenSource();
-        IsRscBenchmarkRunning = true;
-        RscBenchmarkResults.Clear();
-        RscBenchmarkStatusText = "RSC 有効・無効の比較を開始します…";
-
-        var progress = new Progress<RscBenchmarkProgress>(p =>
-            RscBenchmarkStatusText = $"計測中: RSC {(p.Enabled ? "有効" : "無効")} ({p.CompletedCount + 1}/{p.TotalCount})…");
-
-        IReadOnlyList<RscBenchmarkResult> results = [];
-        try
-        {
-            results = await rscBenchmarkService.RunAsync(
-                BenchmarkLoadSizeBytes, progress, rscBenchmarkCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            RscBenchmarkStatusText = "計測をキャンセルしました (RSC は開始前の状態に戻しています)";
-        }
-        catch (Exception ex)
-        {
-            RscBenchmarkStatusText = $"計測に失敗しました: {ex.Message}";
-        }
-        finally
-        {
-            IsRscBenchmarkRunning = false;
-            rscBenchmarkCts = null;
-            await LoadStateAsync();
-        }
-
-        if (results.Count == 0)
-        {
-            return;
-        }
-
-        var enabledResult = results.FirstOrDefault(r => r.Enabled && r.Success && r.AveragePingMs is not null);
-        var disabledResult = results.FirstOrDefault(r => !r.Enabled && r.Success && r.AveragePingMs is not null);
-        var difference = enabledResult?.AveragePingMs is { } enabledPing && disabledResult?.AveragePingMs is { } disabledPing
-            ? Math.Abs(enabledPing - disabledPing)
-            : (double?)null;
-        var meaningfulDifference = difference is >= 1.0;
-        var bestEnabled = meaningfulDifference && enabledResult!.AveragePingMs < disabledResult!.AveragePingMs;
-
-        foreach (var result in results)
-        {
-            var pingText = result.Success && result.AveragePingMs is { } pingMs
-                ? $"平均 {pingMs:F1} ms (最小{result.MinPingMs:F1}〜最大{result.MaxPingMs:F1}, {result.SampleCount}回平均)"
-                : $"失敗 ({result.ErrorMessage})";
-            var isBest = meaningfulDifference && result.Success && result.Enabled == bestEnabled;
-            RscBenchmarkResults.Add(new RscBenchmarkRow(result.Enabled ? "RSC 有効" : "RSC 無効", pingText, isBest));
-        }
-
-        if (difference is null)
-        {
-            RscBenchmarkStatusText = "比較に必要な両方の計測が揃いませんでした。失敗内容を確認してください";
-        }
-        else if (!meaningfulDifference)
-        {
-            RscBenchmarkStatusText = "差は 1 ms 未満でした。RSC は Windows 既定の有効を推奨します (開始前の状態へ復元済み)";
-        }
-        else
-        {
-            var recommendedState = bestEnabled ? "有効" : "無効";
-            RscBenchmarkStatusText = $"RSC {recommendedState}の方が平均 {difference.Value:F1} ms 低い結果でした。適用する場合は上のボタンで切り替えてください (開始前の状態へ復元済み)";
-        }
-    }
-
-    [RelayCommand]
-    private void CancelRscBenchmark() => rscBenchmarkCts?.Cancel();
-
-    [RelayCommand]
     private async Task RefreshStateAsync()
     {
         IsBusy = true;
@@ -496,6 +330,9 @@ public partial class TcpTuningViewModel(
 
         await LoadStateAsync();
     }
+
+    /// <summary>自動最適化タブなど、外部の設定操作後に手動調整タブの状態表示を同期する。</summary>
+    internal Task RefreshStateAfterExternalChangeAsync() => LoadStateAsync();
 
     private async Task RunManyAsync(Func<CancellationToken, Task<IReadOnlyList<CommandExecutionResult>>> action, string successMessage)
     {

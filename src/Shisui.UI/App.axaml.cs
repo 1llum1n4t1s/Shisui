@@ -63,6 +63,8 @@ public partial class App : Application
             services.AddSingleton<IDownloadSpeedMeasurementService, Core.Services.Windows.WindowsDownloadSpeedMeasurementService>();
             services.AddSingleton<IAutoTuningBenchmarkService, Core.Services.Windows.WindowsAutoTuningBenchmarkService>();
             services.AddSingleton<IRscBenchmarkService, Core.Services.Windows.WindowsRscBenchmarkService>();
+            services.AddSingleton<IBbr2BenchmarkService, Core.Services.Windows.WindowsBbr2BenchmarkService>();
+            services.AddSingleton<ITcpOptionBenchmarkService, Core.Services.Windows.WindowsTcpOptionBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
@@ -92,6 +94,7 @@ public partial class App : Application
 
         services.AddSingleton<DnsSettingsViewModel>();
         services.AddSingleton<NetworkDiagnosticsViewModel>();
+        services.AddSingleton<AutoOptimizationViewModel>();
         services.AddSingleton<MainWindowViewModel>();
     }
 }

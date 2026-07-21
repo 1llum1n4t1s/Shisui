@@ -29,6 +29,19 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
         return results;
     }
 
+    public async Task<IReadOnlyList<CommandExecutionResult>> SetCongestionProvidersAsync(
+        IReadOnlyDictionary<string, string> providers,
+        CancellationToken ct = default)
+    {
+        var results = new List<CommandExecutionResult>();
+        foreach (var args in WindowsTcpCommandBuilder.BuildSetCongestionProviders(providers))
+        {
+            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
+        }
+
+        return results;
+    }
+
     public Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.ResetAllToDefault, ct);
 
@@ -51,6 +64,14 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
 
     public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled), ct);
+
+    public Task<CommandExecutionResult> RevertTcpGlobalOptionToDefaultAsync(
+        TcpGlobalOption option,
+        CancellationToken ct = default) =>
+        executor.RunAsync(
+            WindowsTcpCommandBuilder.FileName,
+            WindowsTcpCommandBuilder.BuildRevertGlobalOptionToDefault(option),
+            ct);
 
     public Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.ShowGlobalStatus, ct);

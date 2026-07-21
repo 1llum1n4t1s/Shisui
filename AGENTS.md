@@ -60,7 +60,13 @@ Velopack's own process launches succeed, and perform the actual elevation in `Pr
 if not elevated, `TryRelaunchElevated` restarts the process via `ShellExecute` + the `runas` verb (one UAC
 prompt at startup, matching the original design intent of not re-prompting per command) and exits the
 non-elevated instance. This check runs *before* `SingleInstanceGuard` is acquired, so the non-elevated process
-never holds the single-instance lock while its elevated replacement starts.
+never holds the single-instance lock while its elevated replacement starts. Release builds also set Velopack's
+`velopack.Shisui` process AppUserModelID before UI creation so the installed shortcut and elevated process share
+one taskbar identity. Debug builds must not set that product AppUserModelID: Windows can otherwise resolve the
+development EXE through the installed shortcut and show a blank taskbar icon instead of the EXE's embedded icon.
+Debug builds still perform runtime elevation because TCP/DNS benchmarks mutate system-wide settings. To keep a
+debugger attached while exercising those paths, start Visual Studio itself as administrator; a non-elevated IDE
+causes the first process to relaunch elevated and detach from that original debugging session.
 
 Windows releases are installed by the signed Velopack **PerMachine MSI** under protected `Program Files`; do not
 publish the generated PerUser `Setup.exe`. Legacy `%LocalAppData%\Shisui` builds are the one-time exception:
@@ -78,6 +84,7 @@ HKCU uninstall entry, and per-user shortcuts. A pending marker and HKCU RunOnce 
   - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDohConfigurationService`,
     `IDotConfigurationService`, `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`,
     `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
+    `IBbr2BenchmarkService`, `ITcpOptionBenchmarkService`,
     `ILoadedPingMeasurementService`, `ICommandExecutor`,
     `ISettingsService`.
   - `Models/` — `NetworkAdapterInfo`, `NetworkAdapterDetails` (MAC/link speed, read-only), `DnsServerSet`,
@@ -200,10 +207,12 @@ machine as DoH being slightly faster and more consistent (~53ms avg) than DoT (~
 "DoT is lighter/faster" claim. Full methodology/caveats (single machine, single run — not a general benchmark) are
 in the XML doc on `IDotConfigurationService`.
 
-### One-click optimization (`OneClickOptimizeAsync`, `DnsSettingsViewModel`)
+### One-click optimization (`RunOneClickOptimizationAsync`, `DnsSettingsViewModel`)
 
-Next to the adapter selector on the DNS tab, a 「おまかせ高速化設定」(recommended one-click setup) button targets
-users who don't want to understand each individual toggle. On click it: switches the selected preset to
+The 「自動最適化」 tab's 「クイック最適化」 card exposes the DNS tab's shared adapter selection and a
+「おまかせ高速化設定」 button for users who don't want to understand each individual toggle. The tab-level
+`AutoOptimizationViewModel` command delegates the mutation to `DnsSettingsViewModel.RunOneClickOptimizationAsync`
+and then refreshes the manual TCP tab's state badges. On click it: switches the selected preset to
 Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — when
 `INetworkMaintenanceService` is available (Windows; injected as `INetworkMaintenanceService? = null` the same
 way the other Windows-only services are, so macOS silently skips this step) — also runs only maintenance commands
@@ -264,6 +273,24 @@ whenever the MTU card's own adapter selection changes rather than folded into th
 card also keeps **its own adapter selector** in `TcpTuningViewModel`, independent of the DNS tab's — the two
 tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP options apply system-wide).
 
+### Unified measured optimization (`AutoOptimizationViewModel`, Windows)
+
+All A/B measurement UI lives in the left-sidebar 「自動最適化」 tab, not in the manual BBR2/TCP tab. The single
+「すべて計測」 command runs Auto-Tuning, BBR2, RSC, ECN, RSS, and TCP Timestamps in that order and builds one
+recommended configuration. Auto-Tuning and RSS use download Mbps; the other four binary settings use loaded Ping.
+The fixed run is 25 Auto-Tuning samples plus 10 samples for each of five binary settings: 75 total, up to about
+375MB at 5MB per sample. Each benchmark restores its starting state before the next begins. Recommendations are
+only suggestions until the user presses
+「推奨設定を一括適用」; that command applies whichever recommendations were successfully determined under one
+`INetworkMutationGate` lease and logs every resulting command. Loaded-Ping differences below 1ms and RSS speed
+differences below 3% are treated as inconclusive and recommend the actual Windows default instead of leaving the
+item unapplied. The fallback is Auto-Tuning Normal, default congestion providers for BBR2, `default` for
+RSC/ECN/RSS, and the documented default `Allowed` for TCP Timestamps. The separate 「クイック最適化」
+flow is not automatically chained into measurement because its legacy ACK changes require a PC restart; the UI
+instructs users to quick-optimize, restart, and then measure.
+The ViewModel rejects a benchmark before mutation when the process is not elevated and writes every benchmark
+exception to the normal Shisui file log; do not silently reduce an authorization failure to an empty result set.
+
 ### Auto-tuning benchmark (`IAutoTuningBenchmarkService`, Windows)
 
 Lets the user measure, rather than guess, which auto-tuning level suits their connection: it cycles through all
@@ -283,10 +310,8 @@ a connection's lifetime, so reusing a client across a level switch would silentl
 window; and (2) the original level must parse as a known `AutoTuningLevel` before any change is allowed. Each
 level switch checks its `CommandExecutionResult`; a failed switch is reported as a failed row and is not measured.
 The original level is restored with `CancellationToken.None` in a `finally` around the whole loop, and restore
-failure is surfaced as an error rather than success. The ViewModel applies the "best" result as a mere *suggestion* to
-the existing level `ComboBox`, not an auto-apply — and it does so only *after* calling the existing
-`LoadStateAsync()` refresh, because that refresh's own `SelectedAutoTuningLevel` write would otherwise clobber
-the suggestion if done in the other order.
+failure is surfaced as an error rather than success. `AutoOptimizationViewModel` retains the best result as a
+recommendation; the benchmark itself never leaves that level applied.
 
 **Each level is always sampled 5 times and averaged, not measured once.** The sample count is deliberately fixed:
 it is high enough to smooth one-off network jitter without exposing a tuning control that can unnecessarily inflate
@@ -301,29 +326,43 @@ samples), not per-level.
 
 `WindowsBenchmarkDownloadCatalog.Targets` lists five Hetzner regions (fsn1/nbg1/hil/sin/ash). The rotation index is the sample index within each
 level, so every level sees the same target sequence and a regional load-source difference does not privilege one
-level. The load size is fixed by `TcpTuningViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the sample count is
+level. The load size is fixed by `AutoOptimizationViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the sample count is
 fixed at 5 in `WindowsAutoTuningBenchmarkService`; neither is user-configurable. A non-2xx response or incomplete
 download is excluded from that level's average.
 
 ### RSC low-latency A/B benchmark (`IRscBenchmarkService`, Windows)
 
-The TCP global-options card can compare RSC enabled versus disabled with loaded Ping. It measures each state a
+The measured-optimization card compares RSC enabled versus disabled with loaded Ping. It measures each state a
 fixed 5 times (not user-configurable), using the same 5MB load size and
 the same Hetzner target sequence for both states. This tests whether TCP receive coalescing changes latency while a
 TCP receive is active; it does not claim to measure OW2's UDP game packets directly. A difference below 1ms is
-treated as inconclusive and the UI recommends leaving the default enabled state unchanged.
+treated as inconclusive and the UI recommends restoring the Windows default state.
 Keep RSC's Ping target identical across every sample when changing the shared download targets.
 
 `WindowsRscBenchmarkService` reads the effective RSC state before changing anything, refuses to run if that state
 cannot be read safely, and restores it with `CancellationToken.None` in a `finally` on completion, cancellation, or
 exception. A failed restore is surfaced as an error rather than reported as a successful benchmark.
 
+### Additional TCP A/B benchmarks (`IBbr2BenchmarkService` / `ITcpOptionBenchmarkService`, Windows)
+
+`WindowsBbr2BenchmarkService` compares BBR2 against the default congestion provider without touching loopback
+Large MTU. `WindowsTcpStateCommandBuilder` emits each of the five template names with its provider, so the service
+can restore a mixed/custom starting configuration exactly in `finally`; it refuses to run if any template is
+missing. Permanent application still uses the existing BBR2 enable/revert profile.
+
+`WindowsTcpOptionBenchmarkService` compares ECN and TCP Timestamps with loaded Ping and RSS with download speed.
+Each state is fixed at 5 samples. It accepts only an exact `Enabled` or `Disabled` starting value and restores that
+value with `CancellationToken.None`; values such as Timestamps `Allowed` are rejected before mutation because a
+boolean A/B command cannot reproduce them exactly. Fast Open remains manual because its current state is not
+available through the locale-independent state reader, and MTU remains manual because automatic probing can break
+connectivity.
+
 All mutating DNS/TCP/maintenance paths share the singleton `INetworkMutationGate` / `NetworkMutationGate`, including
 both benchmarks, one-click optimization, manual TCP changes, DNS apply/reset/cache flush, MTU changes, ghost-device
 removal, and maintenance batches. Benchmark services hold the lease from the initial state read through the final
 restore; ViewModels must not acquire the same gate around a benchmark call because the gate is intentionally
-non-reentrant. `TcpTuningViewModel.IsOperationRunning` remains a local UI affordance, while the shared gate is the
-cross-ViewModel correctness boundary.
+non-reentrant. ViewModel busy flags remain local UI affordances, while the shared gate is the cross-ViewModel
+correctness boundary.
 
 ### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
 
@@ -383,8 +422,9 @@ proper PnP uninstall path rather than raw registry edits.
   glass panel), the `HeaderedContentControl` glass-card template used for every settings section, and unified
   corner radii. The window uses `TransparencyLevelHint="AcrylicBlur"` + `ExperimentalAcrylicBorder`. When adding UI,
   reuse `HeaderedContentControl` for cards and the `h1`/`caption` TextBlock classes rather than inventing styles.
-- Main view: `MainWindow` (880×620, min 760×500) is a sidebar `TabControl` — DNS 設定 / ネットワーク診断 /
-  BBR2・TCP 調整 / メンテナンス (last two `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent
+- Main view: `MainWindow` (880×620, min 760×500) is a sidebar `TabControl` — DNS 設定 / 自動最適化 /
+  ネットワーク診断 / BBR2・TCP 調整 / メンテナンス (the TCP and maintenance tabs use
+  `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent
   実行ログ card fed by each tab ViewModel's `CommandExecuted` event, one `UserControl` per tab. Sidebar tab icons
   are hand-drawn with plain Avalonia primitives (`Ellipse`/`Line`/`Path`/`Polyline`/`Rectangle`+`RotateTransform`)
   bound to `{DynamicResource Brush.FG1}` — no icon font/package, no `PathIcon`. Before committing hand-computed

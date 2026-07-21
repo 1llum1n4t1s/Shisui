@@ -12,6 +12,11 @@ public interface ITcpTuningService
 
     Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default);
 
+    /// <summary>指定した5テンプレートの輻輳制御プロバイダーだけを設定する。ベンチマーク時の厳密な復元に使う。</summary>
+    Task<IReadOnlyList<CommandExecutionResult>> SetCongestionProvidersAsync(
+        IReadOnlyDictionary<string, string> providers,
+        CancellationToken ct = default);
+
     /// <summary>ユーザーまたは他のチューニングツールが構成した TCP パラメーターを Windows の既定値へ一括リセットする。</summary>
     Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default);
 
@@ -22,6 +27,11 @@ public interface ITcpTuningService
     Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default);
 
     Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default);
+
+    /// <summary>指定したTCPグローバルオプションだけをWindowsのシステム既定値へ戻す。</summary>
+    Task<CommandExecutionResult> RevertTcpGlobalOptionToDefaultAsync(
+        TcpGlobalOption option,
+        CancellationToken ct = default);
 
     Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default);
 

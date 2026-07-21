@@ -83,27 +83,6 @@
             <Button Content="設定" Command="{Binding SetAutoTuningLevelCommand}" IsEnabled="{Binding !IsOperationRunning}" />
           </StackPanel>
 
-          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="0,8,0,0"
-                     Text="各レベルを順番に切り替え、5MB の TCP ダウンロード速度を比較します。受信ウィンドウ自動調整は TCP の受信速度に作用するため、Ping は使いません。回線の瞬間的なブレを均すため各レベルを5回ずつ計測し、平均を取ります。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="計測して比較" Command="{Binding RunAutoTuningBenchmarkCommand}" IsEnabled="{Binding !IsOperationRunning}" />
-            <Button Content="キャンセル" Command="{Binding CancelAutoTuningBenchmarkCommand}" IsVisible="{Binding IsBenchmarkRunning}" />
-          </StackPanel>
-          <TextBlock Text="{Binding BenchmarkStatusText}" Classes="caption" TextWrapping="Wrap" />
-
-          <ItemsControl ItemsSource="{Binding BenchmarkResults}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:AutoTuningBenchmarkRow">
-                <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="6" Padding="10,6" Margin="0,2">
-                  <Grid ColumnDefinitions="140,24,*">
-                    <TextBlock Grid.Column="0" Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="{Binding SpeedText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -180,35 +159,6 @@
             <Button Grid.Row="4" Grid.Column="3" Content="無効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:False" Margin="0,2,0,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
           </Grid>
 
-          <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12" Margin="0,4,0,0">
-            <StackPanel Spacing="8">
-              <TextBlock Text="RSC 低遅延 A/B 計測" FontWeight="SemiBold" FontSize="15" />
-              <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="RSC 有効・無効を順番に切り替え、それぞれ5MBのTCPダウンロード負荷中に1.1.1.1へのPingを固定5回測って比較します。RSCはTCP受信に作用するため、OW2のUDP通信そのものではなく、TCP受信負荷が遅延へ与える影響の検証です。完了・キャンセル・失敗時は開始前のRSC状態へ戻します。" />
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="RSC 有効 / 無効を比較" Command="{Binding RunRscBenchmarkCommand}"
-                        IsEnabled="{Binding !IsOperationRunning}" />
-                <Button Content="キャンセル" Command="{Binding CancelRscBenchmarkCommand}"
-                        IsVisible="{Binding IsRscBenchmarkRunning}" />
-              </StackPanel>
-              <TextBlock Text="{Binding RscBenchmarkStatusText}" Classes="caption" TextWrapping="Wrap" />
-
-              <ItemsControl ItemsSource="{Binding RscBenchmarkResults}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="vm:RscBenchmarkRow">
-                    <Border Background="{DynamicResource Brush.Container}" CornerRadius="6" Padding="10,6" Margin="0,2">
-                      <Grid ColumnDefinitions="120,24,*">
-                        <TextBlock Grid.Column="0" Text="{Binding StateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="{Binding PingText}" FontFamily="Consolas,Menlo,monospace"
-                                   VerticalAlignment="Center" TextWrapping="Wrap" />
-                      </Grid>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-          </Border>
         </StackPanel>
       </primitives:HeaderedContentControl>
 

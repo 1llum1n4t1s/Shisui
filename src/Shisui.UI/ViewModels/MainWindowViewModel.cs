@@ -13,6 +13,9 @@ public partial class MainWindowViewModel : ObservableObject
 
     public DnsSettingsViewModel DnsSettings { get; }
 
+    /// <summary>クイック最適化と計測による推奨設定を集約したタブ。</summary>
+    public AutoOptimizationViewModel AutoOptimization { get; }
+
     /// <summary>Ping / トレースルート診断タブ (Windows/macOS 両対応、常に非 null)。</summary>
     public NetworkDiagnosticsViewModel NetworkDiagnostics { get; }
 
@@ -29,6 +32,7 @@ public partial class MainWindowViewModel : ObservableObject
     public MainWindowViewModel(
         DnsSettingsViewModel dnsSettings,
         NetworkDiagnosticsViewModel networkDiagnostics,
+        AutoOptimizationViewModel autoOptimization,
         VersionViewModel version,
         TcpTuningViewModel? tcpTuning = null,
         MaintenanceViewModel? maintenance = null)
@@ -41,10 +45,12 @@ public partial class MainWindowViewModel : ObservableObject
         // 未登録サービスをエラーにせずここへ null を注入する。
         DnsSettings = dnsSettings;
         NetworkDiagnostics = networkDiagnostics;
+        AutoOptimization = autoOptimization;
         TcpTuning = tcpTuning;
         Maintenance = maintenance;
 
         DnsSettings.CommandExecuted += OnCommandExecuted;
+        AutoOptimization.CommandExecuted += OnCommandExecuted;
         if (TcpTuning is not null)
         {
             TcpTuning.CommandExecuted += OnCommandExecuted;

@@ -25,12 +25,12 @@
       </ExperimentalAcrylicBorder.Material>
     </ExperimentalAcrylicBorder>
 
-    <!--  実行ログ行は GridSplitter でドラッグ調節可能 (初期 180px)。タブ側 (Row 0) は MinHeight で潰れ防止。  -->
+    <!--  実行ログ行は GridSplitter でドラッグ調節可能 (初期 90px)。タブ側 (Row 0) は MinHeight で潰れ防止。  -->
     <Grid Margin="16,36,16,16">
       <Grid.RowDefinitions>
         <RowDefinition Height="*" MinHeight="220" />
         <RowDefinition Height="Auto" />
-        <RowDefinition Height="180" MinHeight="60" />
+        <RowDefinition Height="90" MinHeight="60" />
       </Grid.RowDefinitions>
       <!--  ═══ サイドバー + コンテンツ ═══  -->
       <TabControl Grid.Row="0" Classes="sidebar">
@@ -50,6 +50,19 @@
             </StackPanel>
           </TabItem.Header>
           <views:DnsSettingsView DataContext="{Binding DnsSettings}" />
+        </TabItem>
+        <TabItem>
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <!--  きらめきアイコン (自動最適化)  -->
+              <Canvas Width="16" Height="16">
+                <Path Data="M 8,1 L 9.6,6.4 L 15,8 L 9.6,9.6 L 8,15 L 6.4,9.6 L 1,8 L 6.4,6.4 Z"
+                      Fill="{DynamicResource Brush.FG1}" />
+              </Canvas>
+              <TextBlock Text="自動最適化" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </TabItem.Header>
+          <views:AutoOptimizationView DataContext="{Binding AutoOptimization}" />
         </TabItem>
         <TabItem>
           <TabItem.Header>

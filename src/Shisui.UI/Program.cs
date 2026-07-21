@@ -11,13 +11,15 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // Velopack がショートカットへ設定する AUMID と実行プロセスを一致させる。
-        // UAC 自己昇格後のプロセスもこのエントリーポイントを通るため、タスクバーが
-        // current 配下の EXE を別アプリとして扱って白紙アイコンへフォールバックするのを防ぐ。
+        // 製品版では Velopack がショートカットへ設定する AUMID と実行プロセスを一致させる。
+        // Debug版まで製品版のAUMIDを名乗ると、Windowsがインストール済みショートカットの
+        // アイコン情報を参照し、開発用EXEのタスクバーアイコンが白紙になるため設定しない。
+#if !DEBUG
         if (OperatingSystem.IsWindows())
         {
             WindowsElevationHelper.TrySetCurrentProcessAppUserModelId();
         }
+#endif
 
         // Velopack のブートストラップは Avalonia 起動・昇格・多重起動ガードより前に走らせる。
         // (--veloapp-install / --veloapp-updated 等の internal hook を捌くために必須)
@@ -49,11 +51,9 @@ internal static class Program
         // app.manifest は asInvoker。ここで自己再起動して昇格する (詳細は app.manifest のコメント参照)。
         // SingleInstanceGuard より前に行う: 非昇格プロセスがロックを握ったまま昇格版を起動すると
         // 昇格版が二重起動判定で弾かれてしまうため。
-        // デバッガアタッチ中はスキップする: 自己再起動すると、デバッガが付いている現プロセスが
-        // 終了して昇格版が別プロセスとして立ち上がるため、デバッグセッションがそこで切れてしまう。
-        // 非昇格のまま続行し、管理者権限が要る操作 (netsh 等) は個別に失敗させて動作確認する。
+        // Debug版も設定変更を伴う計測を実行するため昇格する。デバッガを接続したまま確認する場合は、
+        // Visual Studio自体を管理者として起動して最初から昇格済みのプロセスとして開始する。
         if (OperatingSystem.IsWindows()
-            && !System.Diagnostics.Debugger.IsAttached
             && !WindowsElevationHelper.IsRunningAsAdministrator())
         {
             return WindowsElevationHelper.TryRelaunchElevated(args) ? 0 : 1;

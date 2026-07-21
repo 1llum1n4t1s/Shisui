@@ -342,8 +342,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・BBR2 輻輳制御・TCP 詳細設定・
     /// ループバック Large MTU・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
     /// </summary>
-    [RelayCommand]
-    private async Task OneClickOptimizeAsync()
+    internal async Task RunOneClickOptimizationAsync()
     {
         if (SelectedAdapter is null)
         {
