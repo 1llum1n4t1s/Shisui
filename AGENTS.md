@@ -8,7 +8,7 @@ Shisui is a cross-platform (Windows / macOS) desktop app for network configurati
 DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google Public DNS, Quad9, NextDNS, or
 custom IPv4/IPv6), flush the DNS cache, run a Ping/Traceroute diagnostics tool, and — on Windows only — toggle
 DNS over HTTPS (DoH) and DNS over TLS (DoT) for the selected preset, toggle BBR2 congestion control / TCP global
-options (including receive-window auto-tuning and MTU/jumbo-frame size), run a catalog of `netsh` / `ipconfig` /
+options (including receive-window auto-tuning and per-adapter MTU restoration to 1500), run a catalog of `netsh` / `ipconfig` /
 `nbtstat` network maintenance commands, view read-only adapter details (MAC address / link speed), and clean up
 disconnected "ghost" network devices.
 
@@ -283,9 +283,10 @@ locale-independently → the BBR2 enable button still sets it, but its live stat
 `Get-NetTCPSetting` call, parsed from `AutoTuningLevelLocal`), so reading it costs no extra process spawn. **MTU
 is different**: it's per-adapter rather than global, so `WindowsMtuStateCommandBuilder`/`WindowsMtuStateParser`
 are a separate one-line `Get-NetIPInterface -InterfaceAlias <adapter>` command taking an adapter name, invoked
-whenever the MTU card's own adapter selection changes rather than folded into the global TCP snapshot. That MTU
-card also keeps **its own adapter selector** in `TcpTuningViewModel`, independent of the DNS tab's — the two
-tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP options apply system-wide).
+whenever the MTU restoration card's own adapter selection changes rather than folded into the global TCP snapshot.
+That card exposes no arbitrary MTU or jumbo-frame input: it only restores both IPv4 and IPv6 MTU to the standard
+1500 value. It also keeps **its own adapter selector** in `TcpTuningViewModel`, independent of the DNS tab's — the
+two tabs' adapter choices are unrelated (MTU restoration targets one adapter; BBR2/global TCP options apply system-wide).
 
 ### Unified measured optimization (`AutoOptimizationViewModel`, Windows)
 
@@ -368,8 +369,8 @@ Each state is fixed at 3 samples. It accepts only an exact `Enabled` or `Disable
 value with `CancellationToken.None`. TCP Timestamps also accepts the documented Windows default `Allowed`; after
 the Enabled/Disabled comparison it restores that third state through `RevertTcpGlobalOptionToDefaultAsync`, which
 emits `timestamps=allowed`. Other unrecognized values are rejected before mutation. Fast Open remains manual because its current state is not
-available through the locale-independent state reader, and MTU remains manual because automatic probing can break
-connectivity.
+available through the locale-independent state reader. MTU is not automatically probed or tuned because doing so
+can break connectivity; the manual UI only restores a selected adapter to 1500.
 
 ### Used-PC network diagnostics (`ILegacyNetworkDiagnosticsService`, Windows)
 

@@ -123,14 +123,14 @@ public class WindowsTcpCommandBuilderTests
     }
 
     [TestMethod]
-    public void BuildSetMtu_QuotesAdapterName_AndSetsBothIpv4AndIpv6()
+    public void BuildRevertMtuToDefault_QuotesAdapterName_AndSetsBothIpv4AndIpv6To1500()
     {
-        var commands = WindowsTcpCommandBuilder.BuildSetMtu("Wi-Fi 2", 9000);
+        var commands = WindowsTcpCommandBuilder.BuildRevertMtuToDefault("Wi-Fi 2");
 
         CollectionAssert.AreEqual(new[]
         {
-            "interface ipv4 set subinterface name=\"Wi-Fi 2\" mtu=9000 store=persistent",
-            "interface ipv6 set subinterface name=\"Wi-Fi 2\" mtu=9000 store=persistent",
+            "interface ipv4 set subinterface name=\"Wi-Fi 2\" mtu=1500 store=persistent",
+            "interface ipv6 set subinterface name=\"Wi-Fi 2\" mtu=1500 store=persistent",
         }, commands.ToList());
     }
 }

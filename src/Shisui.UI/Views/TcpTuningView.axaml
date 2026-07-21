@@ -86,10 +86,10 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
-      <primitives:HeaderedContentControl Header="MTU / ジャンボフレーム設定">
+      <primitives:HeaderedContentControl Header="MTU 設定の復元">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="指定したアダプタの IPv4/IPv6 MTU (最大転送単位) を変更します。既定は 1500。回線やスイッチがジャンボフレームに対応している環境では 9000 前後まで上げるとオーバーヘッドが減りますが、経路上の機器が対応していないと逆に通信できなくなるため注意してください。" />
+                     Text="高速化ツールなどで変更された、指定アダプタの IPv4/IPv6 MTU (最大転送単位) を標準値の 1500 に戻します。" />
           <Grid ColumnDefinitions="*,Auto">
             <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
@@ -101,10 +101,8 @@
             <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}" Margin="8,0,0,0" IsEnabled="{Binding !IsMtuBusy}" />
           </Grid>
           <TextBlock Text="{Binding MtuStateText}" Classes="caption" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <NumericUpDown Value="{Binding MtuValue}" Minimum="576" Maximum="9216" Increment="1" Width="140" FormatString="0" />
-            <Button Content="設定" Command="{Binding SetMtuCommand}" IsEnabled="{Binding !IsMtuBusy}" />
-          </StackPanel>
+          <Button Content="MTUを1500に戻す" Command="{Binding RevertMtuCommand}"
+                  IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Left" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 

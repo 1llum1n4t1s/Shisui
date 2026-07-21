@@ -129,7 +129,7 @@ public class WindowsAutoTuningBenchmarkServiceTests
         public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> RevertTcpGlobalOptionToDefaultAsync(TcpGlobalOption option, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public Task<IReadOnlyList<CommandExecutionResult>> SetMtuAsync(string adapterId, int mtu, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyList<CommandExecutionResult>> RevertMtuToDefaultAsync(string adapterId, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

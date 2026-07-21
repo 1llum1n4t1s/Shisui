@@ -15,6 +15,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly INetworkDiagnosticsService _diagnosticsService;
     private readonly INetworkMutationGate _networkMutationGate;
     private readonly IGhostAdapterService? _ghostAdapterService;
+    private readonly INetworkAdapterNameService? _adapterNameService;
     private readonly IDohConfigurationService? _dohService;
     private readonly IDotConfigurationService? _dotService;
     private readonly ITcpTuningService? _tcpTuningService;
@@ -23,6 +24,8 @@ public partial class DnsSettingsViewModel : ObservableObject
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
+
+    public bool IsAdapterNameCleanupAvailable => IsWindows && _adapterNameService is not null;
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
 
@@ -62,6 +65,12 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string ghostAdaptersStatusText = string.Empty;
+
+    [ObservableProperty]
+    private bool isAdapterNameBusy;
+
+    [ObservableProperty]
+    private string adapterNameStatusText = string.Empty;
 
     [ObservableProperty]
     private bool useDoh;
@@ -111,7 +120,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         IDohConfigurationService? dohService = null,
         IDotConfigurationService? dotService = null,
         ITcpTuningService? tcpTuningService = null,
-        INetworkMaintenanceService? maintenanceService = null)
+        INetworkMaintenanceService? maintenanceService = null,
+        INetworkAdapterNameService? adapterNameService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -120,6 +130,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _diagnosticsService = diagnosticsService;
         _networkMutationGate = networkMutationGate;
         _ghostAdapterService = ghostAdapterService;
+        _adapterNameService = adapterNameService;
         _dohService = dohService;
         _dotService = dotService;
         _tcpTuningService = tcpTuningService;
@@ -513,6 +524,94 @@ public partial class DnsSettingsViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task CleanupAdapterNameAsync()
+    {
+        if (_adapterNameService is null)
+        {
+            return;
+        }
+
+        var adapterName = SelectedAdapter?.DisplayName;
+        IsAdapterNameBusy = true;
+        IsBusy = true;
+        try
+        {
+            NetworkAdapterNameCleanupResult result;
+            using (var mutationLease = await _networkMutationGate.EnterAsync())
+            {
+                result = await _adapterNameService.CleanupAsync(adapterName);
+            }
+
+            foreach (var commandResult in result.CommandResults)
+            {
+                CommandExecuted?.Invoke(this, commandResult);
+            }
+
+            if (result is { WasRenamed: true, TargetName: not null })
+            {
+                await ReloadAdaptersAfterNameChangeAsync(result.TargetName);
+            }
+
+            if (result.CommandResults.Count > 0 && _ghostAdapterService is not null)
+            {
+                await LoadGhostAdaptersAsync();
+            }
+
+            AdapterNameStatusText = FormatAdapterNameCleanupStatus(result);
+        }
+        catch (Exception ex)
+        {
+            AdapterNameStatusText = $"接続名の整理に失敗しました: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            IsAdapterNameBusy = false;
+        }
+    }
+
+    private async Task ReloadAdaptersAfterNameChangeAsync(string preferredName)
+    {
+        var adapters = await _adapterService.GetAdaptersAsync();
+        Adapters.Clear();
+        foreach (var adapter in adapters)
+        {
+            Adapters.Add(adapter);
+        }
+
+        SelectedAdapter = Adapters.FirstOrDefault(adapter =>
+                              string.Equals(adapter.DisplayName, preferredName, StringComparison.OrdinalIgnoreCase))
+                          ?? Adapters.FirstOrDefault();
+    }
+
+    private static string FormatAdapterNameCleanupStatus(NetworkAdapterNameCleanupResult result)
+    {
+        if (!result.Success)
+        {
+            var completed = result.RemovedGhostCount > 0
+                ? $" (切断済みの旧デバイス {result.RemovedGhostCount} 件は削除済み)"
+                : string.Empty;
+            return $"{result.ErrorMessage ?? "接続名を整理できませんでした"}{completed}";
+        }
+
+        if (result.TargetName is null)
+        {
+            return result.RemovedGhostCount > 0
+                ? $"切断済みのネットワークデバイス登録 {result.RemovedGhostCount} 件をすべて削除しました"
+                : "切断済みのネットワークデバイス登録は見つかりませんでした";
+        }
+
+        if (result.WasRenamed)
+        {
+            return $"切断済みの旧デバイス {result.RemovedGhostCount} 件を整理し、接続名を「{result.TargetName}」に変更しました";
+        }
+
+        return result.RemovedGhostCount > 0
+            ? $"切断済みの旧デバイス {result.RemovedGhostCount} 件を整理しました。接続名はすでに「{result.TargetName}」です"
+            : $"整理対象の旧デバイスはありません。接続名はすでに「{result.TargetName}」です";
     }
 
     [RelayCommand]

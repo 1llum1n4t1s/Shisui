@@ -66,9 +66,6 @@ public partial class TcpTuningViewModel(
     private NetworkAdapterInfo? selectedAdapter;
 
     [ObservableProperty]
-    private int mtuValue = 1500;
-
-    [ObservableProperty]
     private string mtuStateText = string.Empty;
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
@@ -103,11 +100,11 @@ public partial class TcpTuningViewModel(
     partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshMtuStateAsync();
 
     [RelayCommand]
-    private async Task SetMtuAsync()
+    private async Task RevertMtuAsync()
     {
         if (SelectedAdapter is null)
         {
-            StatusText = "MTU を設定するアダプタを選択してください";
+            StatusText = "MTU を戻すアダプタを選択してください";
             return;
         }
 
@@ -115,14 +112,14 @@ public partial class TcpTuningViewModel(
         try
         {
             using var mutationLease = await networkMutationGate.EnterAsync();
-            var results = await tcpTuningService.SetMtuAsync(SelectedAdapter.Id, MtuValue);
+            var results = await tcpTuningService.RevertMtuToDefaultAsync(SelectedAdapter.Id);
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
 
             StatusText = results.All(r => r.Success)
-                ? $"{SelectedAdapter.DisplayName} の MTU を {MtuValue} に設定しました"
+                ? $"{SelectedAdapter.DisplayName} の IPv4/IPv6 MTU を 1500 に戻しました"
                 : "一部のコマンドが失敗しました。ログを確認してください";
         }
         finally
@@ -147,7 +144,6 @@ public partial class TcpTuningViewModel(
             if (mtu is not null)
             {
                 MtuStateText = $"現在の MTU: {mtu}";
-                MtuValue = mtu.Value;
             }
             else
             {

@@ -85,10 +85,12 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
     public Task<CommandExecutionResult> SetAutoTuningLevelAsync(AutoTuningLevel level, CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetAutoTuningLevel(level), ct);
 
-    public async Task<IReadOnlyList<CommandExecutionResult>> SetMtuAsync(string adapterId, int mtu, CancellationToken ct = default)
+    public async Task<IReadOnlyList<CommandExecutionResult>> RevertMtuToDefaultAsync(
+        string adapterId,
+        CancellationToken ct = default)
     {
         var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildSetMtu(adapterId, mtu))
+        foreach (var args in WindowsTcpCommandBuilder.BuildRevertMtuToDefault(adapterId))
         {
             results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
         }

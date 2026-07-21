@@ -16,7 +16,7 @@ internal abstract class TcpTuningServiceTestStub : ITcpTuningService
     public virtual Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<TcpSettingsSnapshot> GetCurrentStateAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<CommandExecutionResult> SetAutoTuningLevelAsync(AutoTuningLevel level, CancellationToken ct = default) => throw new NotSupportedException();
-    public virtual Task<IReadOnlyList<CommandExecutionResult>> SetMtuAsync(string adapterId, int mtu, CancellationToken ct = default) => throw new NotSupportedException();
+    public virtual Task<IReadOnlyList<CommandExecutionResult>> RevertMtuToDefaultAsync(string adapterId, CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default) => throw new NotSupportedException();
 
     protected static CommandExecutionResult Success() => new(true, "netsh", 0, string.Empty, string.Empty);

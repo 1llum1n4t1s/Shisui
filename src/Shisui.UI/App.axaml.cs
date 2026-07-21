@@ -67,6 +67,7 @@ public partial class App : Application
             services.AddSingleton<ITcpOptionBenchmarkService, Core.Services.Windows.WindowsTcpOptionBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
+            services.AddSingleton<INetworkAdapterNameService, Core.Services.Windows.WindowsNetworkAdapterNameService>();
             services.AddSingleton<ILegacyNetworkDiagnosticsService, Core.Services.Windows.WindowsLegacyNetworkDiagnosticsService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
             services.AddSingleton<TcpTuningViewModel>();
@@ -81,8 +82,8 @@ public partial class App : Application
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.MacOS.MacNetworkDiagnosticsService>();
             // BBR2 / TCP グローバル調整・任意実行メンテナンスコマンド・DoH は Windows (netsh) 専用機能のため
             // macOS には登録しない。MainWindowViewModel は TcpTuningViewModel / MaintenanceViewModel が
-            // 未登録なら該当タブを表示せず、DnsSettingsViewModel は IDohConfigurationService? が null なら
-            // DoH チェックボックスを表示しない。
+            // 未登録なら該当タブを表示せず、DnsSettingsViewModel は Windows 専用の DoH・接続名整理サービスが
+            // null なら、それぞれの操作 UI を表示しない。
         }
         else
         {

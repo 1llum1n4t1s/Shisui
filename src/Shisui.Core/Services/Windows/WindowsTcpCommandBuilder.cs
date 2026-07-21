@@ -126,17 +126,14 @@ public static class WindowsTcpCommandBuilder
         return $"int tcp set global autotuninglevel={value}";
     }
 
-    /// <summary>
-    /// 指定アダプタの IPv4/IPv6 MTU を設定する (store=persistent で再起動後も維持)。ジャンボフレームを
-    /// 使う場合は 9000 前後の値を指定する (実際に通るかは NIC ドライバ側のジャンボフレーム対応にも依存)。
-    /// </summary>
-    public static IReadOnlyList<string> BuildSetMtu(string adapterName, int mtu)
+    /// <summary>指定アダプタの IPv4/IPv6 MTU を標準値の 1500 に戻す。</summary>
+    public static IReadOnlyList<string> BuildRevertMtuToDefault(string adapterName)
     {
         var name = Quote(adapterName);
         return
         [
-            $"interface ipv4 set subinterface name={name} mtu={mtu} store=persistent",
-            $"interface ipv6 set subinterface name={name} mtu={mtu} store=persistent",
+            $"interface ipv4 set subinterface name={name} mtu=1500 store=persistent",
+            $"interface ipv6 set subinterface name={name} mtu=1500 store=persistent",
         ];
     }
 
