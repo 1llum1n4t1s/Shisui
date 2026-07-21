@@ -84,7 +84,7 @@
           </StackPanel>
 
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="0,8,0,0"
-                     Text="各レベルを順番に切り替え、5MB の TCP ダウンロード負荷をかけている最中の Ping 値を比較します。受信ウィンドウ自動調整は TCP に作用し、無負荷の Ping だけでは差が出ないため、速度ではなく負荷時の遅延を測ります。回線の瞬間的なブレを均すため各レベルを5回ずつ計測し、平均を取ります。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
+                     Text="各レベルを順番に切り替え、5MB の TCP ダウンロード速度を比較します。受信ウィンドウ自動調整は TCP の受信速度に作用するため、Ping は使いません。回線の瞬間的なブレを均すため各レベルを5回ずつ計測し、平均を取ります。計測中は設定が一時的に切り替わりますが、終了後は元の設定に自動で戻ります。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="計測して比較" Command="{Binding RunAutoTuningBenchmarkCommand}" IsEnabled="{Binding !IsOperationRunning}" />
             <Button Content="キャンセル" Command="{Binding CancelAutoTuningBenchmarkCommand}" IsVisible="{Binding IsBenchmarkRunning}" />
@@ -98,7 +98,7 @@
                   <Grid ColumnDefinitions="140,24,*">
                     <TextBlock Grid.Column="0" Text="{Binding Level}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="⭐" IsVisible="{Binding IsBest}" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="{Binding PingText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="2" Text="{Binding SpeedText}" FontFamily="Consolas,Menlo,monospace" VerticalAlignment="Center" TextWrapping="Wrap" />
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -184,12 +184,7 @@
             <StackPanel Spacing="8">
               <TextBlock Text="RSC 低遅延 A/B 計測" FontWeight="SemiBold" FontSize="15" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="RSC 有効・無効を順番に切り替え、それぞれ5MBのTCPダウンロード負荷中に1.1.1.1へのPingを測って比較します。RSCはTCP受信に作用するため、OW2のUDP通信そのものではなく、TCP受信負荷が遅延へ与える影響の検証です。完了・キャンセル・失敗時は開始前のRSC状態へ戻します。" />
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="各状態の計測回数:" VerticalAlignment="Center" />
-                <NumericUpDown Value="{Binding RscBenchmarkSamplesPerState}" Minimum="1" Maximum="5" Increment="1"
-                               Width="130" FormatString="0" IsEnabled="{Binding !IsOperationRunning}" />
-              </StackPanel>
+                         Text="RSC 有効・無効を順番に切り替え、それぞれ5MBのTCPダウンロード負荷中に1.1.1.1へのPingを固定5回測って比較します。RSCはTCP受信に作用するため、OW2のUDP通信そのものではなく、TCP受信負荷が遅延へ与える影響の検証です。完了・キャンセル・失敗時は開始前のRSC状態へ戻します。" />
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="RSC 有効 / 無効を比較" Command="{Binding RunRscBenchmarkCommand}"
                         IsEnabled="{Binding !IsOperationRunning}" />

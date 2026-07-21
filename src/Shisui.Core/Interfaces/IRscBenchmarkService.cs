@@ -12,7 +12,6 @@ public interface IRscBenchmarkService
     /// </summary>
     Task<IReadOnlyList<RscBenchmarkResult>> RunAsync(
         int testSizeBytes,
-        int samplesPerState = 5,
         IProgress<RscBenchmarkProgress>? progress = null,
         CancellationToken ct = default);
 }

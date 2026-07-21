@@ -22,7 +22,7 @@
     <!-- Velopack 本体は Program.cs / UpdateService が直接使うため、VelopackUpdateDialog 経由の
          transitive 参照に頼らず直接参照する (バージョンは両者で 1.2.0 に一致)。 -->
     <PackageReference Include="Velopack" Version="1.2.0" />
-    <PackageReference Include="VelopackUpdateDialog.Avalonia" Version="1.0.10" />
+    <PackageReference Include="VelopackUpdateDialog.Avalonia" Version="1.0.11" />
   </ItemGroup>
 
   <ItemGroup>
@@ -34,13 +34,9 @@
   </ItemGroup>
 
   <!-- Windows ビルドでアイコン/manifest 条件が誤って無効化される回帰をビルド時に検出する。 -->
-  <Target Name="ValidateWindowsApplicationMetadata"
-          BeforeTargets="CoreCompile"
-          Condition="$([MSBuild]::IsOSPlatform('Windows'))">
-    <Error Condition="'$(ApplicationIcon)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationIcon)')"
-           Text="Windows アプリの ApplicationIcon が未設定か、ファイルが存在しません。" />
-    <Error Condition="'$(ApplicationManifest)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationManifest)')"
-           Text="Windows アプリの ApplicationManifest が未設定か、ファイルが存在しません。" />
+  <Target Name="ValidateWindowsApplicationMetadata" BeforeTargets="CoreCompile" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Error Condition="'$(ApplicationIcon)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationIcon)')" Text="Windows アプリの ApplicationIcon が未設定か、ファイルが存在しません。" />
+    <Error Condition="'$(ApplicationManifest)' == '' Or !Exists('$(MSBuildProjectDirectory)\$(ApplicationManifest)')" Text="Windows アプリの ApplicationManifest が未設定か、ファイルが存在しません。" />
   </Target>
 
   <!-- アイコンを Publish 出力にコピー (vpk pack の icon 引数用) -->

@@ -4,6 +4,8 @@ namespace Shisui.Core.Models;
 
 public sealed class AppSettings
 {
+    public const string DefaultUpdateBaseUrl = "https://shisui.nephilim.jp";
+
     public string? LastSelectedAdapterId { get; set; }
 
     /// <summary>前回選択した DNS プロバイダプリセットの Id (次回起動時に復元する)。</summary>
@@ -29,7 +31,7 @@ public sealed class AppSettings
     /// <see cref="JsonIgnore"/> なので settings.json から書き換え不可 (悪意ある第三者ホストへの誘導を防ぐ)。
     /// </summary>
     [JsonIgnore]
-    public string UpdateBaseUrl => "https://shisui.nephilim.jp";
+    public string UpdateBaseUrl => DefaultUpdateBaseUrl;
 
     /// <summary>Velopack channel。Windows 単独配信なので "win" 固定。</summary>
     [JsonIgnore]

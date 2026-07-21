@@ -13,6 +13,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDnsCacheService _cacheService;
     private readonly ISettingsService _settingsService;
     private readonly INetworkDiagnosticsService _diagnosticsService;
+    private readonly INetworkMutationGate _networkMutationGate;
     private readonly IGhostAdapterService? _ghostAdapterService;
     private readonly IDohConfigurationService? _dohService;
     private readonly IDotConfigurationService? _dotService;
@@ -105,6 +106,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         IDnsCacheService cacheService,
         ISettingsService settingsService,
         INetworkDiagnosticsService diagnosticsService,
+        INetworkMutationGate networkMutationGate,
         IGhostAdapterService? ghostAdapterService = null,
         IDohConfigurationService? dohService = null,
         IDotConfigurationService? dotService = null,
@@ -116,6 +118,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _cacheService = cacheService;
         _settingsService = settingsService;
         _diagnosticsService = diagnosticsService;
+        _networkMutationGate = networkMutationGate;
         _ghostAdapterService = ghostAdapterService;
         _dohService = dohService;
         _dotService = dotService;
@@ -221,17 +224,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var adapters = await _adapterService.GetAdaptersAsync();
-            Adapters.Clear();
-            foreach (var adapter in adapters)
-            {
-                Adapters.Add(adapter);
-            }
-
-            var lastId = _settingsService.Current.LastSelectedAdapterId;
-            SelectedAdapter = (lastId is not null ? Adapters.FirstOrDefault(a => a.Id == lastId) : null)
-                               ?? Adapters.FirstOrDefault();
-            StatusText = $"{Adapters.Count} 件のアダプタを取得しました";
+            await LoadAdaptersCoreAsync();
         }
         catch (Exception ex)
         {
@@ -243,6 +236,21 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
     }
 
+    private async Task LoadAdaptersCoreAsync()
+    {
+        var adapters = await _adapterService.GetAdaptersAsync();
+        Adapters.Clear();
+        foreach (var adapter in adapters)
+        {
+            Adapters.Add(adapter);
+        }
+
+        var lastId = _settingsService.Current.LastSelectedAdapterId;
+        SelectedAdapter = (lastId is not null ? Adapters.FirstOrDefault(a => a.Id == lastId) : null)
+                           ?? Adapters.FirstOrDefault();
+        StatusText = $"{Adapters.Count} 件のアダプタを取得しました";
+    }
+
     [RelayCommand]
     private async Task ApplyAsync()
     {
@@ -252,7 +260,21 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
-        var servers = ResolveServers();
+        // await をまたぐ操作では、UIの選択状態を一度だけ読み取って固定する。
+        var adapter = SelectedAdapter;
+        var preset = SelectedPreset;
+        var customIpv4Primary = NullIfEmpty(CustomIpv4Primary);
+        var customIpv4Secondary = NullIfEmpty(CustomIpv4Secondary);
+        var customIpv6Primary = NullIfEmpty(CustomIpv6Primary);
+        var customIpv6Secondary = NullIfEmpty(CustomIpv6Secondary);
+        var isCustomPreset = preset.Id == DnsPresetCatalog.Custom.Id;
+        var servers = isCustomPreset
+            ? new DnsServerSet(customIpv4Primary, customIpv4Secondary, customIpv6Primary, customIpv6Secondary)
+            : preset.Servers;
+        var dohAvailable = IsWindows && _dohService is not null && preset.DohTemplate is not null;
+        var useDoh = UseDoh;
+        var dotAvailable = IsWindows && _dotService is not null && preset.DotHost is not null;
+        var useDot = UseDot;
         if (servers.IsEmpty)
         {
             StatusText = "適用する DNS アドレスがありません";
@@ -262,20 +284,21 @@ public partial class DnsSettingsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var results = (await _dnsService.ApplyAsync(SelectedAdapter.Id, servers)).ToList();
+            using var mutationLease = await _networkMutationGate.EnterAsync();
+            var results = (await _dnsService.ApplyAsync(adapter.Id, servers)).ToList();
 
-            if (IsDohAvailable)
+            if (dohAvailable)
             {
-                var dohResults = UseDoh
-                    ? await _dohService!.EnableAsync(servers, SelectedPreset.DohTemplate!)
+                var dohResults = useDoh
+                    ? await _dohService!.EnableAsync(servers, preset.DohTemplate!)
                     : await _dohService!.DisableAsync(servers);
                 results.AddRange(dohResults);
             }
 
-            if (IsDotAvailable)
+            if (dotAvailable)
             {
-                var dotResults = UseDot
-                    ? await _dotService!.EnableAsync(servers, SelectedPreset.DotHost!)
+                var dotResults = useDot
+                    ? await _dotService!.EnableAsync(servers, preset.DotHost!)
                     : await _dotService!.DisableAsync(servers);
                 results.AddRange(dotResults);
             }
@@ -285,24 +308,27 @@ public partial class DnsSettingsViewModel : ObservableObject
                 CommandExecuted?.Invoke(this, result);
             }
 
-            _settingsService.Current.LastSelectedAdapterId = SelectedAdapter.Id;
-            _settingsService.Current.LastSelectedPresetId = SelectedPreset.Id;
-            if (IsCustomPresetSelected)
+            _settingsService.Current.LastSelectedAdapterId = adapter.Id;
+            _settingsService.Current.LastSelectedPresetId = preset.Id;
+            if (isCustomPreset)
             {
-                _settingsService.Current.CustomIpv4Primary = NullIfEmpty(CustomIpv4Primary);
-                _settingsService.Current.CustomIpv4Secondary = NullIfEmpty(CustomIpv4Secondary);
-                _settingsService.Current.CustomIpv6Primary = NullIfEmpty(CustomIpv6Primary);
-                _settingsService.Current.CustomIpv6Secondary = NullIfEmpty(CustomIpv6Secondary);
+                _settingsService.Current.CustomIpv4Primary = customIpv4Primary;
+                _settingsService.Current.CustomIpv4Secondary = customIpv4Secondary;
+                _settingsService.Current.CustomIpv6Primary = customIpv6Primary;
+                _settingsService.Current.CustomIpv6Secondary = customIpv6Secondary;
             }
 
             await _settingsService.SaveAsync();
 
             StatusText = results.All(r => r.Success)
-                ? $"{SelectedAdapter.DisplayName} に DNS を適用しました"
+                ? $"{adapter.DisplayName} に DNS を適用しました"
                 : "一部のコマンドが失敗しました。ログを確認してください";
 
-            await LoadAdaptersAsync();
-            await RefreshDohStateAsync(servers);
+            await LoadAdaptersCoreAsync();
+            if (SelectedPreset.Id == preset.Id)
+            {
+                await RefreshDohStateAsync(servers);
+            }
         }
         finally
         {
@@ -325,9 +351,11 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
+        var adapter = SelectedAdapter;
         IsBusy = true;
         try
         {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
             // SelectedPreset のセッターではなくバッキングフィールドへ直接代入する。セッター経由だと
             // OnSelectedPresetChanged が同期発火し、その中の fire-and-forget な RefreshDohStateAsync
             // (旧プリセット向けの無駄な呼び出し)が、この後 EnableAsync 実行後に await する
@@ -347,14 +375,15 @@ public partial class DnsSettingsViewModel : ObservableObject
             UseDot = false;
             PingStatusText = string.Empty;
 
-            var servers = SelectedPreset.Servers;
+            var preset = DnsPresetCatalog.CloudflareStandard;
+            var servers = preset.Servers;
             var results = new List<CommandExecutionResult>();
 
-            results.AddRange(await _dnsService.ApplyAsync(SelectedAdapter.Id, servers));
+            results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
 
             if (IsDohAvailable)
             {
-                results.AddRange(await _dohService!.EnableAsync(servers, SelectedPreset.DohTemplate!));
+                results.AddRange(await _dohService!.EnableAsync(servers, preset.DohTemplate!));
                 UseDoh = true;
             }
 
@@ -391,8 +420,8 @@ public partial class DnsSettingsViewModel : ObservableObject
                 CommandExecuted?.Invoke(this, result);
             }
 
-            _settingsService.Current.LastSelectedAdapterId = SelectedAdapter.Id;
-            _settingsService.Current.LastSelectedPresetId = SelectedPreset.Id;
+            _settingsService.Current.LastSelectedAdapterId = adapter.Id;
+            _settingsService.Current.LastSelectedPresetId = preset.Id;
             await _settingsService.SaveAsync();
 
             StatusText = results.All(r => r.Success)
@@ -401,7 +430,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                     : "おまかせ高速化設定を適用しました"
                 : "一部の設定が失敗しました。ログを確認してください";
 
-            await LoadAdaptersAsync();
+            await LoadAdaptersCoreAsync();
             await RefreshDohStateAsync(servers);
         }
         finally
@@ -449,17 +478,19 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
+        var adapter = SelectedAdapter;
         IsBusy = true;
         try
         {
-            var results = await _dnsService.ResetToAutomaticAsync(SelectedAdapter.Id);
+            using var mutationLease = await _networkMutationGate.EnterAsync();
+            var results = await _dnsService.ResetToAutomaticAsync(adapter.Id);
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
 
-            StatusText = $"{SelectedAdapter.DisplayName} を自動取得 (DHCP) に戻しました";
-            await LoadAdaptersAsync();
+            StatusText = $"{adapter.DisplayName} を自動取得 (DHCP) に戻しました";
+            await LoadAdaptersCoreAsync();
         }
         finally
         {
@@ -473,6 +504,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
             var result = await _cacheService.FlushAsync();
             CommandExecuted?.Invoke(this, result);
             StatusText = result.Success ? "DNS キャッシュをクリアしました" : "DNS キャッシュのクリアに失敗しました";
@@ -525,6 +557,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         item.IsRemoving = true;
         try
         {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
             var result = await _ghostAdapterService.RemoveGhostAdapterAsync(item.Info.InstanceId);
             CommandExecuted?.Invoke(this, result);
 

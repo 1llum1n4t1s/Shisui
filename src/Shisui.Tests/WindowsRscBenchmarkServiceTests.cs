@@ -2,6 +2,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Runtime.Versioning;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
+using Shisui.Core.Services;
 using Shisui.Core.Services.Windows;
 
 namespace Shisui.Tests;
@@ -17,15 +18,16 @@ public class WindowsRscBenchmarkServiceTests
         var loadedPing = new FakeLoadedPingMeasurementService(
             new LoadedPingMeasurementResult(true, 10, 8, 12, 1, null),
             new LoadedPingMeasurementResult(true, 13, 11, 15, 1, null));
-        var service = new WindowsRscBenchmarkService(tcp, loadedPing);
+        var service = new WindowsRscBenchmarkService(tcp, loadedPing, new NetworkMutationGate());
 
-        var results = await service.RunAsync(testSizeBytes: 5_000_000, samplesPerState: 1);
+        var results = await service.RunAsync(testSizeBytes: 5_000_000);
 
         Assert.HasCount(2, results);
         Assert.IsTrue(results[0].Enabled);
         Assert.AreEqual(10, results[0].AveragePingMs);
         Assert.IsFalse(results[1].Enabled);
         Assert.AreEqual(13, results[1].AveragePingMs);
+        CollectionAssert.AreEqual(new[] { 5, 5 }, loadedPing.SampleCounts);
         CollectionAssert.AreEqual(new[] { true, false, true }, tcp.RscSetCalls);
     }
 
@@ -33,11 +35,12 @@ public class WindowsRscBenchmarkServiceTests
     public async Task RunAsync_WhenMeasurementIsCanceled_RestoresOriginalState()
     {
         var tcp = new FakeTcpTuningService(originalRscEnabled: false);
-        var service = new WindowsRscBenchmarkService(tcp, new CancelingLoadedPingMeasurementService());
+        var service = new WindowsRscBenchmarkService(
+            tcp, new CancelingLoadedPingMeasurementService(), new NetworkMutationGate());
 
         try
         {
-            await service.RunAsync(testSizeBytes: 5_000_000, samplesPerState: 1);
+            await service.RunAsync(testSizeBytes: 5_000_000);
             Assert.Fail("OperationCanceledException が必要です");
         }
         catch (OperationCanceledException)
@@ -54,11 +57,11 @@ public class WindowsRscBenchmarkServiceTests
         var loadedPing = new FakeLoadedPingMeasurementService(
             new LoadedPingMeasurementResult(true, 10, 8, 12, 1, null),
             new LoadedPingMeasurementResult(true, 13, 11, 15, 1, null));
-        var service = new WindowsRscBenchmarkService(tcp, loadedPing);
+        var service = new WindowsRscBenchmarkService(tcp, loadedPing, new NetworkMutationGate());
 
         try
         {
-            await service.RunAsync(testSizeBytes: 5_000_000, samplesPerState: 1);
+            await service.RunAsync(testSizeBytes: 5_000_000);
             Assert.Fail("InvalidOperationException が必要です");
         }
         catch (InvalidOperationException ex)
@@ -73,10 +76,12 @@ public class WindowsRscBenchmarkServiceTests
         : ILoadedPingMeasurementService
     {
         private int index;
+        public List<int> SampleCounts { get; } = [];
 
         public Task<LoadedPingMeasurementResult> MeasureAsync(
             int testSizeBytes, int sampleCount, IProgress<int>? progress = null, CancellationToken ct = default)
         {
+            SampleCounts.Add(sampleCount);
             progress?.Report(0);
             return Task.FromResult(results[index++]);
         }

@@ -56,11 +56,19 @@ only `ShellExecute` can — so the hook call fails immediately with `ERROR_ELEVA
 limitation, not a Shisui bug (maintainer: "Velopack does not support applications requiring admin at this
 time" — https://github.com/velopack/velopack.docs/discussions/8). The fix: keep the manifest at `asInvoker` so
 Velopack's own process launches succeed, and perform the actual elevation in `Program.cs` immediately after
-`VelopackApp.Build().Run()` — `WindowsElevationHelper.IsRunningAsAdministrator()` checks the current token, and
+`VelopackApp.Build().Run()` and the PerUser→PerMachine migration check — `WindowsElevationHelper.IsRunningAsAdministrator()` checks the current token, and
 if not elevated, `TryRelaunchElevated` restarts the process via `ShellExecute` + the `runas` verb (one UAC
 prompt at startup, matching the original design intent of not re-prompting per command) and exits the
 non-elevated instance. This check runs *before* `SingleInstanceGuard` is acquired, so the non-elevated process
 never holds the single-instance lock while its elevated replacement starts.
+
+Windows releases are installed by the signed Velopack **PerMachine MSI** under protected `Program Files`; do not
+publish the generated PerUser `Setup.exe`. Legacy `%LocalAppData%\Shisui` builds are the one-time exception:
+`WindowsPerMachineMigration` runs before whole-app elevation, downloads `Shisui-win.msi` from the fixed R2 origin,
+validates it with `WinVerifyTrust` plus the expected publisher CN, and invokes system `msiexec` with `runas`.
+The installed Program Files build then runs the old Velopack `Update.exe uninstall` and a no-reparse-point fallback
+cleanup, preserving `%APPDATA%\Shisui` settings/logs while removing the old executable tree, package cache,
+HKCU uninstall entry, and per-user shortcuts. A pending marker and HKCU RunOnce retry transient cleanup locks.
 
 ## Architecture
 
@@ -259,23 +267,23 @@ tabs' adapter choices are unrelated (MTU targets one adapter; BBR2/global TCP op
 ### Auto-tuning benchmark (`IAutoTuningBenchmarkService`, Windows)
 
 Lets the user measure, rather than guess, which auto-tuning level suits their connection: it cycles through all
-5 levels and reports **loaded Ping latency rather than download throughput**. A plain idle ICMP Ping still cannot
-reveal an auto-tuning difference — auto-tuning affects TCP receive-window scaling, not ICMP — so each sample
-starts a 5MB TCP download from a Hetzner test-file host and sends an ICMP Ping to `1.1.1.1` while that receive is
-active. This makes the displayed value a Ping-under-download-load measurement. The download is only the load
-generator; its speed is not calculated, displayed, or used to choose the best level.
+5 levels and reports **TCP download throughput only**. Auto-tuning affects TCP receive-window scaling rather than
+ICMP, so Ping is not measured or used to choose the best level. Each sample downloads 5MB from a Hetzner
+test-file host and calculates Mbps from the received bytes and elapsed body-read time.
 
-The HTTP/Ping measurement itself lives in `WindowsLoadedPingMeasurementService` and is shared with the RSC A/B
-benchmark. Each call creates a fresh `HttpClient`, starts the same per-sample Hetzner target sequence, and reports
-average/min/max Ping. Setting-specific services own only their switch/restore loop, so both benchmarks use identical
-load and Ping semantics without duplicating the network code.
+The speed measurement itself lives in `WindowsDownloadSpeedMeasurementService`; the RSC A/B benchmark continues
+to use `WindowsLoadedPingMeasurementService` because RSC compares latency under TCP receive load. Both measurement
+services use the shared `WindowsBenchmarkDownloadCatalog` so their Hetzner target sequence, range requests, size
+limit, and HTTP error formatting remain aligned. Each Auto-Tuning level gets a fresh `HttpClient` and reports
+average/min/max Mbps.
 
 Two correctness points worth knowing before touching this code: (1) **a fresh `HttpClient` per level is
 required**, not just per run — the window scale is negotiated once at the TCP handshake and does not change for
 a connection's lifetime, so reusing a client across a level switch would silently measure the *previous* level's
-window; and (2) the original level (read via `GetCurrentStateAsync` before the loop starts) is restored in a
-`finally` around the whole loop, so it's put back on completion, cancellation, or exception alike, never left on
-whatever the last-tested level happened to be. The ViewModel applies the "best" result as a mere *suggestion* to
+window; and (2) the original level must parse as a known `AutoTuningLevel` before any change is allowed. Each
+level switch checks its `CommandExecutionResult`; a failed switch is reported as a failed row and is not measured.
+The original level is restored with `CancellationToken.None` in a `finally` around the whole loop, and restore
+failure is surfaced as an error rather than success. The ViewModel applies the "best" result as a mere *suggestion* to
 the existing level `ComboBox`, not an auto-apply — and it does so only *after* calling the existing
 `LoadStateAsync()` refresh, because that refresh's own `SelectedAutoTuningLevel` write would otherwise clobber
 the suggestion if done in the other order.
@@ -283,35 +291,39 @@ the suggestion if done in the other order.
 **Each level is always sampled 5 times and averaged, not measured once.** The sample count is deliberately fixed:
 it is high enough to smooth one-off network jitter without exposing a tuning control that can unnecessarily inflate
 traffic and runtime. `RunAsync` switches
-each level, then `WindowsLoadedPingMeasurementService.MeasureAsync` loops samples with a 300ms inter-sample delay;
-its single-sample path starts the download, confirms that its first data arrived, drains the remainder concurrently
-with `Ping.SendPingAsync`, and cancels the unused remainder after the Ping returns.
-`WindowsAutoTuningBenchmarkMath.SummarizePingMilliseconds` (pure,
-tested) turns successful Ping samples into average/min/max; a level only reports `Success = false` if every sample
-failed. `AutoTuningBenchmarkResult` carries `AveragePingMs`/`MinPingMs`/`MaxPingMs`/`SampleCount`, and the UI marks
-the **lowest average Ping** as best. `AutoTuningBenchmarkProgress`'s
+each level, then `WindowsDownloadSpeedMeasurementService.MeasureAsync` loops samples with a 300ms inter-sample
+delay, streams exactly the requested body size, and calculates decimal Mbps. The pure, tested benchmark math turns
+successful speed samples into average/min/max; a level only reports `Success = false` if every sample failed.
+`AutoTuningBenchmarkResult` carries `AverageMbps`/`MinMbps`/`MaxMbps`/`SampleCount`, and the UI marks the
+**highest average speed** as best. `AutoTuningBenchmarkProgress`'s
 `CompletedCount`/`TotalCount` count individual samples across *all* levels (e.g. `12/25` for 5 levels × 5
 samples), not per-level.
 
-`Targets` lists five Hetzner regions (fsn1/nbg1/hil/sin/ash). The rotation index is the sample index within each
+`WindowsBenchmarkDownloadCatalog.Targets` lists five Hetzner regions (fsn1/nbg1/hil/sin/ash). The rotation index is the sample index within each
 level, so every level sees the same target sequence and a regional load-source difference does not privilege one
 level. The load size is fixed by `TcpTuningViewModel.BenchmarkLoadSizeBytes = 5_000_000`, and the sample count is
-fixed at 5 in `WindowsAutoTuningBenchmarkService`; neither is user-configurable. A non-2xx HTTP response or unsuccessful Ping is excluded
-from that level's average. Keep the Ping target identical across every sample when changing the load targets.
+fixed at 5 in `WindowsAutoTuningBenchmarkService`; neither is user-configurable. A non-2xx response or incomplete
+download is excluded from that level's average.
 
 ### RSC low-latency A/B benchmark (`IRscBenchmarkService`, Windows)
 
-The TCP global-options card can compare RSC enabled versus disabled with the same loaded-Ping method used by the
-auto-tuning benchmark. It measures each state `samplesPerState` times (default 5), using the same 5MB load size and
+The TCP global-options card can compare RSC enabled versus disabled with loaded Ping. It measures each state a
+fixed 5 times (not user-configurable), using the same 5MB load size and
 the same Hetzner target sequence for both states. This tests whether TCP receive coalescing changes latency while a
 TCP receive is active; it does not claim to measure OW2's UDP game packets directly. A difference below 1ms is
 treated as inconclusive and the UI recommends leaving the default enabled state unchanged.
+Keep RSC's Ping target identical across every sample when changing the shared download targets.
 
 `WindowsRscBenchmarkService` reads the effective RSC state before changing anything, refuses to run if that state
 cannot be read safely, and restores it with `CancellationToken.None` in a `finally` on completion, cancellation, or
-exception. A failed restore is surfaced as an error rather than reported as a successful benchmark. Auto-tuning and
-RSC benchmarks participate in the same `TcpTuningViewModel.IsOperationRunning` exclusion so their temporary global
-TCP changes cannot overlap.
+exception. A failed restore is surfaced as an error rather than reported as a successful benchmark.
+
+All mutating DNS/TCP/maintenance paths share the singleton `INetworkMutationGate` / `NetworkMutationGate`, including
+both benchmarks, one-click optimization, manual TCP changes, DNS apply/reset/cache flush, MTU changes, ghost-device
+removal, and maintenance batches. Benchmark services hold the lease from the initial state read through the final
+restore; ViewModels must not acquire the same gate around a benchmark call because the gate is intentionally
+non-reentrant. `TcpTuningViewModel.IsOperationRunning` remains a local UI affordance, while the shared gate is the
+cross-ViewModel correctness boundary.
 
 ### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
 
@@ -426,6 +438,9 @@ need separate Apple notarization and is not set up).
   v1.0.7 into `StartMenuRoot` before Velopack recalculates shortcuts; normal startup retries the same idempotent
   migration if the hook encountered a transient file lock. The migrator never overwrites an existing root shortcut
   and only removes the legacy folder when it is empty.
+  A legacy PerUser install is then migrated to the signed PerMachine MSI before runtime elevation; cancellation
+  exits instead of continuing to run the user-writable build as administrator. New and migrated installs live in
+  Program Files, while user settings/logs stay in `%APPDATA%\Shisui` and survive the migration.
   The check/download/apply **UI is the `VelopackUpdateDialog.Avalonia` package** (`UpdateDialogWindow.ShowAsync`),
   not hand-rolled — `UI/Services/UpdateService.cs` only builds the `UpdateManager(SimpleWebSource)` and exposes
   `TryCreateInstalledManager()` (returns null on dev/uninstalled builds). `VersionViewModel.ShowUpdateDialogAsync`
@@ -440,9 +455,16 @@ need separate Apple notarization and is not set up).
   needed (unlike Lhamiel). Velopack is referenced directly (not via the dialog package's transitive ref) since
   `Program.cs`/`UpdateService` use it; both pin 1.2.0.
 - **Release is local + signed, not CI**: `scripts/release-local.ps1` (adapted from `C:\Users\IMT\dev\VStoVSC`)
-  does publish (self-contained win-x64) → `vpk pack` + **Authenticode sign** (Certum "Open Source Code Signing in
+  does publish (self-contained win-x64) → `vpk pack --msi --instLocation PerMachine` + **Authenticode sign** (Certum "Open Source Code Signing in
   the cloud", `signtool /n "Open Source Developer Yuichiro Shinozaki"`) → signature verify → R2 upload (wrangler) →
-  Cloudflare cache purge → manifest-match distribution check → aggressive old-nupkg cleanup. Signing needs
+  Cloudflare cache purge → manifest-match distribution check → old-nupkg cleanup. R2 publication first backs up
+  the currently served metadata, then uploads versioned `.nupkg` payloads, fixed-name binaries, and update metadata
+  in that order. A failure after metadata publication restores the backed-up metadata and purges it; cleanup retains
+  the `.nupkg` files referenced by both the new and immediately previous manifests so rollback remains possible.
+  The fixed `Shisui-win.msi` is uploaded before the update manifest and checked for matching served size. The
+  generated PerUser `Shisui-win-Setup.exe` is excluded from upload, and its old R2 object/cache entry is removed
+  only after MSI propagation succeeds.
+  Signing needs
   **SimplySign Desktop logged in** (token + phone OTP), which is why release is local, not GitHub Actions.
   `pwsh scripts/release-local.ps1 -SkipUpload` builds + signs only (no cloud) for verification.
 - **`/vava` integration**: `vava.config.json` has a `localRelease` block so `/vava` runs cert precheck → version

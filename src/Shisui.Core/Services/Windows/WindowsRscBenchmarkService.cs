@@ -8,16 +8,17 @@ namespace Shisui.Core.Services.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsRscBenchmarkService(
     ITcpTuningService tcpTuningService,
-    ILoadedPingMeasurementService loadedPingMeasurementService) : IRscBenchmarkService
+    ILoadedPingMeasurementService loadedPingMeasurementService,
+    INetworkMutationGate networkMutationGate) : IRscBenchmarkService
 {
+    private const int SamplesPerState = 5;
     private const int SettingSettleDelayMs = 500;
     private static readonly bool[] StatesToTest = [true, false];
 
     public async Task<IReadOnlyList<RscBenchmarkResult>> RunAsync(
-        int testSizeBytes, int samplesPerState = 5, IProgress<RscBenchmarkProgress>? progress = null, CancellationToken ct = default)
+        int testSizeBytes, IProgress<RscBenchmarkProgress>? progress = null, CancellationToken ct = default)
     {
-        samplesPerState = Math.Max(1, samplesPerState);
-
+        using var mutationLease = await networkMutationGate.EnterAsync(ct);
         var originalSnapshot = await tcpTuningService.GetCurrentStateAsync(ct);
         var originalRawValue = originalSnapshot.GetOptionValue(TcpGlobalOption.Rsc);
         var originalEnabled = originalRawValue.Equals("Enabled", StringComparison.OrdinalIgnoreCase)
@@ -26,7 +27,7 @@ public sealed class WindowsRscBenchmarkService(
                 ? false
                 : throw new InvalidOperationException("RSC の現在値を取得できないため、安全に計測できませんでした");
 
-        var totalSteps = StatesToTest.Length * samplesPerState;
+        var totalSteps = StatesToTest.Length * SamplesPerState;
         var results = new List<RscBenchmarkResult>(StatesToTest.Length);
         try
         {
@@ -46,13 +47,13 @@ public sealed class WindowsRscBenchmarkService(
 
                 await Task.Delay(SettingSettleDelayMs, ct);
 
-                var stepOffset = stateIndex * samplesPerState;
+                var stepOffset = stateIndex * SamplesPerState;
                 var stateProgress = progress is null
                     ? null
                     : new InlineProgress<int>(sampleIndex =>
                         progress.Report(new RscBenchmarkProgress(enabled, stepOffset + sampleIndex, totalSteps)));
                 var measurement = await loadedPingMeasurementService.MeasureAsync(
-                    testSizeBytes, samplesPerState, stateProgress, ct);
+                    testSizeBytes, SamplesPerState, stateProgress, ct);
 
                 results.Add(new RscBenchmarkResult(
                     enabled,

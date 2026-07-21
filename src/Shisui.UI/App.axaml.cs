@@ -48,6 +48,7 @@ public partial class App : Application
     private static void ConfigureServices(ServiceCollection services)
     {
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<INetworkMutationGate, NetworkMutationGate>();
 
         if (OperatingSystem.IsWindows())
         {
@@ -59,6 +60,7 @@ public partial class App : Application
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
             services.AddSingleton<ILoadedPingMeasurementService, Core.Services.Windows.WindowsLoadedPingMeasurementService>();
+            services.AddSingleton<IDownloadSpeedMeasurementService, Core.Services.Windows.WindowsDownloadSpeedMeasurementService>();
             services.AddSingleton<IAutoTuningBenchmarkService, Core.Services.Windows.WindowsAutoTuningBenchmarkService>();
             services.AddSingleton<IRscBenchmarkService, Core.Services.Windows.WindowsRscBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();

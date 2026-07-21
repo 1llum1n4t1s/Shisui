@@ -45,6 +45,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 $WorkDir = Join-Path $RepoRoot 'local-release'
 $ArtifactsDir = Join-Path $WorkDir 'artifacts'
+$RollbackDir = Join-Path $WorkDir 'rollback-previous'
 
 function Invoke-Native {
     param([string]$Description, [scriptblock]$Block)
@@ -134,18 +135,20 @@ foreach ($runtime in $Runtimes) {
             --outputDir $ArtifactsDir `
             --channel $config.Channel `
             --shortcuts 'StartMenuRoot,Desktop' `
+            --msi `
+            --instLocation PerMachine `
             --signParams $SignParams
     }
 }
 
-# 署名検証 (Setup.exe が正しく署名されているかリリース前に確認)
+# 署名検証 (MSIを含むインストーラが正しく署名されているかリリース前に確認)
 Write-Host '== 署名検証 ==' -ForegroundColor Cyan
-foreach ($exe in Get-ChildItem $ArtifactsDir -Filter '*.exe') {
-    $sig = Get-AuthenticodeSignature $exe.FullName
+foreach ($signedArtifact in Get-ChildItem $ArtifactsDir -File | Where-Object { $_.Extension -in '.exe', '.msi' }) {
+    $sig = Get-AuthenticodeSignature $signedArtifact.FullName
     if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike "CN=$CertSubjectName*") {
-        throw "署名検証失敗: $($exe.Name) → $($sig.Status)"
+        throw "署名検証失敗: $($signedArtifact.Name) → $($sig.Status)"
     }
-    Write-Host "  ✅ $($exe.Name): Valid ($($sig.SignerCertificate.Subject -replace ',.*$'))"
+    Write-Host "  ✅ $($signedArtifact.Name): Valid ($($sig.SignerCertificate.Subject -replace ',.*$'))"
 }
 
 if ($SkipUpload) {
@@ -154,44 +157,110 @@ if ($SkipUpload) {
     return
 }
 
+# ---- 1.5 現行配信メタデータの退避 ----
+# 新しい版を公開した直後に検証が失敗した場合、固定URLのメタデータだけを直前版へ戻せるようにする。
+# 直前 manifest が参照する nupkg は後段の cleanup でも保持する。
+New-Item -ItemType Directory -Path $RollbackDir -Force | Out-Null
+$artifactFiles = @(Get-ChildItem $ArtifactsDir -File)
+$legacySetupFiles = @($artifactFiles | Where-Object { $_.Name -like '*-Setup.exe' })
+# PerUser Setup.exe は今後公開しない。MSIの伝播確認後にR2上の旧Setupも削除する。
+$publishArtifactFiles = @($artifactFiles | Where-Object { $_.Name -notlike '*-Setup.exe' })
+$metadataFiles = @($publishArtifactFiles | Where-Object {
+    $_.Name -eq 'RELEASES' -or $_.Name -like 'releases.*.json' -or $_.Name -like 'assets.*.json'
+} | Sort-Object @{ Expression = {
+    # 現行クライアントが読む releases.*.json を更新メタデータの中でも最後に切り替える。
+    if ($_.Name -like 'releases.*.json') { 2 } elseif ($_.Name -eq 'RELEASES') { 1 } else { 0 }
+} }, Name)
+$payloadFiles = @($publishArtifactFiles | Where-Object { $_.Name -like '*.nupkg' })
+$fixedBinaryFiles = @($publishArtifactFiles | Where-Object {
+    $_.Name -notlike '*.nupkg' -and $_.Name -ne 'RELEASES' -and
+    $_.Name -notlike 'releases.*.json' -and $_.Name -notlike 'assets.*.json'
+})
+$previousManifestAssets = @{}
+foreach ($metadata in $metadataFiles) {
+    $url = "$BaseUrl/$($metadata.Name)?_=$([Guid]::NewGuid().ToString('N'))"
+    try {
+        $response = Invoke-WebRequest -Uri $url -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30
+        $raw = $response.Content
+        if ($raw -is [byte[]]) { $raw = [System.Text.Encoding]::UTF8.GetString($raw) }
+        Set-Content -LiteralPath (Join-Path $RollbackDir $metadata.Name) -Value $raw -NoNewline -Encoding utf8
+
+        if ($metadata.Name -like 'releases.*.json') {
+            foreach ($asset in ($raw | ConvertFrom-Json).Assets) {
+                if ($asset.FileName) { $previousManifestAssets[$asset.FileName] = $true }
+            }
+        }
+    } catch {
+        $responseProperty = $_.Exception.PSObject.Properties['Response']
+        $statusCode = if ($responseProperty -and $responseProperty.Value) {
+            [int]$responseProperty.Value.StatusCode
+        } else {
+            $null
+        }
+        if ($statusCode -ne 404) {
+            throw "現行配信メタデータの退避に失敗しました: $($metadata.Name) — $($_.Exception.Message)"
+        }
+    }
+}
+Write-Host "直前版の退避: $((Get-ChildItem $RollbackDir -File).Count) メタデータ / $($previousManifestAssets.Count) nupkg"
+
+function Publish-R2Artifact {
+    param([System.IO.FileInfo]$File)
+    Write-Host "  ↑ $($File.Name)"
+    Invoke-Native "R2 put ($($File.Name))" {
+        pnpm dlx "wrangler@$WranglerVersion" r2 object put "$Bucket/$($File.Name)" --file $File.FullName --remote
+    }
+}
+
 # ---- 2. R2 アップロード ----
 Write-Host '== R2 アップロード ==' -ForegroundColor Cyan
 $uploaded = 0
-foreach ($f in Get-ChildItem $ArtifactsDir -File) {
-    Write-Host "  ↑ $($f.Name)"
-    Invoke-Native "R2 put ($($f.Name))" {
-        pnpm dlx "wrangler@$WranglerVersion" r2 object put "$Bucket/$($f.Name)" --file $f.FullName --remote
+$publishedMetadata = [System.Collections.Generic.List[string]]::new()
+$zoneId = $null
+try {
+    # manifest が先に見えて未アップロードの nupkg を参照しないよう、版付きpayloadを最初に置く。
+    foreach ($file in $payloadFiles) {
+        Publish-R2Artifact $file
+        $uploaded++
     }
-    $uploaded++
-}
-Write-Host "✅ R2 アップロード完了: $uploaded ファイル"
+    foreach ($file in $fixedBinaryFiles) {
+        Publish-R2Artifact $file
+        $uploaded++
+    }
+    # 自動更新クライアントが読む固定URLのメタデータは最後に公開する。
+    foreach ($file in $metadataFiles) {
+        Publish-R2Artifact $file
+        $publishedMetadata.Add($file.Name)
+        $uploaded++
+    }
+    Write-Host "✅ R2 アップロード完了: $uploaded ファイル"
 
-# ---- 2.5 Cloudflare エッジキャッシュのパージ ----
-# 固定名ファイル (Setup.exe / Portable.zip / RELEASES / releases.*.json / assets.*.json) は
-# 毎リリースで中身が変わるのに URL が不変。パージしないと自動更新が旧版を掴む。
-Write-Host '== Cloudflare キャッシュパージ ==' -ForegroundColor Cyan
-$cfHeaders = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
-$zoneName = ([uri]$BaseUrl).Host -replace '^[^.]+\.', ''   # <sub>.nephilim.jp → nephilim.jp (apex)
-$zoneResp = Invoke-RestMethod -Uri "https://api.cloudflare.com/client/v4/zones?name=$zoneName" -Headers $cfHeaders -TimeoutSec 30
-if (-not $zoneResp.success -or @($zoneResp.result).Count -eq 0) { throw "Cloudflare zone '$zoneName' の取得に失敗しました" }
-$zoneId = $zoneResp.result[0].id
-$purgeUrls = @(Get-ChildItem $ArtifactsDir -File | Where-Object { $_.Name -notlike '*.nupkg' } | ForEach-Object { "$BaseUrl/$($_.Name)" })
-if ($purgeUrls.Count -gt 0) {
-    $purgeBody = "{`"files`":$(ConvertTo-Json -InputObject $purgeUrls -AsArray -Compress)}"
-    $purgeResp = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
-        -Headers $cfHeaders -ContentType 'application/json' -Body $purgeBody -TimeoutSec 30
-    if (-not $purgeResp.success) { throw "Cloudflare キャッシュパージに失敗しました: $($purgeResp.errors | ConvertTo-Json -Compress)" }
-    Write-Host "  ✅ パージ: $($purgeUrls.Count) URL"
-} else {
-    Write-Host '  パージ対象なし'
-}
+    # ---- 2.5 Cloudflare エッジキャッシュのパージ ----
+    # 固定名ファイル (MSI / Portable.zip / RELEASES / releases.*.json / assets.*.json) は
+    # 毎リリースで中身が変わるのに URL が不変。パージしないと自動更新が旧版を掴む。
+    Write-Host '== Cloudflare キャッシュパージ ==' -ForegroundColor Cyan
+    $cfHeaders = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
+    $zoneName = ([uri]$BaseUrl).Host -replace '^[^.]+\.', ''   # <sub>.nephilim.jp → nephilim.jp (apex)
+    $zoneResp = Invoke-RestMethod -Uri "https://api.cloudflare.com/client/v4/zones?name=$zoneName" -Headers $cfHeaders -TimeoutSec 30
+    if (-not $zoneResp.success -or @($zoneResp.result).Count -eq 0) { throw "Cloudflare zone '$zoneName' の取得に失敗しました" }
+    $zoneId = $zoneResp.result[0].id
+    $purgeUrls = @($publishArtifactFiles | Where-Object { $_.Name -notlike '*.nupkg' } | ForEach-Object { "$BaseUrl/$($_.Name)" })
+    if ($purgeUrls.Count -gt 0) {
+        $purgeBody = "{`"files`":$(ConvertTo-Json -InputObject $purgeUrls -AsArray -Compress)}"
+        $purgeResp = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
+            -Headers $cfHeaders -ContentType 'application/json' -Body $purgeBody -TimeoutSec 30
+        if (-not $purgeResp.success) { throw "Cloudflare キャッシュパージに失敗しました: $($purgeResp.errors | ConvertTo-Json -Compress)" }
+        Write-Host "  ✅ パージ: $($purgeUrls.Count) URL"
+    } else {
+        Write-Host '  パージ対象なし'
+    }
 
 # ---- 3. 配信確認 (manifest 完全一致リトライ方式) ----
 # 単純な HTTP 200 だと CDN/edge が古い manifest を返している間に cleanup が走り、旧 manifest を
 # 取得したクライアントが直後に消える .nupkg を取りに行って 404 する race がある。
 # ローカルアップロード済 manifest と完全一致するまでリトライしてから次へ進む。
-Write-Host '== 配信確認 (manifest 伝播待機) ==' -ForegroundColor Cyan
-foreach ($runtime in $Runtimes) {
+    Write-Host '== 配信確認 (manifest 伝播待機) ==' -ForegroundColor Cyan
+    foreach ($runtime in $Runtimes) {
     $channel = $RuntimeMatrix[$runtime].Channel
     $url = "$BaseUrl/releases.$channel.json"
     $localManifest = Get-Content (Join-Path $ArtifactsDir "releases.$channel.json") -Raw |
@@ -214,15 +283,48 @@ foreach ($runtime in $Runtimes) {
         Write-Host "  ⚠️ remote manifest がまだ古い (attempt $attempt / $maxAttempts)、5 秒待機..."
         Start-Sleep -Seconds 5
     }
-    if (-not $matched) {
-        throw "remote manifest が $($maxAttempts * 5) 秒以内にローカルと一致しませんでした。race 回避のため cleanup を中止します: $url"
+        if (-not $matched) {
+            throw "remote manifest が $($maxAttempts * 5) 秒以内にローカルと一致しませんでした。race 回避のため cleanup を中止します: $url"
+        }
     }
+
+    # 旧PerUser版が安全に移行できるよう、固定URLのMSI本体もサイズ一致まで確認する。
+    foreach ($msi in $fixedBinaryFiles | Where-Object { $_.Extension -eq '.msi' }) {
+        $msiUrl = "$BaseUrl/$($msi.Name)"
+        $response = Invoke-WebRequest -Method Head -Uri "${msiUrl}?_=$([Guid]::NewGuid().ToString('N'))" `
+            -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30
+        $remoteLength = [long]$response.Headers.'Content-Length'
+        if ($remoteLength -ne $msi.Length) {
+            throw "remote MSI のサイズがローカルと一致しません: $msiUrl (remote=$remoteLength local=$($msi.Length))"
+        }
+        Write-Host "  ✅ $msiUrl の配信サイズ一致"
+    }
+} catch {
+    $publishError = $_
+    $restoredUrls = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $publishedMetadata) {
+        $backup = Join-Path $RollbackDir $name
+        if (Test-Path $backup) {
+            Write-Warning "公開失敗のため直前版へ復元します: $name"
+            Invoke-Native "R2 rollback ($name)" {
+                pnpm dlx "wrangler@$WranglerVersion" r2 object put "$Bucket/$name" --file $backup --remote
+            }
+            $restoredUrls.Add("$BaseUrl/$name")
+        }
+    }
+
+    if ($zoneId -and $restoredUrls.Count -gt 0) {
+        $rollbackBody = "{`"files`":$(ConvertTo-Json -InputObject @($restoredUrls) -AsArray -Compress)}"
+        Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
+            -Headers $cfHeaders -ContentType 'application/json' -Body $rollbackBody -TimeoutSec 30 | Out-Null
+    }
+    throw $publishError
 }
 
 # ---- 4. 旧バージョン nupkg のクリーンアップ (Aggressive 戦略) ----
 # ローカル artifacts の manifest (= 今アップロードしたものと同一) から keep set を作り、
 # R2 上の「.nupkg かつ manifest 外」だけを削除する。固定ファイル名 (Setup.exe /
-# Portable.zip / RELEASES* / assets.*.json / releases.*.json) は対象外なので安全。
+# MSI / Portable.zip / RELEASES* / assets.*.json / releases.*.json) は対象外なので安全。
 Write-Host '== 旧 nupkg クリーンアップ ==' -ForegroundColor Cyan
 $keep = @{}
 $manifests = Get-ChildItem $ArtifactsDir -Filter 'releases.*.json'
@@ -232,10 +334,32 @@ foreach ($m in $manifests) {
         if ($asset.FileName) { $keep[$asset.FileName] = $true }
     }
 }
-Write-Host "  保持対象 nupkg: $($keep.Count) 件"
+foreach ($assetName in $previousManifestAssets.Keys) {
+    $keep[$assetName] = $true
+}
+Write-Host "  保持対象 nupkg: $($keep.Count) 件 (現行 + 直前版)"
 
 $api = "https://api.cloudflare.com/client/v4/accounts/$AccountId/r2/buckets/$Bucket"
 $headers = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
+
+# MSIが配信済みになった後で、再びPerUser版を入れられないよう旧Setup.exeをR2から除去する。
+foreach ($legacySetup in $legacySetupFiles) {
+    $encoded = [uri]::EscapeDataString($legacySetup.Name)
+    try {
+        Invoke-RestMethod -Method Delete -Uri "$api/objects/$encoded" -Headers $headers -TimeoutSec 30 | Out-Null
+        Write-Host "  🗑️  旧PerUserインストーラ: $($legacySetup.Name)"
+    } catch {
+        $responseProperty = $_.Exception.PSObject.Properties['Response']
+        $statusCode = if ($responseProperty -and $responseProperty.Value) { [int]$responseProperty.Value.StatusCode } else { $null }
+        if ($statusCode -ne 404) { throw }
+    }
+}
+if ($legacySetupFiles.Count -gt 0) {
+    $legacySetupUrls = @($legacySetupFiles | ForEach-Object { "$BaseUrl/$($_.Name)" })
+    $legacyPurgeBody = "{`"files`":$(ConvertTo-Json -InputObject $legacySetupUrls -AsArray -Compress)}"
+    Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
+        -Headers $cfHeaders -ContentType 'application/json' -Body $legacyPurgeBody -TimeoutSec 30 | Out-Null
+}
 
 $allKeys = [System.Collections.Generic.List[string]]::new()
 $cursor = ''

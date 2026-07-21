@@ -10,6 +10,7 @@ namespace Shisui.UI.ViewModels;
 public partial class MaintenanceViewModel : ObservableObject
 {
     private readonly INetworkMaintenanceService _maintenanceService;
+    private readonly INetworkMutationGate _networkMutationGate;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -18,9 +19,12 @@ public partial class MaintenanceViewModel : ObservableObject
     [ObservableProperty]
     private string statusText = string.Empty;
 
-    public MaintenanceViewModel(INetworkMaintenanceService maintenanceService)
+    public MaintenanceViewModel(
+        INetworkMaintenanceService maintenanceService,
+        INetworkMutationGate networkMutationGate)
     {
         _maintenanceService = maintenanceService;
+        _networkMutationGate = networkMutationGate;
         var batchLabels = maintenanceService.GetBatchableCategoryLabels();
         Categories = maintenanceService.GetAvailableCommands()
             .GroupBy(c => c.Category)
@@ -37,6 +41,7 @@ public partial class MaintenanceViewModel : ObservableObject
         item.IsRunning = true;
         try
         {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
             var result = await _maintenanceService.RunAsync(item.Definition.Id);
             CommandExecuted?.Invoke(this, result);
             StatusText = result.Success
@@ -58,6 +63,8 @@ public partial class MaintenanceViewModel : ObservableObject
         group.IsRunningAll = true;
         try
         {
+            // カテゴリ一括実行の途中へ別のTCP/DNS操作を割り込ませない。
+            using var mutationLease = await _networkMutationGate.EnterAsync();
             var failed = 0;
             foreach (var item in group.Items)
             {

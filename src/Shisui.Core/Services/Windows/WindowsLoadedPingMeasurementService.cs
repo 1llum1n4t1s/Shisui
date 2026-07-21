@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Headers;
 using System.Net.NetworkInformation;
 using System.Runtime.Versioning;
 using Shisui.Core.Interfaces;
@@ -13,25 +11,15 @@ namespace Shisui.Core.Services.Windows;
 [SupportedOSPlatform("windows")]
 public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurementService
 {
-    private const int MaxSafeTestSizeBytes = 90_000_000;
     private const int InterSampleDelayMs = 300;
     private const string PingTarget = "1.1.1.1";
     private static readonly TimeSpan PingTimeout = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan MeasurementTimeout = TimeSpan.FromSeconds(30);
 
-    private static readonly IReadOnlyList<DownloadTarget> Targets =
-    [
-        new("Hetzner fsn1", bytes => CreateRangeRequest("https://fsn1-speed.hetzner.com/100MB.bin", bytes)),
-        new("Hetzner nbg1", bytes => CreateRangeRequest("https://nbg1-speed.hetzner.com/100MB.bin", bytes)),
-        new("Hetzner hil", bytes => CreateRangeRequest("https://hil-speed.hetzner.com/100MB.bin", bytes)),
-        new("Hetzner sin", bytes => CreateRangeRequest("https://sin-speed.hetzner.com/100MB.bin", bytes)),
-        new("Hetzner ash", bytes => CreateRangeRequest("https://ash-speed.hetzner.com/100MB.bin", bytes)),
-    ];
-
     public async Task<LoadedPingMeasurementResult> MeasureAsync(
         int testSizeBytes, int sampleCount, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        testSizeBytes = Math.Clamp(testSizeBytes, 1, MaxSafeTestSizeBytes);
+        testSizeBytes = Math.Clamp(testSizeBytes, 1, WindowsBenchmarkDownloadCatalog.MaxSafeTestSizeBytes);
         sampleCount = Math.Max(1, sampleCount);
 
         var pingMilliseconds = new List<double>(sampleCount);
@@ -51,7 +39,7 @@ public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurement
             }
 
             // 各構成で同じサンプル番号に同じリージョンを割り当て、地理的な条件差を揃える。
-            var target = Targets[i % Targets.Count];
+            var target = WindowsBenchmarkDownloadCatalog.Targets[i % WindowsBenchmarkDownloadCatalog.Targets.Count];
             var sample = await MeasureOnceAsync(client, target, testSizeBytes, ct);
             if (sample.Success && sample.PingMilliseconds is { } pingMs)
             {
@@ -70,7 +58,7 @@ public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurement
     }
 
     private static async Task<SingleMeasurement> MeasureOnceAsync(
-        HttpClient client, DownloadTarget target, int testSizeBytes, CancellationToken ct)
+        HttpClient client, WindowsBenchmarkDownloadCatalog.DownloadTarget target, int testSizeBytes, CancellationToken ct)
     {
         using var measurementCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         measurementCts.CancelAfter(MeasurementTimeout);
@@ -78,11 +66,12 @@ public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurement
 
         try
         {
-            using var request = target.CreateRequest(testSizeBytes);
+            using var request = WindowsBenchmarkDownloadCatalog.CreateRangeRequest(target, testSizeBytes);
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, measurementCt);
             if (!response.IsSuccessStatusCode)
             {
-                return new SingleMeasurement(false, null, $"[{target.Name}] {FormatHttpError(response)}");
+                return new SingleMeasurement(
+                    false, null, $"[{target.Name}] {WindowsBenchmarkDownloadCatalog.FormatHttpError(response)}");
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(measurementCt);
@@ -139,28 +128,5 @@ public sealed class WindowsLoadedPingMeasurementService : ILoadedPingMeasurement
         }
     }
 
-    private static string FormatHttpError(HttpResponseMessage response)
-    {
-        if (response.StatusCode != HttpStatusCode.TooManyRequests)
-        {
-            return $"HTTP {(int)response.StatusCode} ({response.ReasonPhrase})";
-        }
-
-        var retryAfter = response.Headers.RetryAfter?.Delta;
-        var suffix = retryAfter is { } wait
-            ? wait.TotalMinutes >= 1 ? $"、約{Math.Ceiling(wait.TotalMinutes)}分後に再試行可能" : $"、約{Math.Ceiling(wait.TotalSeconds)}秒後に再試行可能"
-            : string.Empty;
-        return $"HTTP 429 (Too Many Requests){suffix}";
-    }
-
-    private static HttpRequestMessage CreateRangeRequest(string url, int bytes)
-    {
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Range = new RangeHeaderValue(0, bytes - 1);
-        return request;
-    }
-
     private readonly record struct SingleMeasurement(bool Success, double? PingMilliseconds, string? ErrorMessage);
-
-    private sealed record DownloadTarget(string Name, Func<int, HttpRequestMessage> CreateRequest);
 }

@@ -14,7 +14,8 @@ public partial class TcpTuningViewModel(
     ITcpTuningService tcpTuningService,
     INetworkAdapterService adapterService,
     IAutoTuningBenchmarkService autoTuningBenchmarkService,
-    IRscBenchmarkService rscBenchmarkService) : ObservableObject
+    IRscBenchmarkService rscBenchmarkService,
+    INetworkMutationGate networkMutationGate) : ObservableObject
 {
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -56,7 +57,7 @@ public partial class TcpTuningViewModel(
 
     public IReadOnlyList<AutoTuningLevel> AutoTuningLevels { get; } = Enum.GetValues<AutoTuningLevel>();
 
-    // Auto-Tuning / RSC の Ping を測る間だけ TCP 受信負荷を発生させる固定サイズ。速度には使用しない。
+    // Auto-Tuning の速度計測と RSC の負荷中Ping計測で共用する固定ダウンロードサイズ。
     private const int BenchmarkLoadSizeBytes = 5_000_000;
 
     [ObservableProperty]
@@ -76,9 +77,6 @@ public partial class TcpTuningViewModel(
     public ObservableCollection<AutoTuningBenchmarkRow> BenchmarkResults { get; } = [];
 
     private CancellationTokenSource? benchmarkCts;
-
-    [ObservableProperty]
-    private int rscBenchmarkSamplesPerState = 5;
 
     [ObservableProperty]
     private bool isRscBenchmarkRunning;
@@ -147,6 +145,7 @@ public partial class TcpTuningViewModel(
         IsMtuBusy = true;
         try
         {
+            using var mutationLease = await networkMutationGate.EnterAsync();
             var results = await tcpTuningService.SetMtuAsync(SelectedAdapter.Id, MtuValue);
             foreach (var result in results)
             {
@@ -226,6 +225,7 @@ public partial class TcpTuningViewModel(
         IsBusy = true;
         try
         {
+            using var mutationLease = await networkMutationGate.EnterAsync();
             var result = await tcpTuningService.SetTcpGlobalOptionAsync(option, enabled);
             CommandExecuted?.Invoke(this, result);
             StatusText = result.Success ? $"{option} を {(enabled ? "有効" : "無効")} にしました" : "コマンドが失敗しました";
@@ -244,6 +244,7 @@ public partial class TcpTuningViewModel(
         IsBusy = true;
         try
         {
+            using var mutationLease = await networkMutationGate.EnterAsync();
             var result = await tcpTuningService.SetAutoTuningLevelAsync(SelectedAutoTuningLevel);
             CommandExecuted?.Invoke(this, result);
             StatusText = result.Success
@@ -278,15 +279,17 @@ public partial class TcpTuningViewModel(
         {
             BenchmarkStatusText = "計測をキャンセルしました (設定は元に戻しています)";
         }
+        catch (Exception ex)
+        {
+            BenchmarkStatusText = $"計測に失敗しました: {ex.Message}";
+        }
         finally
         {
             IsBenchmarkRunning = false;
             benchmarkCts = null;
+            // 計測サービスは成功・キャンセル・例外のいずれでも開始前状態へ戻してから返る。
+            await LoadStateAsync();
         }
-
-        // 各レベルを切り替えた後、計測開始前のレベルに戻っているはずなので状態バッジを再取得する
-        // (SelectedAutoTuningLevel も一旦ここで実際の値に戻る。ベスト値の選択はこの後で行う)。
-        await LoadStateAsync();
 
         if (results.Count == 0)
         {
@@ -294,20 +297,20 @@ public partial class TcpTuningViewModel(
         }
 
         var best = results
-            .Where(r => r.Success && r.AveragePingMs is not null)
-            .OrderBy(r => r.AveragePingMs)
+            .Where(r => r.Success && r.AverageMbps is not null)
+            .OrderByDescending(r => r.AverageMbps)
             .FirstOrDefault();
 
         foreach (var result in results)
         {
-            var pingText = result.Success && result.AveragePingMs is { } pingMs
-                ? $"平均 {pingMs:F1} ms (最小{result.MinPingMs:F1}〜最大{result.MaxPingMs:F1}, {result.SampleCount}回平均)"
+            var speedText = result.Success && result.AverageMbps is { } averageMbps
+                ? $"平均 {averageMbps:F1} Mbps (最小{result.MinMbps:F1}〜最大{result.MaxMbps:F1}, {result.SampleCount}回平均)"
                 : $"失敗 ({result.ErrorMessage})";
-            BenchmarkResults.Add(new AutoTuningBenchmarkRow(result.Level, pingText, best is not null && result.Level == best.Level));
+            BenchmarkResults.Add(new AutoTuningBenchmarkRow(result.Level, speedText, best is not null && result.Level == best.Level));
         }
 
         BenchmarkStatusText = best is not null
-            ? $"計測が完了しました。負荷時 Ping が最も低い {best.Level} を選択しました。「設定」を押すと適用されます"
+            ? $"計測が完了しました。平均ダウンロード速度が最も高い {best.Level} を選択しました。「設定」を押すと適用されます"
             : "計測に失敗しました。ネットワーク接続を確認してください";
 
         if (best is not null)
@@ -334,7 +337,7 @@ public partial class TcpTuningViewModel(
         try
         {
             results = await rscBenchmarkService.RunAsync(
-                BenchmarkLoadSizeBytes, RscBenchmarkSamplesPerState, progress, rscBenchmarkCts.Token);
+                BenchmarkLoadSizeBytes, progress, rscBenchmarkCts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -481,6 +484,7 @@ public partial class TcpTuningViewModel(
         IsBusy = true;
         try
         {
+            using var mutationLease = await networkMutationGate.EnterAsync();
             var result = await action(CancellationToken.None);
             CommandExecuted?.Invoke(this, result);
             StatusText = result.Success ? successMessage : "コマンドが失敗しました。ログを確認してください";
@@ -498,6 +502,7 @@ public partial class TcpTuningViewModel(
         IsBusy = true;
         try
         {
+            using var mutationLease = await networkMutationGate.EnterAsync();
             var results = await action(CancellationToken.None);
             foreach (var result in results)
             {

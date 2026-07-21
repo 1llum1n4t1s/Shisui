@@ -11,8 +11,16 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // Velopack のブートストラップを最初に走らせる
-        // (--veloapp-install / --veloapp-updated 等の internal hook を捌くため、Avalonia 起動・多重起動ガードより前に必須)
+        // Velopack がショートカットへ設定する AUMID と実行プロセスを一致させる。
+        // UAC 自己昇格後のプロセスもこのエントリーポイントを通るため、タスクバーが
+        // current 配下の EXE を別アプリとして扱って白紙アイコンへフォールバックするのを防ぐ。
+        if (OperatingSystem.IsWindows())
+        {
+            WindowsElevationHelper.TrySetCurrentProcessAppUserModelId();
+        }
+
+        // Velopack のブートストラップは Avalonia 起動・昇格・多重起動ガードより前に走らせる。
+        // (--veloapp-install / --veloapp-updated 等の internal hook を捌くために必須)
         var velopackApp = VelopackApp.Build();
         if (OperatingSystem.IsWindows())
         {
@@ -28,6 +36,14 @@ internal static class Program
         if (OperatingSystem.IsWindows())
         {
             WindowsLegacyStartMenuShortcutMigrator.MigrateForCurrentUser();
+
+            // 旧PerUser版は管理者実行するバイナリがユーザー書き込み可能なため、通常起動より先に
+            // 署名済みPerMachine MSIへ移行する。Velopackの内部フックは上のRun()で既に処理済み。
+            var migrationExitCode = WindowsPerMachineMigration.HandleStartupAsync(args).GetAwaiter().GetResult();
+            if (migrationExitCode is not null)
+            {
+                return migrationExitCode.Value;
+            }
         }
 
         // app.manifest は asInvoker。ここで自己再起動して昇格する (詳細は app.manifest のコメント参照)。
