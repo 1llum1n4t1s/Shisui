@@ -126,7 +126,11 @@ public static class WindowsPerMachineMigration
         {
             Directory.CreateDirectory(temporaryDirectory);
             await DownloadMsiAsync(msiPath, ct);
-            if (!WindowsAuthenticodeVerifier.IsTrustedPublisher(msiPath, ExpectedPublisher))
+            if (!ExecutableTrustVerifier.TryVerify(
+                    msiPath,
+                    ExpectedPublisher,
+                    AuthenticodeRevocationMode.Online,
+                    out _))
             {
                 ShowError("ダウンロードしたMSIの署名または発行元を確認できませんでした。移行を中止します。");
                 return 1;
@@ -155,7 +159,14 @@ public static class WindowsPerMachineMigration
         {
             return 1;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException or Win32Exception)
+        catch (Exception ex) when (ex is
+            HttpRequestException or
+            InvalidDataException or
+            IOException or
+            InvalidOperationException or
+            SecurityException or
+            UnauthorizedAccessException or
+            Win32Exception)
         {
             ShowError($"PerMachine版への移行に失敗しました。\n\n{ex.Message}");
             return 1;
@@ -386,7 +397,11 @@ public static class WindowsPerMachineMigration
         {
             Directory.CreateDirectory(temporaryDirectory);
             await DownloadMsiAsync(msiPath, ct);
-            if (!WindowsAuthenticodeVerifier.IsTrustedPublisher(msiPath, ExpectedPublisher))
+            if (!ExecutableTrustVerifier.TryVerify(
+                    msiPath,
+                    ExpectedPublisher,
+                    AuthenticodeRevocationMode.Online,
+                    out _))
             {
                 ShowError("ダウンロードしたMSIの署名または発行元を確認できませんでした。配置修復を中止します。");
                 return 1;
@@ -439,6 +454,7 @@ public static class WindowsPerMachineMigration
         }
         catch (Exception ex) when (ex is
             HttpRequestException or
+            InvalidDataException or
             IOException or
             InvalidOperationException or
             SecurityException or
@@ -590,7 +606,7 @@ public static class WindowsPerMachineMigration
         var trustedCandidates = candidates.Where(path =>
                 File.Exists(path)
                 && File.Exists(Path.Combine(Path.GetDirectoryName(path)!, ".msi-installed"))
-                && WindowsAuthenticodeVerifier.IsTrustedPublisher(path, ExpectedPublisher))
+                && ExecutableTrustVerifier.TryVerify(path, ExpectedPublisher, out _))
             .ToArray();
         if (!string.IsNullOrWhiteSpace(preferredProcessPath))
         {
@@ -779,7 +795,7 @@ public static class WindowsPerMachineMigration
         installedExecutable ??= FindTrustedPerMachineExecutable(processPath);
         return installedExecutable is not null
                && IsMsiProcessPath(processPath, installedExecutable)
-               && WindowsAuthenticodeVerifier.IsTrustedPublisher(processPath, ExpectedPublisher);
+               && ExecutableTrustVerifier.TryVerify(processPath, ExpectedPublisher, out _);
     }
 
     private static bool IsRunningAsAdministrator()

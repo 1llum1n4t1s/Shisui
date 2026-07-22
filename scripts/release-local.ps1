@@ -22,11 +22,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 # ---- 定数 ----
-# Velopack (vpk) は常に最新安定版を使う (ゆろ君ルール): NuGet から実行時に最新を解決して pin する
-$VpkVersion = (Invoke-RestMethod 'https://api.nuget.org/v3-flatcontainer/vpk/index.json' -TimeoutSec 30).versions |
-    Where-Object { $_ -notmatch '-' } | Select-Object -Last 1
-if (-not $VpkVersion) { throw 'vpk の最新安定版バージョンの取得に失敗しました (NuGet API)' }
-Write-Host "vpk 最新安定版: $VpkVersion"
+# リリースの再現性と set-msi-program-files-location.ps1 の前提 (1.2.0 の MSI レイアウト) を保つため、
+# vpk はリポジトリ内で明示的に固定する (Lumin4ti と同方式)。
+# 更新時は公式 NuGet の安定版を確認し、-SkipUpload で署名成果物を検証してから変更する。
+$VpkVersion = '1.2.0'
+Write-Host "vpk 固定バージョン: $VpkVersion"
 $WranglerVersion = '4.92.0'         # サプライチェーン対策でバージョン固定
 $Bucket = 'shisui-updates'
 $BaseUrl = 'https://shisui.nephilim.jp'
