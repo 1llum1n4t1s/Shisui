@@ -24,7 +24,7 @@ public sealed record LegacyNetworkDiagnosticFinding(
         LegacyNetworkRepairPath.QuickOptimization =>
             "「おまかせ高速化設定」で修復できます",
         LegacyNetworkRepairPath.GhostAdapters =>
-            "DNS設定タブの「切断済みネットワークデバイス」で確認・削除できます",
+            "DNS設定タブの「接続名の連番を整理」で削除できます",
         LegacyNetworkRepairPath.DriverUpdate =>
             "PCまたはNICメーカーのサポートページで最新版を確認してください",
         LegacyNetworkRepairPath.NicAdvancedPropertiesReset =>

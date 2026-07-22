@@ -135,34 +135,6 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
-      <primitives:HeaderedContentControl Header="不要になったネットワークデバイスの掃除" IsVisible="{Binding IsWindows}">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="取り外した USB アダプタや、アンインストールした VPN クライアントなど、現在は接続されていないのにレジストリ上の登録が残っているネットワークデバイスを削除します。「Microsoft 製」の項目は VPN 機能等で使う Windows 標準の仮想デバイスであることが多く、通常は削除不要です。削除後に該当デバイスを再度使う場合、ドライバーの再インストールが必要になることがあります。" />
-
-          <Button Content="一覧を更新" Command="{Binding LoadGhostAdaptersCommand}" IsEnabled="{Binding !IsGhostAdaptersBusy}" HorizontalAlignment="Left" />
-
-          <ItemsControl ItemsSource="{Binding GhostAdapters}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="vm:GhostAdapterItemViewModel">
-                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,8">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0">
-                      <TextBlock Text="{Binding Info.Description}" FontWeight="SemiBold" />
-                      <TextBlock Classes="caption" Text="{Binding Info.Manufacturer, StringFormat='製造元: {0}'}" />
-                      <TextBlock Text="⚠ Microsoft 標準の仮想デバイスです。通常は削除不要です。" FontSize="12" Foreground="#FF9F0A"
-                                 IsVisible="{Binding Info.IsLikelyMicrosoftVirtualDevice}" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Button Grid.Column="1" Content="削除" Command="{Binding RemoveCommand}" Classes="danger" VerticalAlignment="Center" />
-                  </Grid>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-
-          <TextBlock Text="{Binding GhostAdaptersStatusText}" Classes="caption" />
-        </StackPanel>
-      </primitives:HeaderedContentControl>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

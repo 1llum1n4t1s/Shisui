@@ -94,7 +94,8 @@ locations remain untouched.
 - **Shisui.Core** — Interfaces, models, and all OS-interacting services. No UI dependency.
   - `Interfaces/` — `INetworkAdapterService`, `IDnsConfigurationService`, `IDohConfigurationService`,
     `IDotConfigurationService`, `IDnsCacheService`, `ITcpTuningService`, `INetworkMaintenanceService`,
-    `IGhostAdapterService`, `INetworkDiagnosticsService`, `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
+    `IGhostAdapterService`, `INetworkAdapterNameService`, `INetworkDiagnosticsService`,
+    `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
     `IBbr2BenchmarkService`, `ITcpOptionBenchmarkService`,
     `ILegacyNetworkDiagnosticsService`,
     `ILoadedPingMeasurementService`, `ICommandExecutor`,
@@ -151,15 +152,16 @@ warning). `DecodeConsoleOutput` is `internal` + unit-tested (`ProcessCommandExec
 
 ### DI: Windows-only features are optional dependencies, not stubbed
 
-`ITcpTuningService`, `INetworkMaintenanceService`, `IGhostAdapterService`, and `IDohConfigurationService` are
+`ITcpTuningService`, `INetworkMaintenanceService`, `IGhostAdapterService`, `INetworkAdapterNameService`, and
+`IDohConfigurationService` are
 only registered in `App.axaml.cs` when `OperatingSystem.IsWindows()`. Consumers take them as
 constructor parameters with explicit `= null` defaults — `Microsoft.Extensions.DependencyInjection` only
 substitutes `null` for an unregistered service type when the constructor parameter has a default value; without
 `= null` it throws `InvalidOperationException` at startup on macOS. This applies to `MainWindowViewModel`
 (`TcpTuningViewModel? = null`, `MaintenanceViewModel? = null`; the corresponding tabs in `MainWindow.axaml` are
-gated on `IsVisible="{Binding IsWindows}"`) and to `DnsSettingsViewModel` (`IGhostAdapterService? = null`,
-`IDohConfigurationService? = null`; the ghost-cleanup card and DoH checkbox are gated on `IsWindows` /
-`IsDohAvailable`), never on null-checking directly in bindings.
+gated on `IsVisible="{Binding IsWindows}"`) and to `DnsSettingsViewModel` (`INetworkAdapterNameService? = null`,
+`IDohConfigurationService? = null`; the connection-name cleanup card and DoH checkbox are gated on
+`IsAdapterNameCleanupAvailable` / `IsDohAvailable`), never on null-checking directly in bindings.
 
 ### DNS Preset Catalog (`Core/Models/DnsPresetCatalog.cs`)
 
@@ -252,10 +254,14 @@ as three separate commands as well; one-click must not be the only UI path to an
 This normalization intentionally stops at documented TCP/netsh state and those three specifically named legacy
 per-interface values: it does not delete arbitrary registry values,
 change NIC driver advanced properties, alter BCD, or replace power plans. DoT is deliberately left untouched (see the DoT section above: DoH
-measured slightly faster and more consistent, so there's little benefit to enabling both), and destructive
-maintenance actions (ghost adapter removal, MTU changes, the 「ファイアウォール・スタックリセット」category) are
-intentionally excluded from this button — the one-click flow only touches operations judged safe for a user who
-doesn't know what they're doing. Since the congestion-provider reset / TCP global-option reset / loopback Large MTU / auto-tuning /
+measured slightly faster and more consistent, so there's little benefit to enabling both). On Windows, one-click
+finishes by calling `INetworkAdapterNameService.CleanupAsync` with the selected connection name: it removes every
+disconnected PnP network-device registration and, when possible, strips the selected live adapter's numeric suffix.
+This must run after every operation that uses the old connection name; if a rename succeeds, the new name is persisted
+before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
+are intentionally included and the button description warns that Windows will redetect them when reconnected. Other
+destructive maintenance actions (per-adapter MTU restoration and the 「ファイアウォール・スタックリセット」category)
+remain excluded. Since the congestion-provider reset / TCP global-option reset / loopback Large MTU / auto-tuning /
 cache-maintenance commands are global, not scoped
 to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
 multi-NIC environments.
@@ -382,15 +388,15 @@ autotuning, counts `pnputil /enum-devices /problem /class Net /format xml` resul
 least 100 and at least 0.1% of observed packets, avoiding noisy single discards. A driver date over five years old
 is a check recommendation, not proof that the driver is wrong.
 
-Findings guide the user to the existing DNS-tab ghost-device list and maintenance-tab Winsock reset. NIC advanced
+Findings guide the user to the DNS-tab connection-name cleanup action and maintenance-tab Winsock reset. NIC advanced
 property reset is offered only when the report recommends it and targets only the currently selected adapter via
 `Reset-NetAdapterAdvancedProperty -DisplayName '*'`; it is destructive, restarts the adapter, and is never part of
 one-click optimization. IP-stack reset and `netcfg -d` remain last-resort maintenance actions and are not run by
 the diagnostic flow.
 
 All mutating DNS/TCP/maintenance paths share the singleton `INetworkMutationGate` / `NetworkMutationGate`, including
-both benchmarks, one-click optimization, manual TCP changes, DNS apply/reset/cache flush, MTU changes, ghost-device
-removal, and maintenance batches. Benchmark services hold the lease from the initial state read through the final
+both benchmarks, one-click optimization, manual TCP changes, DNS apply/reset/cache flush, MTU changes, connection-name
+cleanup (including disconnected-device removal), and maintenance batches. Benchmark services hold the lease from the initial state read through the final
 restore; ViewModels must not acquire the same gate around a benchmark call because the gate is intentionally
 non-reentrant. ViewModel busy flags remain local UI affordances, while the shared gate is the cross-ViewModel
 correctness boundary.
@@ -435,14 +441,14 @@ device names `ifconfig` expects: `MacNetworkAdapterService.GetAdapterDetailsAsyn
 (e.g. `en0`) map, then runs `ifconfig <device>` and parses *that* (`MacIfConfigParser`) for the actual details —
 a service name alone can't be `ifconfig`'d directly.
 
-### Ghost (disconnected) network device cleanup (`IGhostAdapterService`, Windows)
+### Disconnected network device cleanup backend (`IGhostAdapterService`, Windows)
 
-A section in the DNS tab lists **disconnected** network-class devices (leftover registry entries from removed USB
-adapters / uninstalled VPNs) via `pnputil /enum-devices /disconnected /class Net /format xml` (XML for
-locale-independent parsing) and removes one via `pnputil /remove-device "<InstanceId>"`. Windows' own WAN Miniport
-virtual devices match the same filter, so `WindowsGhostAdapterParser` flags `Manufacturer` containing "Microsoft"
-(→ UI shows a ⚠ warning, but deletion still runs on a single click — no confirmation gate). This uses pnputil's
-proper PnP uninstall path rather than raw registry edits.
+`IGhostAdapterService` enumerates **disconnected** network-class devices via
+`pnputil /enum-devices /disconnected /class Net /format xml` (XML for locale-independent parsing) and removes an
+instance via `pnputil /remove-device "<InstanceId>"`. It is a shared backend, not an independent per-device UI:
+`WindowsNetworkAdapterNameService` removes every returned registration as the first phase of the DNS-tab
+「接続名の連番を整理」 action, while `WindowsLegacyNetworkDiagnosticsService` reuses the same enumeration for its
+read-only count. This uses pnputil's proper PnP removal path rather than raw registry edits.
 
 ### UI Framework
 

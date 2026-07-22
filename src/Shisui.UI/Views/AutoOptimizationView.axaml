@@ -36,7 +36,7 @@
 
           <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10">
             <StackPanel Spacing="8">
-              <TextBlock Text="何を設定すればいいか分からない場合の安全な初期設定です" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="通信設定と切断済み登録をまとめて整えます" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding DnsSettings.OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
               <Button Content="おまかせ高速化設定" Command="{Binding RunQuickOptimizationCommand}"
                       Classes="accent" IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
@@ -78,7 +78,7 @@
             <StackPanel Spacing="6">
               <TextBlock Text="修復先" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="切断済みデバイスは「DNS設定」、Winsockカタログの破損が疑われる場合は「メンテナンス」タブから修復できます。IPスタックやネットワークコンポーネントの全初期化は、ほかの手段で直らない場合だけ使用してください。" />
+                         Text="切断済みデバイスは「DNS設定」の「接続名の連番を整理」、Winsockカタログの破損が疑われる場合は「メンテナンス」タブから修復できます。IPスタックやネットワークコンポーネントの全初期化は、ほかの手段で直らない場合だけ使用してください。" />
               <Button Content="選択中NICの詳細設定を工場出荷値へ戻す"
                       Command="{Binding ResetSelectedNicAdvancedPropertiesCommand}"
                       Classes="danger" IsVisible="{Binding CanResetSelectedNic}"

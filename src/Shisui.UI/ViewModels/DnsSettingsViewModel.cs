@@ -14,7 +14,6 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly INetworkDiagnosticsService _diagnosticsService;
     private readonly INetworkMutationGate _networkMutationGate;
-    private readonly IGhostAdapterService? _ghostAdapterService;
     private readonly INetworkAdapterNameService? _adapterNameService;
     private readonly IDohConfigurationService? _dohService;
     private readonly IDotConfigurationService? _dotService;
@@ -28,8 +27,6 @@ public partial class DnsSettingsViewModel : ObservableObject
     public bool IsAdapterNameCleanupAvailable => IsWindows && _adapterNameService is not null;
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
-
-    public ObservableCollection<GhostAdapterItemViewModel> GhostAdapters { get; } = [];
 
     public IReadOnlyList<DnsProviderPreset> Presets => DnsPresetCatalog.BuiltIn;
 
@@ -59,12 +56,6 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string statusText = string.Empty;
-
-    [ObservableProperty]
-    private bool isGhostAdaptersBusy;
-
-    [ObservableProperty]
-    private string ghostAdaptersStatusText = string.Empty;
 
     [ObservableProperty]
     private bool isAdapterNameBusy;
@@ -105,9 +96,19 @@ public partial class DnsSettingsViewModel : ObservableObject
     public bool IsCacheMaintenanceAvailable => _maintenanceService is not null;
 
     /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
-    public string OneClickOptimizeDescription => IsTcpOptimizationAvailable
-        ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
-        : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
+    public string OneClickOptimizeDescription
+    {
+        get
+        {
+            var description = IsTcpOptimizationAvailable
+                ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
+                : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
+
+            return IsAdapterNameCleanupAvailable
+                ? $"{description} さらに、切断済みのネットワークデバイス登録をすべて削除し、可能なら選択中の接続名の連番も外します。取り外し中の USB LAN やドック内蔵 NIC も削除対象となり、再接続時にドライバーが再検出されます。"
+                : description;
+        }
+    }
 
     public DnsSettingsViewModel(
         INetworkAdapterService adapterService,
@@ -116,7 +117,6 @@ public partial class DnsSettingsViewModel : ObservableObject
         ISettingsService settingsService,
         INetworkDiagnosticsService diagnosticsService,
         INetworkMutationGate networkMutationGate,
-        IGhostAdapterService? ghostAdapterService = null,
         IDohConfigurationService? dohService = null,
         IDotConfigurationService? dotService = null,
         ITcpTuningService? tcpTuningService = null,
@@ -129,7 +129,6 @@ public partial class DnsSettingsViewModel : ObservableObject
         _settingsService = settingsService;
         _diagnosticsService = diagnosticsService;
         _networkMutationGate = networkMutationGate;
-        _ghostAdapterService = ghostAdapterService;
         _adapterNameService = adapterNameService;
         _dohService = dohService;
         _dotService = dotService;
@@ -158,10 +157,6 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
 
         _ = LoadAdaptersAsync();
-        if (_ghostAdapterService is not null)
-        {
-            _ = LoadGhostAdaptersAsync();
-        }
 
         // 起動時に、選択中プリセットの DoH 実状態をチェックボックス・バッジへ反映する
         // (UseDoh は設定ファイルに保存せず、OS の実際の登録状況を単一の真実とする)。
@@ -351,7 +346,8 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
     /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・BBR2 輻輳制御・TCP 詳細設定・
-    /// ループバック Large MTU・受信ウィンドウ自動調整の既定化をまとめて行うワンクリック機能。
+    /// ループバック Large MTU・受信ウィンドウ自動調整の既定化・切断済みアダプタ登録の全削除を
+    /// まとめて行うワンクリック機能。
     /// </summary>
     internal async Task RunOneClickOptimizationAsync()
     {
@@ -388,6 +384,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             var preset = DnsPresetCatalog.CloudflareStandard;
             var servers = preset.Servers;
             var results = new List<CommandExecutionResult>();
+            NetworkAdapterNameCleanupResult? adapterNameCleanupResult = null;
 
             results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
 
@@ -426,23 +423,38 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
             }
 
+            if (_adapterNameService is not null)
+            {
+                // Windows では adapter.Id が接続名そのものなので、名前を使う DNS/TCP 処理をすべて終えてから
+                // 切断済み登録を削除し、必要なら選択中アダプタの末尾連番を外す。
+                adapterNameCleanupResult = await _adapterNameService.CleanupAsync(adapter.DisplayName);
+                results.AddRange(adapterNameCleanupResult.CommandResults);
+                AdapterNameStatusText = FormatAdapterNameCleanupStatus(adapterNameCleanupResult);
+            }
+
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
 
-            _settingsService.Current.LastSelectedAdapterId = adapter.Id;
+            _settingsService.Current.LastSelectedAdapterId = adapterNameCleanupResult is
+                { WasRenamed: true, TargetName: not null }
+                ? adapterNameCleanupResult.TargetName
+                : adapter.Id;
             _settingsService.Current.LastSelectedPresetId = preset.Id;
             await _settingsService.SaveAsync();
 
-            StatusText = results.All(r => r.Success)
+            var allSucceeded = results.All(r => r.Success)
+                               && (adapterNameCleanupResult?.Success ?? true);
+
+            await LoadAdaptersCoreAsync();
+            await RefreshDohStateAsync(servers);
+
+            StatusText = allSucceeded
                 ? IsTcpOptimizationAvailable
                     ? "おまかせ高速化設定を適用しました。TCP ACK 関連の既定値復元を反映するため PC を再起動してください"
                     : "おまかせ高速化設定を適用しました"
                 : "一部の設定が失敗しました。ログを確認してください";
-
-            await LoadAdaptersCoreAsync();
-            await RefreshDohStateAsync(servers);
         }
         finally
         {
@@ -555,11 +567,6 @@ public partial class DnsSettingsViewModel : ObservableObject
                 await ReloadAdaptersAfterNameChangeAsync(result.TargetName);
             }
 
-            if (result.CommandResults.Count > 0 && _ghostAdapterService is not null)
-            {
-                await LoadGhostAdaptersAsync();
-            }
-
             AdapterNameStatusText = FormatAdapterNameCleanupStatus(result);
         }
         catch (Exception ex)
@@ -612,68 +619,6 @@ public partial class DnsSettingsViewModel : ObservableObject
         return result.RemovedGhostCount > 0
             ? $"切断済みの旧デバイス {result.RemovedGhostCount} 件を整理しました。接続名はすでに「{result.TargetName}」です"
             : $"整理対象の旧デバイスはありません。接続名はすでに「{result.TargetName}」です";
-    }
-
-    [RelayCommand]
-    private async Task LoadGhostAdaptersAsync()
-    {
-        if (_ghostAdapterService is null)
-        {
-            return;
-        }
-
-        IsGhostAdaptersBusy = true;
-        try
-        {
-            var ghosts = await _ghostAdapterService.GetGhostAdaptersAsync();
-            GhostAdapters.Clear();
-            foreach (var ghost in ghosts)
-            {
-                GhostAdapters.Add(new GhostAdapterItemViewModel(ghost, RemoveGhostAdapterAsync));
-            }
-
-            GhostAdaptersStatusText = GhostAdapters.Count == 0
-                ? "切断済みのネットワークデバイスは見つかりませんでした"
-                : $"{GhostAdapters.Count} 件の切断済みデバイスが見つかりました";
-        }
-        catch (Exception ex)
-        {
-            GhostAdaptersStatusText = $"一覧の取得に失敗しました: {ex.Message}";
-        }
-        finally
-        {
-            IsGhostAdaptersBusy = false;
-        }
-    }
-
-    private async Task RemoveGhostAdapterAsync(GhostAdapterItemViewModel item)
-    {
-        if (_ghostAdapterService is null)
-        {
-            return;
-        }
-
-        item.IsRemoving = true;
-        try
-        {
-            using var mutationLease = await _networkMutationGate.EnterAsync();
-            var result = await _ghostAdapterService.RemoveGhostAdapterAsync(item.Info.InstanceId);
-            CommandExecuted?.Invoke(this, result);
-
-            if (result.Success)
-            {
-                GhostAdapters.Remove(item);
-                GhostAdaptersStatusText = $"{item.Info.Description} を削除しました";
-            }
-            else
-            {
-                GhostAdaptersStatusText = $"{item.Info.Description} の削除に失敗しました。ログを確認してください";
-            }
-        }
-        finally
-        {
-            item.IsRemoving = false;
-        }
     }
 
     private DnsServerSet ResolveServers() =>
