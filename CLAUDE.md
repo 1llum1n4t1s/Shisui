@@ -71,7 +71,11 @@ causes the first process to relaunch elevated and detach from that original debu
 Windows releases are installed by the signed Velopack **PerMachine MSI** under protected `Program Files`; do not
 publish the generated PerUser `Setup.exe`. Legacy `%LocalAppData%\Shisui` builds are the one-time exception:
 `WindowsPerMachineMigration` runs before whole-app elevation, downloads `Shisui-win.msi` from the fixed R2 origin,
-validates it with `WinVerifyTrust` plus the expected publisher CN, and invokes system `msiexec` with `runas`.
+validates it with `ExecutableTrustVerifier` (WinVerifyTrust + expected publisher CN; ported from Lumin4ti's
+hardened verifier — System32-only DLL loading so a planted `wintrust.dll` next to the user-writable legacy exe
+can't be picked up by the elevated process, whole-chain revocation checks with `AuthenticodeRevocationMode.Online`
+for downloaded installers / `CacheOnly` for local executables, and certificate extraction from the verified trust
+chain rather than a second file read, closing the TOCTOU window), and invokes system `msiexec` with `runas`.
 The installed Program Files build never executes the user-writable legacy `Update.exe`; it performs a bounded,
 no-reparse-point cleanup directly, preserving `%APPDATA%\Shisui` settings/logs while removing the old executable
 tree, package cache, HKCU uninstall entry, and per-user shortcuts. A trusted PerMachine build also detects the
@@ -98,8 +102,8 @@ locations remain untouched.
     `IAutoTuningBenchmarkService`, `IRscBenchmarkService`,
     `IBbr2BenchmarkService`, `ITcpOptionBenchmarkService`,
     `ILegacyNetworkDiagnosticsService`,
-    `ILoadedPingMeasurementService`, `ICommandExecutor`,
-    `ISettingsService`.
+    `ILoadedPingMeasurementService`, `IDownloadSpeedMeasurementService`, `INetworkMutationGate`,
+    `ICommandExecutor`, `ISettingsService`.
   - `Models/` — `NetworkAdapterInfo`, `NetworkAdapterDetails` (MAC/link speed, read-only), `DnsServerSet`,
     `DnsProviderPreset` (has nullable `DohTemplate` / `DotHost`), `DnsPresetCatalog` (hardcoded official
     Cloudflare/Google/Quad9/NextDNS IPs + DoH/DoT hostnames), `DohStatus`, `TcpSettingsSnapshot` (includes
@@ -547,7 +551,10 @@ need separate Apple notarization and is not set up).
   In dev (`dotnet run`), `UpdateManager.IsInstalled` is false so `TryCreateInstalledManager` returns null and the
   dialog is skipped — that is expected. Shisui is **not** AOT/trimmed, so no `TrimmerRootAssembly` entries are
   needed (unlike Lhamiel). Velopack is referenced directly (not via the dialog package's transitive ref) since
-  `Program.cs`/`UpdateService` use it; both pin 1.2.0.
+  `Program.cs`/`UpdateService` use it; both pin 1.2.0. The `vpk` CLI in `release-local.ps1` is **also pinned to
+  1.2.0** (not resolved-latest): `set-msi-program-files-location.ps1` rewrites the MSI Directory table against
+  1.2.0's layout, so a silently newer vpk could break the rewrite — bump all three (`Velopack` refs + `$VpkVersion`)
+  together, verifying with `-SkipUpload` first.
 - **Release is local + signed, not CI**: `scripts/release-local.ps1` (adapted from `C:\Users\IMT\dev\VStoVSC`)
   does publish (self-contained win-x64) → `vpk pack --msi --instLocation PerMachine` + **Authenticode sign** (Certum "Open Source Code Signing in
   the cloud", `signtool /n "Open Source Developer Yuichiro Shinozaki"`) → signature verify → R2 upload (wrangler) →
