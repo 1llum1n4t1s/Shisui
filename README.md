@@ -10,7 +10,7 @@ Shisuiは、DNSの切り替え、通信状態の診断、Windowsのネットワ�
 
 ## ダウンロード
 
-[Shisuiの最新版をダウンロード](https://shisui.nephilim.jp/Shisui-win.msi)
+[Shisuiの最新版をダウンロード](https://shisui.kagayoi.com/Shisui-win.msi)
 
 ダウンロードしたMSIを実行してインストールしてください。以後の更新はアプリ内から適用できます。
 

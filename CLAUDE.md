@@ -512,8 +512,8 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
 Shisui ships as a **signed Velopack app distributed from Cloudflare R2** (Windows only; macOS distribution would
 need separate Apple notarization and is not set up).
 
-- **Update source**: `SimpleWebSource` pointing at **`https://shisui.nephilim.jp`** (R2 bucket `shisui-updates`,
-  custom domain on the `nephilim.jp` Cloudflare zone). The base URL is hardcoded in `AppSettings.UpdateBaseUrl`
+- **Update source**: `SimpleWebSource` pointing at **`https://shisui.kagayoi.com`** (R2 bucket `shisui-updates`,
+  custom domain on the `kagayoi.com` Cloudflare zone). The base URL is hardcoded in `AppSettings.UpdateBaseUrl`
   with `[JsonIgnore]` (not overridable from settings.json — closes the third-party-host redirection attack surface).
   Channel is `win` only (`releases.win.json`).
 - **Client wiring**: `Program.cs` calls `VelopackApp.Build().Run()` first (before the single-instance guard).

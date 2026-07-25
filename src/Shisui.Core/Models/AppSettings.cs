@@ -4,7 +4,7 @@ namespace Shisui.Core.Models;
 
 public sealed class AppSettings
 {
-    public const string DefaultUpdateBaseUrl = "https://shisui.nephilim.jp";
+    public const string DefaultUpdateBaseUrl = "https://shisui.kagayoi.com";
 
     public string? LastSelectedAdapterId { get; set; }
 
