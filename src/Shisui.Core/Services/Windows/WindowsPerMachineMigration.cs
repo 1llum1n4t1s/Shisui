@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Security;
 using System.Security.Principal;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Win32;
 using Shisui.Core.Models;
 
@@ -27,7 +28,6 @@ public static class WindowsPerMachineMigration
     private const string ProtectedPendingValueName = "PerMachineLocationPending";
     private const string RunOnceValueName = "ShisuiPerMachineMigrationCleanup";
     private const long MaximumMsiSizeBytes = 250_000_000;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     /// <summary>
     /// 通常起動を継続する場合は null、移行処理後に現プロセスを終了する場合は終了コードを返す。
@@ -649,7 +649,7 @@ public static class WindowsPerMachineMigration
     {
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
         var pending = new PendingMigration(legacyRoot, parentProcessId, installedExecutable);
-        File.WriteAllText(PendingFilePath, JsonSerializer.Serialize(pending, JsonOptions));
+        File.WriteAllText(PendingFilePath, JsonSerializer.Serialize(pending, WindowsPerMachineMigrationJsonContext.Default.PendingMigration));
         if (installedExecutable is not null)
         {
             RegisterCleanupRunOnce(installedExecutable);
@@ -667,7 +667,7 @@ public static class WindowsPerMachineMigration
             ?? throw new SecurityException("保護された移行保留情報を作成できませんでした。");
         migration.SetValue(
             ProtectedPendingValueName,
-            JsonSerializer.Serialize(pending, JsonOptions),
+            JsonSerializer.Serialize(pending, WindowsPerMachineMigrationJsonContext.Default.PendingMigration),
             RegistryValueKind.String);
         RegisterCleanupRunOnce(installedExecutable);
     }
@@ -677,7 +677,7 @@ public static class WindowsPerMachineMigration
         try
         {
             return File.Exists(PendingFilePath)
-                ? JsonSerializer.Deserialize<PendingMigration>(File.ReadAllText(PendingFilePath), JsonOptions)
+                ? JsonSerializer.Deserialize(File.ReadAllText(PendingFilePath), WindowsPerMachineMigrationJsonContext.Default.PendingMigration)
                 : null;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -693,7 +693,7 @@ public static class WindowsPerMachineMigration
             using var localMachine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
             using var migration = localMachine.OpenSubKey(ProtectedPendingRegistryPath);
             return migration?.GetValue(ProtectedPendingValueName) is string json
-                ? JsonSerializer.Deserialize<PendingMigration>(json, JsonOptions)
+                ? JsonSerializer.Deserialize(json, WindowsPerMachineMigrationJsonContext.Default.PendingMigration)
                 : null;
         }
         catch (Exception ex) when (ex is JsonException or SecurityException or UnauthorizedAccessException)
@@ -967,9 +967,15 @@ public static class WindowsPerMachineMigration
 
     private static string PendingFilePath => Path.Combine(AppPaths.AppDataDirectory, PendingFileName);
 
-    private sealed record PendingMigration(string LegacyRoot, int ParentProcessId, string? InstalledExecutable);
+    internal sealed record PendingMigration(string LegacyRoot, int ParentProcessId, string? InstalledExecutable);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int MessageBoxW(IntPtr windowHandle, string text, string caption, uint type);
 }
+
+/// <summary>Windows 限定モデル用 JSON シリアライズコンテキスト(NativeAOT/トリミング対応)。</summary>
+[SupportedOSPlatform("windows")]
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(WindowsPerMachineMigration.PendingMigration))]
+internal sealed partial class WindowsPerMachineMigrationJsonContext : JsonSerializerContext;

@@ -1,4 +1,4 @@
-﻿# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
+# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
 #
 # SimplySign (Certum クラウド署名) は Desktop 接続 + スマホトークンが必要で
 # GitHub Actions からは署名できないため、リリースは本スクリプトでローカル実行する。
@@ -27,7 +27,7 @@ Set-StrictMode -Version Latest
 # 更新時は公式 NuGet の安定版を確認し、-SkipUpload で署名成果物を検証してから変更する。
 $VpkVersion = '1.2.0'
 Write-Host "vpk 固定バージョン: $VpkVersion"
-$WranglerVersion = '4.92.0'         # サプライチェーン対策でバージョン固定
+$WranglerVersion = '4.127.1'        # サプライチェーン対策でバージョン固定
 $Bucket = 'shisui-updates'
 $BaseUrl = 'https://shisui.kagayoi.com'
 $AccountId = '10901bfadbf1005164774a7350082985'
@@ -114,13 +114,14 @@ foreach ($runtime in $Runtimes) {
     # runtime packs が assets.json に入らず NETSDK1112 が出る)。
     Write-Host "== restore: $runtime ==" -ForegroundColor Cyan
     Invoke-Native "dotnet restore ($runtime)" {
-        dotnet restore src/Shisui.UI/Shisui.UI.csproj -r $runtime --force-evaluate -p:SelfContained=true
+        dotnet restore src/Shisui.UI/Shisui.UI.csproj -r $runtime --locked-mode `
+            -p:SelfContained=true -p:OS=Windows_NT
     }
 
     Write-Host "== publish: $runtime ==" -ForegroundColor Cyan
     Invoke-Native "dotnet publish ($runtime)" {
         dotnet publish src/Shisui.UI/Shisui.UI.csproj -c Release -r $runtime `
-            --self-contained true --no-restore -o $publishDir
+            --self-contained true --no-restore -p:OS=Windows_NT -o $publishDir
     }
 
     if (-not (Test-Path (Join-Path $publishDir 'Shisui.UI.exe'))) {
@@ -134,7 +135,7 @@ foreach ($runtime in $Runtimes) {
             --packId Shisui `
             --packVersion $version `
             --packTitle 'Shisui' `
-            --packAuthors 'ゆろち' `
+            --packAuthors 'Kagayoi' `
             --mainExe Shisui.UI.exe `
             --icon (Join-Path 'src' 'Shisui.UI' 'icon' 'app.ico') `
             --packDir $publishDir `
@@ -409,7 +410,28 @@ while ($true) {
     if (-not $cursor) { break }
 }
 
-$toDelete = $allKeys | Where-Object { $_ -like '*.nupkg' -and -not $keep.ContainsKey($_) }
+# 全プロジェクト共通の保持ポリシー: 直近 2 バージョン。
+# 旧実装は '*.nupkg' だけを削除対象にしていたため、バージョン付きの配布物
+# (zip / deb / rpm / AppImage 等) が R2 に永久に溜まっていた (Ferry で 351 個 7.2GB)。
+$KeepVersionCount = 2
+$versionPattern = '(\d+\.\d+\.\d+)'
+$allVersions = @(
+    $allKeys | ForEach-Object {
+        $m = [regex]::Match($_, $versionPattern)
+        if ($m.Success) { $m.Groups[1].Value }
+    } | Sort-Object -Property { [version]$_ } -Unique
+)
+$keepVersions = @($allVersions | Select-Object -Last $KeepVersionCount)
+Write-Host "  保持バージョン: $($keepVersions -join ', ') (全 $($allVersions.Count) 世代)"
+
+$toDelete = $allKeys | Where-Object {
+    # manifest が参照するファイルは絶対保持 (消すと自動更新が壊れる)
+    if ($keep.ContainsKey($_)) { return $false }
+    # 固定ファイル名はバージョン文字列を含まない = 毎リリース上書きなので保持
+    $m = [regex]::Match($_, $versionPattern)
+    if (-not $m.Success) { return $false }
+    return $keepVersions -notcontains $m.Groups[1].Value
+}
 if (-not $toDelete) {
     Write-Host '  ✅ 削除対象なし'
 } else {
@@ -429,7 +451,7 @@ if (-not $toDelete) {
     if ($failed -gt 0 -and $deleted -eq 0) { throw '旧 nupkg の削除がすべて失敗しました。API token の権限を確認してください。' }
 }
 
-# ---- 5. packages.lock.json は未使用 (このプロジェクトは RestorePackagesWithLockFile を使っていない) ----
-# 将来 lockfile を導入したら、ここに `dotnet restore <slnx> --force-evaluate` の clean 化ブロックを足す。
+# ---- 5. packages.lock.json は配布入力として固定済み ----
+# 上の RID 付き restore を locked mode で通しているため、リリース後の再生成・clean 化は不要。
 
 Write-Host "`n🎉 リリース完了: v$version → $BaseUrl" -ForegroundColor Green

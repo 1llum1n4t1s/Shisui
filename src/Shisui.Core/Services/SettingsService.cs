@@ -1,12 +1,12 @@
 using System.Text.Json;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
+using Shisui.Core.Serialization;
 
 namespace Shisui.Core.Services;
 
 public sealed class SettingsService : ISettingsService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly SemaphoreSlim _saveLock = new(1, 1);
 
     public AppSettings Current { get; }
@@ -23,7 +23,7 @@ public sealed class SettingsService : ISettingsService
             if (File.Exists(AppPaths.SettingsFilePath))
             {
                 var json = File.ReadAllText(AppPaths.SettingsFilePath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+                var settings = JsonSerializer.Deserialize(json, ShisuiJsonContext.Default.AppSettings);
                 if (settings is not null)
                 {
                     return settings;
@@ -44,7 +44,7 @@ public sealed class SettingsService : ISettingsService
         try
         {
             Directory.CreateDirectory(AppPaths.AppDataDirectory);
-            var json = JsonSerializer.Serialize(Current, JsonOptions);
+            var json = JsonSerializer.Serialize(Current, ShisuiJsonContext.Default.AppSettings);
             var tempPath = AppPaths.SettingsFilePath + ".tmp";
             await File.WriteAllTextAsync(tempPath, json, ct);
             File.Move(tempPath, AppPaths.SettingsFilePath, overwrite: true);
