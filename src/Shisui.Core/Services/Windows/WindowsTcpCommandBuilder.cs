@@ -22,8 +22,8 @@ public static class WindowsTcpCommandBuilder
             .Select(template => $"int tcp set supplemental template={template} congestionprovider=BBR2")
             .ToList();
 
-        commands.Add("int ipv6 set global loopbacklargemtu=disable");
-        commands.Add("int ipv4 set global loopbacklargemtu=disable");
+        commands.Add("int ipv6 set global loopbacklargemtu=disabled");
+        commands.Add("int ipv4 set global loopbacklargemtu=disabled");
         return commands;
     }
 
@@ -36,26 +36,6 @@ public static class WindowsTcpCommandBuilder
         commands.Add("int ipv6 set global loopbacklargemtu=enabled");
         commands.Add("int ipv4 set global loopbacklargemtu=enabled");
         return commands;
-    }
-
-    public static IReadOnlyList<string> BuildSetCongestionProviders(IReadOnlyDictionary<string, string> providers)
-    {
-        if (providers.Count != SupplementalTemplates.Count ||
-            SupplementalTemplates.Any(template => !providers.ContainsKey(template)))
-        {
-            throw new ArgumentException("5つ全てのTCPテンプレートが必要です", nameof(providers));
-        }
-
-        return SupplementalTemplates.Select(template =>
-        {
-            var provider = providers[template];
-            if (string.IsNullOrWhiteSpace(provider) || provider.Any(c => !char.IsLetterOrDigit(c)))
-            {
-                throw new ArgumentException("輻輳制御プロバイダー名が不正です", nameof(providers));
-            }
-
-            return $"int tcp set supplemental template={template} congestionprovider={provider}";
-        }).ToList();
     }
 
     /// <summary>
@@ -95,17 +75,6 @@ public static class WindowsTcpCommandBuilder
         return $"int tcp set global {key}={value}";
     }
 
-    public static string BuildRevertGlobalOptionToDefault(TcpGlobalOption option) => option switch
-    {
-        TcpGlobalOption.Rsc => "int tcp set global rsc=default",
-        TcpGlobalOption.EcnCapability => "int tcp set global ecncapability=default",
-        // Microsoftの既定値はAllowed。timestampsはdefaultではなく文書化された既定トークンを明示する。
-        TcpGlobalOption.Timestamps => "int tcp set global timestamps=allowed",
-        TcpGlobalOption.Rss => "int tcp set global rss=default",
-        TcpGlobalOption.FastOpen => "int tcp set global fastopen=default",
-        _ => throw new ArgumentOutOfRangeException(nameof(option)),
-    };
-
     public const string ShowGlobalStatus = "int tcp show global";
 
     /// <summary>
@@ -141,5 +110,13 @@ public static class WindowsTcpCommandBuilder
     /// netsh は CommandLineToArgvW ではなく生コマンドラインを独自再パースするため、
     /// スペースを含みうる値はここで netsh 流の二重引用符で囲む (WindowsDnsCommandBuilder と同じ方針)。
     /// </summary>
-    private static string Quote(string value) => $"\"{value}\"";
+    private static string Quote(string value)
+    {
+        if (value.Contains('"'))
+        {
+            throw new ArgumentException("netsh 引数に二重引用符は使用できません。", nameof(value));
+        }
+
+        return $"\"{value}\"";
+    }
 }

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Shisui.Core\Shisui.Core.csproj" />
+    <ProjectReference Include="..\Shisui.UI\Shisui.UI.csproj" />
   </ItemGroup>
 
 </Project>

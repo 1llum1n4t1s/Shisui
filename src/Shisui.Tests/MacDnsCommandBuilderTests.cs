@@ -26,15 +26,11 @@ public class MacDnsCommandBuilderTests
     }
 
     [TestMethod]
-    public void BuildApply_AddressContainingShellMetacharacters_IsQuotedAndEscaped()
+    public void BuildApply_InvalidAddress_ThrowsBeforeBuildingCommand()
     {
-        // カスタム DNS 入力欄はユーザーの自由入力であり、シェルメタ文字を含む値が
-        // クオートされずに do shell script (実体は sh) へ渡るとコマンドインジェクションになる
-        // (2026-07-06 /rere レビューで発見)。アドレスも serviceName と同じ MacShellQuote.Quote を通すこと。
         var servers = new DnsServerSet("1.1.1.1; touch /tmp/pwned", null, null, null);
-        var args = MacDnsCommandBuilder.BuildApply("Wi-Fi", servers);
 
-        Assert.AreEqual("-setdnsservers \"Wi-Fi\" \"1.1.1.1; touch /tmp/pwned\"", args);
+        Assert.ThrowsExactly<ArgumentException>(() => MacDnsCommandBuilder.BuildApply("Wi-Fi", servers));
     }
 
     [TestMethod]

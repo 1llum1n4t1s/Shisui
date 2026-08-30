@@ -71,8 +71,6 @@ public static class WindowsMaintenanceCommandCatalog
             "netsh", "winsock reset"),
         new(new MaintenanceCommandDefinition("netsh-int-tcp-reset", CategoryStackReset, "TCP 設定を既定値に戻す", "netsh int tcp reset : ユーザー構成の TCP パラメーターを削除して Windows の既定値へ戻す", true, false),
             "netsh", "int tcp reset"),
-        new(new MaintenanceCommandDefinition("netsh-int-tcp-set-global-default", CategoryStackReset, "TCP グローバル設定を既定値に戻す", "netsh int tcp set global default : RSS/ECN/RSC 等すべてのグローバル設定を初期値へ", true, false),
-            "netsh", "int tcp set global default"),
         new(new MaintenanceCommandDefinition("netsh-int-ip-reset", CategoryStackReset, "IP スタックをリセット", "netsh int ip reset : TCP/IP レジストリ設定を初期化する (要再起動)", true, true),
             "netsh", "int ip reset"),
         new(new MaintenanceCommandDefinition("route-clear", CategoryStackReset, "ルーティングテーブルをクリア", "route /f : ホスト経路・ループバック・マルチキャスト以外の経路をすべて削除する", true, false),

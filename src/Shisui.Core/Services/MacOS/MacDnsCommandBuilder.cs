@@ -12,6 +12,11 @@ public static class MacDnsCommandBuilder
 
     public static string BuildApply(string serviceName, DnsServerSet servers)
     {
+        if (!servers.HasValidAddressFamilies)
+        {
+            throw new ArgumentException("DNS アドレスの形式またはアドレスファミリが不正です。", nameof(servers));
+        }
+
         List<string> addresses = [];
         if (!string.IsNullOrWhiteSpace(servers.Ipv4Primary)) addresses.Add(servers.Ipv4Primary);
         if (!string.IsNullOrWhiteSpace(servers.Ipv4Secondary)) addresses.Add(servers.Ipv4Secondary);

@@ -34,7 +34,6 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netsh-advfirewall-reset", "netsh", "advfirewall reset")]
     [DataRow("netsh-winsock-reset", "netsh", "winsock reset")]
     [DataRow("netsh-int-tcp-reset", "netsh", "int tcp reset")]
-    [DataRow("netsh-int-tcp-set-global-default", "netsh", "int tcp set global default")]
     [DataRow("netsh-int-ip-reset", "netsh", "int ip reset")]
     [DataRow("route-clear", "route", "/f")]
     [DataRow("arp-clear", "netsh", "interface ipv4 delete arpcache")]
@@ -128,7 +127,7 @@ public class WindowsMaintenanceCommandCatalogTests
         [
             "ipconfig-release", "ipconfig-release6",
             "netsh-advfirewall-reset", "netsh-winsock-reset", "netsh-int-tcp-reset",
-            "netsh-int-tcp-set-global-default", "netsh-int-ip-reset", "route-clear", "netcfg-delete",
+            "netsh-int-ip-reset", "route-clear", "netcfg-delete",
         ];
 
         foreach (var id in destructiveIds)

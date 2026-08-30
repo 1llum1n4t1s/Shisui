@@ -66,4 +66,26 @@ public class WindowsDnsCommandBuilderTests
             "interface ipv6 set dnsservers name=\"Ethernet\" source=dhcp",
         }, commands.ToList());
     }
+
+    [TestMethod]
+    public void BuildApply_AddressContainingQuote_ThrowsBeforeBuildingCommand()
+    {
+        var servers = new DnsServerSet("1.1.1.1\" index=2", null, null, null);
+
+        Assert.ThrowsExactly<ArgumentException>(() => WindowsDnsCommandBuilder.BuildApply("Ethernet", servers));
+    }
+
+    [TestMethod]
+    public void BuildApply_MismatchedAddressFamily_ThrowsBeforeBuildingCommand()
+    {
+        var servers = new DnsServerSet("1.1.1.1", null, "8.8.8.8", null);
+
+        Assert.ThrowsExactly<ArgumentException>(() => WindowsDnsCommandBuilder.BuildApply("Ethernet", servers));
+    }
+
+    [TestMethod]
+    public void BuildResetToAutomatic_AdapterNameContainingQuote_Throws()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => WindowsDnsCommandBuilder.BuildResetToAutomatic("Ethernet\" source=static"));
+    }
 }

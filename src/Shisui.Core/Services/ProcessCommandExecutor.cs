@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -46,9 +47,9 @@ public class ProcessCommandExecutor : ICommandExecutor
             CreateNoWindow = true,
         };
 
+        using var process = new Process { StartInfo = psi };
         try
         {
-            using var process = new Process { StartInfo = psi };
             process.Start();
 
             // 生バイトで受け取ってから自前でデコードする。netsh / ipconfig 等の出力は環境によって
@@ -70,9 +71,31 @@ public class ProcessCommandExecutor : ICommandExecutor
                 DecodeConsoleOutput(stdoutBuffer.ToArray()).TrimEnd(),
                 DecodeConsoleOutput(stderrBuffer.ToArray()).TrimEnd());
         }
+        catch (OperationCanceledException)
+        {
+            await TerminateProcessAsync(process);
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message);
+        }
+    }
+
+    /// <summary>待機のキャンセル後も管理者権限の子プロセスを残さないよう、プロセスツリーを終了する。</summary>
+    internal static async Task TerminateProcessAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
+        {
+            // 既に終了した、または終了要求を受け付けないプロセスでも、元のキャンセルはそのまま通知する。
         }
     }
 

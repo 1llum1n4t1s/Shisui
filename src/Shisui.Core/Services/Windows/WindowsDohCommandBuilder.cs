@@ -38,6 +38,8 @@ public static class WindowsDohCommandBuilder
     /// <summary>設定対象アドレスを列挙する (null/空はスキップ)。状態読み取り側でも共有する。</summary>
     public static IReadOnlyList<string> CollectAddresses(DnsServerSet servers)
     {
+        WindowsDnsCommandBuilder.ValidateServers(servers);
+
         var addresses = new List<string>();
         if (!string.IsNullOrWhiteSpace(servers.Ipv4Primary))
         {

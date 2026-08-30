@@ -59,12 +59,6 @@ public partial class App : Application
             services.AddSingleton<IDotConfigurationService, Core.Services.Windows.WindowsDotConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
-            services.AddSingleton<ILoadedPingMeasurementService, Core.Services.Windows.WindowsLoadedPingMeasurementService>();
-            services.AddSingleton<IDownloadSpeedMeasurementService, Core.Services.Windows.WindowsDownloadSpeedMeasurementService>();
-            services.AddSingleton<IAutoTuningBenchmarkService, Core.Services.Windows.WindowsAutoTuningBenchmarkService>();
-            services.AddSingleton<IRscBenchmarkService, Core.Services.Windows.WindowsRscBenchmarkService>();
-            services.AddSingleton<IBbr2BenchmarkService, Core.Services.Windows.WindowsBbr2BenchmarkService>();
-            services.AddSingleton<ITcpOptionBenchmarkService, Core.Services.Windows.WindowsTcpOptionBenchmarkService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
             services.AddSingleton<INetworkAdapterNameService, Core.Services.Windows.WindowsNetworkAdapterNameService>();
@@ -75,7 +69,10 @@ public partial class App : Application
         }
         else if (OperatingSystem.IsMacOS())
         {
-            services.AddSingleton<ICommandExecutor, Core.Services.MacOS.MacElevatedCommandExecutor>();
+            // 読み取り専用のアダプタ列挙・ping・traceroute は通常権限で実行し、不要な認証ダイアログを出さない。
+            // DNS 設定変更とキャッシュ消去だけが具象型の昇格 executor を直接受け取る。
+            services.AddSingleton<ICommandExecutor, ProcessCommandExecutor>();
+            services.AddSingleton<Core.Services.MacOS.MacElevatedCommandExecutor>();
             services.AddSingleton<INetworkAdapterService, Core.Services.MacOS.MacNetworkAdapterService>();
             services.AddSingleton<IDnsConfigurationService, Core.Services.MacOS.MacDnsConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.MacOS.MacDnsCacheService>();

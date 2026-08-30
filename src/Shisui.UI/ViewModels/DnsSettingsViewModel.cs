@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
+using Shisui.Core.Services;
 
 namespace Shisui.UI.ViewModels;
 
@@ -281,6 +282,12 @@ public partial class DnsSettingsViewModel : ObservableObject
         var useDoh = UseDoh;
         var dotAvailable = IsWindows && _dotService is not null && preset.DotHost is not null;
         var useDot = UseDot;
+        if (!servers.HasValidAddressFamilies)
+        {
+            StatusText = "IPv4 / IPv6 の DNS アドレスを正しい形式で入力してください";
+            return;
+        }
+
         if (servers.IsEmpty)
         {
             StatusText = "適用する DNS アドレスがありません";
@@ -326,15 +333,15 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             await _settingsService.SaveAsync();
 
-            StatusText = results.All(r => r.Success)
-                ? $"{adapter.DisplayName} に DNS を適用しました"
-                : "一部のコマンドが失敗しました。ログを確認してください";
-
             await LoadAdaptersCoreAsync();
             if (SelectedPreset.Id == preset.Id)
             {
                 await RefreshDohStateAsync(servers);
             }
+
+            StatusText = results.All(r => r.Success)
+                ? $"{adapter.DisplayName} に DNS を適用しました"
+                : "一部のコマンドが失敗しました。ログを確認してください";
         }
         finally
         {
@@ -358,6 +365,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
 
         var adapter = SelectedAdapter;
+        var results = new List<CommandExecutionResult>();
+        var resultsReported = false;
         IsBusy = true;
         try
         {
@@ -383,7 +392,6 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             var preset = DnsPresetCatalog.CloudflareStandard;
             var servers = preset.Servers;
-            var results = new List<CommandExecutionResult>();
             NetworkAdapterNameCleanupResult? adapterNameCleanupResult = null;
 
             results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
@@ -427,15 +435,25 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 // Windows では adapter.Id が接続名そのものなので、名前を使う DNS/TCP 処理をすべて終えてから
                 // 切断済み登録を削除し、必要なら選択中アダプタの末尾連番を外す。
-                adapterNameCleanupResult = await _adapterNameService.CleanupAsync(adapter.DisplayName);
-                results.AddRange(adapterNameCleanupResult.CommandResults);
-                AdapterNameStatusText = FormatAdapterNameCleanupStatus(adapterNameCleanupResult);
+                try
+                {
+                    adapterNameCleanupResult = await _adapterNameService.CleanupAsync(adapter.DisplayName);
+                    results.AddRange(adapterNameCleanupResult.CommandResults);
+                    AdapterNameStatusText = FormatAdapterNameCleanupStatus(adapterNameCleanupResult);
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new CommandExecutionResult(false, "接続名の整理", -1, string.Empty, ex.Message));
+                    AdapterNameStatusText = $"接続名の整理に失敗しました: {ex.Message}";
+                    LoggerBootstrap.Log.Error("おまかせ高速化設定の接続名整理に失敗しました", ex);
+                }
             }
 
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
+            resultsReported = true;
 
             _settingsService.Current.LastSelectedAdapterId = adapterNameCleanupResult is
                 { WasRenamed: true, TargetName: not null }
@@ -455,6 +473,19 @@ public partial class DnsSettingsViewModel : ObservableObject
                     ? "おまかせ高速化設定を適用しました。TCP ACK 関連の既定値復元を反映するため PC を再起動してください"
                     : "おまかせ高速化設定を適用しました"
                 : "一部の設定が失敗しました。ログを確認してください";
+        }
+        catch (Exception ex)
+        {
+            if (!resultsReported)
+            {
+                foreach (var result in results)
+                {
+                    CommandExecuted?.Invoke(this, result);
+                }
+            }
+
+            StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
+            LoggerBootstrap.Log.Error("おまかせ高速化設定に失敗しました", ex);
         }
         finally
         {
@@ -512,8 +543,11 @@ public partial class DnsSettingsViewModel : ObservableObject
                 CommandExecuted?.Invoke(this, result);
             }
 
-            StatusText = $"{adapter.DisplayName} を自動取得 (DHCP) に戻しました";
+            var allSucceeded = results.All(result => result.Success);
             await LoadAdaptersCoreAsync();
+            StatusText = allSucceeded
+                ? $"{adapter.DisplayName} を自動取得 (DHCP) に戻しました"
+                : "DNS を自動取得 (DHCP) に戻せませんでした。ログを確認してください";
         }
         finally
         {

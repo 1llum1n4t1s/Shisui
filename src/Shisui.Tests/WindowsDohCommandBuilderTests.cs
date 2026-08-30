@@ -60,20 +60,18 @@ public class WindowsDohCommandBuilderTests
     }
 
     [TestMethod]
-    public void BuildEnable_AddressContainingShellMetacharacters_IsQuoted()
+    public void BuildEnable_InvalidAddress_ThrowsBeforeBuildingCommand()
     {
-        // カスタム DNS 入力欄はユーザーの自由入力であり、クオートなしでは netsh の独自パーサーが
-        // 空白等を追加パラメータとして誤解釈しうる (2026-07-06 /rere レビューで発見)。
         var servers = new DnsServerSet("1.1.1.1 dohtemplate=https://evil.example/dns-query", null, null, null);
-        var commands = WindowsDohCommandBuilder.BuildEnable(servers, "https://cloudflare-dns.com/dns-query");
 
-        Assert.IsTrue(commands[0].Contains("server=\"1.1.1.1 dohtemplate=https://evil.example/dns-query\""));
+        Assert.ThrowsExactly<ArgumentException>(() =>
+            WindowsDohCommandBuilder.BuildEnable(servers, "https://cloudflare-dns.com/dns-query"));
     }
 
     [TestMethod]
     public void CollectAddresses_SkipsNullAndWhitespace()
     {
-        var servers = new DnsServerSet("1.1.1.1", null, "  ", "2606:4700:4700::1001");
+        var servers = new DnsServerSet("1.1.1.1", "  ", "2606:4700:4700::1001", null);
         var addresses = WindowsDohCommandBuilder.CollectAddresses(servers);
 
         CollectionAssert.AreEqual(new[] { "1.1.1.1", "2606:4700:4700::1001" }, addresses.ToList());

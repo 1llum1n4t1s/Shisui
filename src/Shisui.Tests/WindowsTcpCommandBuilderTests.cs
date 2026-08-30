@@ -19,8 +19,8 @@ public class WindowsTcpCommandBuilderTests
             "int tcp set supplemental template=Datacenter congestionprovider=BBR2",
             "int tcp set supplemental template=DatacenterCustom congestionprovider=BBR2",
             "int tcp set supplemental template=Compat congestionprovider=BBR2",
-            "int ipv6 set global loopbacklargemtu=disable",
-            "int ipv4 set global loopbacklargemtu=disable",
+            "int ipv6 set global loopbacklargemtu=disabled",
+            "int ipv4 set global loopbacklargemtu=disabled",
         }, commands.ToList());
     }
 
@@ -39,28 +39,6 @@ public class WindowsTcpCommandBuilderTests
             "int ipv6 set global loopbacklargemtu=enabled",
             "int ipv4 set global loopbacklargemtu=enabled",
         }, commands.ToList());
-    }
-
-    [TestMethod]
-    public void BuildSetCongestionProviders_RestoresEachTemplateExactly()
-    {
-        var providers = new Dictionary<string, string>
-        {
-            ["Internet"] = "CUBIC",
-            ["InternetCustom"] = "BBR2",
-            ["Datacenter"] = "DCTCP",
-            ["DatacenterCustom"] = "CUBIC",
-            ["Compat"] = "NewReno",
-        };
-
-        CollectionAssert.AreEqual(new[]
-        {
-            "int tcp set supplemental template=Internet congestionprovider=CUBIC",
-            "int tcp set supplemental template=InternetCustom congestionprovider=BBR2",
-            "int tcp set supplemental template=Datacenter congestionprovider=DCTCP",
-            "int tcp set supplemental template=DatacenterCustom congestionprovider=CUBIC",
-            "int tcp set supplemental template=Compat congestionprovider=NewReno",
-        }, WindowsTcpCommandBuilder.BuildSetCongestionProviders(providers).ToList());
     }
 
     [TestMethod]
@@ -99,19 +77,6 @@ public class WindowsTcpCommandBuilderTests
     }
 
     [TestMethod]
-    [DataRow(TcpGlobalOption.Rsc, "int tcp set global rsc=default")]
-    [DataRow(TcpGlobalOption.EcnCapability, "int tcp set global ecncapability=default")]
-    [DataRow(TcpGlobalOption.Timestamps, "int tcp set global timestamps=allowed")]
-    [DataRow(TcpGlobalOption.Rss, "int tcp set global rss=default")]
-    [DataRow(TcpGlobalOption.FastOpen, "int tcp set global fastopen=default")]
-    public void BuildRevertGlobalOptionToDefault_ProducesWindowsDefaultCommand(
-        TcpGlobalOption option,
-        string expected)
-    {
-        Assert.AreEqual(expected, WindowsTcpCommandBuilder.BuildRevertGlobalOptionToDefault(option));
-    }
-
-    [TestMethod]
     [DataRow(AutoTuningLevel.Disabled, "int tcp set global autotuninglevel=disabled")]
     [DataRow(AutoTuningLevel.HighlyRestricted, "int tcp set global autotuninglevel=highlyrestricted")]
     [DataRow(AutoTuningLevel.Restricted, "int tcp set global autotuninglevel=restricted")]
@@ -132,5 +97,11 @@ public class WindowsTcpCommandBuilderTests
             "interface ipv4 set subinterface name=\"Wi-Fi 2\" mtu=1500 store=persistent",
             "interface ipv6 set subinterface name=\"Wi-Fi 2\" mtu=1500 store=persistent",
         }, commands.ToList());
+    }
+
+    [TestMethod]
+    public void BuildRevertMtuToDefault_AdapterNameContainingQuote_Throws()
+    {
+        Assert.ThrowsExactly<ArgumentException>(() => WindowsTcpCommandBuilder.BuildRevertMtuToDefault("Ethernet\" mtu=9000"));
     }
 }

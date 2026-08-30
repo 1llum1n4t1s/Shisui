@@ -64,7 +64,7 @@ never holds the single-instance lock while its elevated replacement starts. Rele
 `velopack.Shisui` process AppUserModelID before UI creation so the installed shortcut and elevated process share
 one taskbar identity. Debug builds must not set that product AppUserModelID: Windows can otherwise resolve the
 development EXE through the installed shortcut and show a blank taskbar icon instead of the EXE's embedded icon.
-Debug builds still perform runtime elevation because TCP/DNS benchmarks mutate system-wide settings. To keep a
+Debug builds still perform runtime elevation because TCP/DNS settings mutate system-wide state. To keep a
 debugger attached while exercising those paths, start Visual Studio itself as administrator; a non-elevated IDE
 causes the first process to relaunch elevated and detach from that original debugging session.
 
@@ -103,8 +103,6 @@ locations remain untouched.
 | DNS プリセット、DoH / DoT | DNS Preset Catalog / DoH toggle / DoT toggle |
 | ワンクリック最適化 | One-click optimization |
 | 現在値の読み取り（ロケール非依存） | Reading current state is locale-independent |
-| 計測付き最適化、自動チューニング | Unified measured optimization / Auto-tuning benchmark |
-| 各種 A/B ベンチマーク（RSC / BBR2 / TCP） | RSC low-latency A/B benchmark / Additional TCP A/B benchmarks |
 | ネットワーク診断 | Used-PC network diagnostics / Network diagnostics |
 | アダプタ一覧・詳細・ゴースト削除 | Adapter list filtering / Adapter details / Disconnected network device cleanup |
 | 画面、テーマ、コントロール | UI Framework |

@@ -5,7 +5,7 @@ using Shisui.Core.Models;
 namespace Shisui.Core.Services.MacOS;
 
 [SupportedOSPlatform("macos")]
-public sealed class MacDnsConfigurationService(ICommandExecutor executor) : IDnsConfigurationService
+public sealed class MacDnsConfigurationService(MacElevatedCommandExecutor executor) : IDnsConfigurationService
 {
     public async Task<IReadOnlyList<CommandExecutionResult>> ApplyAsync(string adapterId, DnsServerSet servers, CancellationToken ct = default)
     {

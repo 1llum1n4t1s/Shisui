@@ -13,7 +13,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     public DnsSettingsViewModel DnsSettings { get; }
 
-    /// <summary>クイック最適化と計測による推奨設定を集約したタブ。</summary>
+    /// <summary>クイック最適化と、使い込んだPC向け診断を集約したタブ。</summary>
     public AutoOptimizationViewModel AutoOptimization { get; }
 
     /// <summary>Ping / トレースルート診断タブ (Windows/macOS 両対応、常に非 null)。</summary>

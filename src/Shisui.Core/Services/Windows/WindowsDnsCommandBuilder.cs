@@ -13,6 +13,8 @@ public static class WindowsDnsCommandBuilder
 
     public static IReadOnlyList<string> BuildApply(string adapterName, DnsServerSet servers)
     {
+        ValidateServers(servers);
+
         var commands = new List<string>();
         var name = Quote(adapterName);
 
@@ -51,5 +53,21 @@ public static class WindowsDnsCommandBuilder
     /// netsh は CommandLineToArgvW ではなく生コマンドラインを独自再パースするため、
     /// スペースを含みうる値はここで netsh 流の二重引用符で囲む。
     /// </summary>
-    internal static string Quote(string value) => $"\"{value}\"";
+    internal static string Quote(string value)
+    {
+        if (value.Contains('"'))
+        {
+            throw new ArgumentException("netsh 引数に二重引用符は使用できません。", nameof(value));
+        }
+
+        return $"\"{value}\"";
+    }
+
+    internal static void ValidateServers(DnsServerSet servers)
+    {
+        if (!servers.HasValidAddressFamilies)
+        {
+            throw new ArgumentException("DNS アドレスの形式またはアドレスファミリが不正です。", nameof(servers));
+        }
+    }
 }

@@ -5,7 +5,7 @@ using Shisui.Core.Models;
 namespace Shisui.Core.Services.MacOS;
 
 [SupportedOSPlatform("macos")]
-public sealed class MacDnsCacheService(ICommandExecutor executor) : IDnsCacheService
+public sealed class MacDnsCacheService(MacElevatedCommandExecutor executor) : IDnsCacheService
 {
     public async Task<CommandExecutionResult> FlushAsync(CancellationToken ct = default)
     {

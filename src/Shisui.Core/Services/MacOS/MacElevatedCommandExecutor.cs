@@ -32,9 +32,9 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
         psi.ArgumentList.Add("-e");
         psi.ArgumentList.Add(appleScript);
 
+        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         try
         {
-            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
             var stdout = new StringBuilder();
             var stderr = new StringBuilder();
             process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
@@ -51,6 +51,11 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
                 process.ExitCode,
                 stdout.ToString().TrimEnd(),
                 stderr.ToString().TrimEnd());
+        }
+        catch (OperationCanceledException)
+        {
+            await ProcessCommandExecutor.TerminateProcessAsync(process);
+            throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
