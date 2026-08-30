@@ -6,7 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- リリースバージョン。更新は /vava スキル経由のみ (手動で上げない)。 -->
-    <Version>1.0.19</Version>
+    <Version>1.0.20</Version>
+    <!-- 製作者情報。Company は exe のプロパティに載るので屋号で統一する。 -->
+    <Authors>Kagayoi</Authors>
+    <Company>Kagayoi</Company>
+    <Copyright>Copyright © 2026 Kagayoi</Copyright>
+    <!-- NativeAOT: JIT コンパイル自体を無くして起動を高速化。配布は win-x64 単独のため無条件で有効化する。 -->
+    <PublishAot>true</PublishAot>
+    <!-- 警告をエラー扱いにして品質ゲートを他リポジトリと揃える。 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NuGet 依存のサプライチェーン保護: lockfile (packages.lock.json) を生成・検証する。 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- IDE コードスタイル分析をビルド時にも強制する。IDE0005 はドキュメント生成が必須なため対象外。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
 </Project>
