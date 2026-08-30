@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code when working in this repository.
+This file provides guidance to coding agents working in this repository.
 
 ## Project Overview
 
@@ -12,7 +12,7 @@ options (including receive-window auto-tuning and per-adapter MTU restoration to
 `nbtstat` network maintenance commands, view read-only adapter details (MAC address / link speed), and clean up
 disconnected "ghost" network devices.
 
-**Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This CLAUDE.md is in English
+**Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This AGENTS.md is in English
 to match the reference project's documentation conventions; code comments and user-facing text remain Japanese.
 
 Architecture mirrors `RealTimeTranslator` (`C:\Users\IMT\dev\RealTimeTranslator`): Avalonia + CommunityToolkit.Mvvm
@@ -38,6 +38,9 @@ pwsh scripts/release-local.ps1 -SkipUpload
 
 No RID-locked `packages.lock.json` is used, so there is no `--no-restore` dance for local builds. The release
 script (`scripts/release-local.ps1`) does its own RID-locked self-contained publish; it does not touch a lockfile.
+Native AOT is enabled repository-wide through `Directory.Build.props`. When adding serialized application models,
+register them in `ShisuiJsonContext`; reflection-based JSON paths can fail only at publish/runtime even when a normal
+build succeeds. Use `pwsh scripts/release-local.ps1 -SkipUpload` to verify the actual win-x64 AOT distribution path.
 
 **Verifying the UI when it can't be automated**: `app.manifest` is `asInvoker` (see below), but
 `Program.cs` self-relaunches elevated via `WindowsElevationHelper` on every real startup, so UAC's secure
@@ -93,7 +96,8 @@ locations remain untouched.
 
 ## Architecture
 
-詳細は [references/architecture.md](references/architecture.md)。**下の領域を触る前に必ず該当節を読む**。
+現在の構造・責務・境界・不変条件の正本は [DESIGN.md](DESIGN.md)。実装領域ごとの詳細は
+[references/architecture.md](references/architecture.md)。**下の領域を触る前に必ず該当節を読む**。
 
 | 触る対象 | 読む節 |
 | --- | --- |
@@ -113,6 +117,8 @@ locations remain untouched.
 - **Async**: service methods use `Async` suffix, propagate `CancellationToken`.
 - **Command builders are pure functions**: no `Process`/OS calls inside `*CommandBuilder` / `*Catalog` classes —
   keeps them unit-testable. Only the `*Service` classes (annotated `[SupportedOSPlatform(...)]`) touch the OS.
+- **Native AOT and JSON**: keep application-owned JSON on source-generated `System.Text.Json` contexts and verify
+  release-path changes with a win-x64 Native AOT publish, not only a framework-dependent build.
 - **macOS paths are implemented but unverified on real hardware**: this repo was built entirely on a Windows
   machine. The Windows command catalog was empirically tested (unit tests + a couple of live `netsh`/PowerShell
   invocations during development); the macOS `networksetup`/`osascript`/`ifconfig`/`ping`/`traceroute` code
@@ -161,19 +167,22 @@ need separate Apple notarization and is not set up).
   is **deferred via `Dispatcher.UIThread.Post(Background)`** because `Version.Initialize()` runs inside the
   `MainWindowViewModel` ctor — i.e. *before* `desktop.MainWindow` is assigned, so the owner window isn't ready yet.
   In dev (`dotnet run`), `UpdateManager.IsInstalled` is false so `TryCreateInstalledManager` returns null and the
-  dialog is skipped — that is expected. Shisui is **not** AOT/trimmed, so no `TrimmerRootAssembly` entries are
-  needed (unlike Lhamiel). Velopack is referenced directly (not via the dialog package's transitive ref) since
-  `Program.cs`/`UpdateService` use it; both pin 1.2.0. The `vpk` CLI in `release-local.ps1` is **also pinned to
-  1.2.0** (not resolved-latest): `set-msi-program-files-location.ps1` rewrites the MSI Directory table against
-  1.2.0's layout, so a silently newer vpk could break the rewrite — bump all three (`Velopack` refs + `$VpkVersion`)
-  together, verifying with `-SkipUpload` first.
+  dialog is skipped — that is expected. Shisui is Native AOT; app-owned JSON serialization uses
+  `ShisuiJsonContext`, and update/package changes must pass the win-x64 publish in `release-local.ps1 -SkipUpload`.
+  Velopack is referenced directly (not via the dialog package's transitive ref) since `Program.cs`/`UpdateService`
+  use it. The Velopack package and `vpk` CLI both pin 1.2.0; `VelopackUpdateDialog.Avalonia` is pinned separately.
+  The `vpk` CLI in `release-local.ps1` is **not resolved-latest**: `set-msi-program-files-location.ps1` rewrites
+  the MSI Directory table against 1.2.0's layout, so a silently newer vpk could break the rewrite — bump the
+  `Velopack` package and `$VpkVersion` together, verifying with `-SkipUpload` first. The dialog package can be
+  updated independently, but the same Native AOT release-path verification is required.
 - **Release is local + signed, not CI**: `scripts/release-local.ps1` (adapted from `C:\Users\IMT\dev\VStoVSC`)
   does publish (self-contained win-x64) → `vpk pack --msi --instLocation PerMachine` + **Authenticode sign** (Certum "Open Source Code Signing in
   the cloud", `signtool /n "Open Source Developer Yuichiro Shinozaki"`) → signature verify → R2 upload (wrangler) →
-  Cloudflare cache purge → manifest-match distribution check → old-nupkg cleanup. R2 publication first backs up
+  Cloudflare cache purge → manifest-match distribution check → old-version cleanup. R2 publication first backs up
   the currently served metadata, then uploads versioned `.nupkg` payloads, fixed-name binaries, and update metadata
   in that order. A failure after metadata publication restores the backed-up metadata and purges it; cleanup retains
-  the `.nupkg` files referenced by both the new and immediately previous manifests so rollback remains possible.
+  every manifest-referenced object and the versioned artifacts for the latest two versions so rollback remains
+  possible.
   The fixed `Shisui-win.msi` is uploaded before the update manifest and checked for matching served size. The
   generated PerUser `Shisui-win-Setup.exe` is excluded from upload, and its old R2 object/cache entry is removed
   only after MSI propagation succeeds.
@@ -191,7 +200,7 @@ need separate Apple notarization and is not set up).
 
 ## ドメイン移行（2026-07 開始・期限 2027/05/31）
 
-屋号を **Kagayoi** に統一したため、配信ドメインを `nephilim.jp` から `kagayoi.com` へ移行中。方針の全体像はユーザーグローバルの `CLAUDE.md` §屋号とドメイン を参照する。
+屋号を **Kagayoi** に統一したため、配信ドメインを `nephilim.jp` から `kagayoi.com` へ移行中。方針の全体像はユーザーグローバルの `AGENTS.md` §事業固有の不可逆ガード を参照する。
 
 - **旧ドメイン `nephilim.jp` はレジストラで廃止申請済みで 2027/05/31 に失効する**（延長しない）。それまでに出荷済みバイナリを新ドメインへ移行しきる。
 - 旧ホストの Worker route / custom domain は**期限まで消さない**。消すと出荷済みアプリの自動更新が止まる。
