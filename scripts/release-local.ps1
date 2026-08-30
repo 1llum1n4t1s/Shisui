@@ -114,7 +114,7 @@ foreach ($runtime in $Runtimes) {
     # runtime packs が assets.json に入らず NETSDK1112 が出る)。
     Write-Host "== restore: $runtime ==" -ForegroundColor Cyan
     Invoke-Native "dotnet restore ($runtime)" {
-        dotnet restore src/Shisui.UI/Shisui.UI.csproj -r $runtime --locked-mode `
+        dotnet restore src/Shisui.UI/Shisui.UI.csproj -r $runtime `
             -p:SelfContained=true -p:OS=Windows_NT
     }
 
@@ -450,8 +450,5 @@ if (-not $toDelete) {
     Write-Host "  🧹 クリーンアップ: $deleted 削除 / $failed 失敗"
     if ($failed -gt 0 -and $deleted -eq 0) { throw '旧 nupkg の削除がすべて失敗しました。API token の権限を確認してください。' }
 }
-
-# ---- 5. packages.lock.json は配布入力として固定済み ----
-# 上の RID 付き restore を locked mode で通しているため、リリース後の再生成・clean 化は不要。
 
 Write-Host "`n🎉 リリース完了: v$version → $BaseUrl" -ForegroundColor Green
