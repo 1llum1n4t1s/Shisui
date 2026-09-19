@@ -9,8 +9,10 @@ DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google
 custom IPv4/IPv6), flush the DNS cache, run a Ping/Traceroute diagnostics tool, and — on Windows only — toggle
 DNS over HTTPS (DoH) and DNS over TLS (DoT) for the selected preset, toggle BBR2 congestion control / TCP global
 options (including RACK/TLP loss recovery, receive-window auto-tuning, UDP URO/USO restoration, and per-adapter
-MTU restoration to 1500), run a catalog of `netsh` / `ipconfig` / `nbtstat` network maintenance commands, view
-read-only adapter details (MAC address / link speed), and clean up disconnected "ghost" network devices.
+MTU restoration to 1500), apply and restore an allowlisted gaming-oriented low-latency profile for physical NICs,
+run a catalog of `netsh` / `ipconfig` / `nbtstat` network maintenance commands, view read-only adapter details
+(MAC address / link speed), and clean up disconnected "ghost" network devices. The diagnostics UI supports
+4/30/100 Ping probes and, on Windows, reports loss, min/average/max, p95, and jitter.
 
 **Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This AGENTS.md is in English
 to match the reference project's documentation conventions; code comments and user-facing text remain Japanese.
@@ -107,6 +109,7 @@ locations remain untouched.
 | DI 登録、Windows 専用機能の扱い | DI: Windows-only features are optional dependencies |
 | DNS プリセット、DoH / DoT | DNS Preset Catalog / DoH toggle / DoT toggle |
 | ワンクリック最適化 | One-click optimization |
+| ゲーム向け NIC 設定 | Gaming NIC profile |
 | 現在値の読み取り（ロケール非依存） | Reading current state is locale-independent |
 | ネットワーク診断 | Used-PC network diagnostics / Network diagnostics |
 | アダプタ一覧・詳細・ゴースト削除 | Adapter list filtering / Adapter details / Disconnected network device cleanup |
