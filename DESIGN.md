@@ -48,8 +48,11 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 
 共有ゲートは DNS、DoH/DoT、TCP、MTU、メンテナンス、NIC 詳細設定初期化、接続名整理を
 ViewModel 横断で直列化します。読み取り専用の状態取得と診断はゲートを占有しません。
-「おまかせ高速化設定」は同じリース内で DNS、許可リスト化されたキャッシュ処理、TCP 既定化、
+「おまかせ高速化設定」は同じリース内で DNS、許可リスト化されたキャッシュ処理と UDP オフロード既定化、TCP 既定化と BBR2・RACK/TLP 有効化、
 切断済みデバイス整理を順番に実行し、接続名を参照する処理が終わった後にだけ名前整理を行います。
+BBR2 は全 5 テンプレート、RACK/TLP は Compat を除く 4 テンプレートへ適用します。UDP は URO/USO のみを既定化し、
+UDP 全体の reset は行いません。適用後は同じリース内で BBR2 と Internet の受信ウィンドウ実効値を読み戻し、
+ポリシー上書き・不完全取得を成功扱いしません。RACK/TLP・UDP など、読み戻せない項目はコマンド受付結果のみと明示します。
 
 ### 設定と更新
 
@@ -70,7 +73,8 @@ Windows リリースはローカルで win-x64 Native AOT publish、Velopack Per
 - DNS アドレスはコマンド生成前に IPv4/IPv6 として検証し、文字列引数へ埋め込む値の引用符を拒否します。
 - Windows の現在値はローカライズされた `netsh` 表示を解析せず、PowerShell で固定した `KEY=VALUE`
   または XML を解析します。標準出力は raw byte を同時に読み、厳密 UTF-8、次に OEM code page の順で復号します。
-- executor のキャンセル時は子プロセスツリー全体を終了させ、変更コマンドをバックグラウンドへ残しません。
+- Windows の外部コマンドは既知のシステムコマンドだけを絶対パスへ解決し、未知の相対実行ファイルを拒否します。
+- executor のキャンセル時と開始後の例外時は子プロセスツリー全体を終了させ、変更コマンドをバックグラウンドへ残しません。
 - builder、catalog、parser は OS を呼ばない純粋処理として維持します。OS アクセスは service と executor の責務です。
 - `INetworkMutationGate` は非再入です。複合操作は外側で一度だけ取得し、内側から再取得しません。
 - 公式 DNS プリセットの IP、DoH template、DoT host は一体の契約です。特に Cloudflare のフィルタ段階ごとの
@@ -79,6 +83,7 @@ Windows リリースはローカルで win-x64 Native AOT publish、Velopack Per
   保存状態を実状態として表示せず、操作時だけ有効化・無効化します。
 - Windows の正式配布物は署名済み PerMachine MSI です。PerUser `Setup.exe` は公開せず、旧 PerUser 版を
   ユーザー書き込み可能な場所から管理者実行し続けません。移行・修復対象は検証済みの既知パスに限定します。
+  ダウンロードした MSI は書換え・削除を拒否する同一ハンドルで署名検証し、`msiexec` 終了まで保持します。
 - 自動更新元は `https://shisui.kagayoi.com` の `releases.win.json` です。旧
   `shisui.nephilim.jp` は出荷済みクライアントのため期限まで配信を維持します。
 

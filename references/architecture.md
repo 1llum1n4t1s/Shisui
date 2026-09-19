@@ -46,11 +46,18 @@ Passing adapter names through .NET's `ProcessStartInfo.ArgumentList` causes the 
 correctly for its target executable's own parsing convention. DNS address values are parsed as IPv4/IPv6 before
 command construction, and embedded double quotes in raw netsh string arguments are rejected.
 
+On Windows, `ProcessCommandExecutor` does not pass those short executable names to the OS search path. The known
+system commands used by Shisui (`netsh`, `powershell`, `ipconfig`, `pnputil`, `nbtstat`, `route`, and `netcfg`)
+are resolved to absolute paths below `Environment.SystemDirectory` (PowerShell uses its fixed
+`WindowsPowerShell\v1.0` subdirectory), and unknown relative executables are rejected. The child working directory
+is also System32. This is required because the whole app is elevated and an unqualified executable search could
+otherwise select a user-writable binary before the Windows system copy.
+
 On macOS, read-only adapter discovery and ping/traceroute run through `ProcessCommandExecutor` without elevation.
 Only DNS mutation and cache flush use `MacElevatedCommandExecutor`, which re-wraps the already-quoted
 `fileName + " " + arguments` shell command inside an AppleScript string literal (backslash/quote escaping only)
 and invokes `osascript` via `ArgumentList` internally (a normal argv-parsing tool, so `ArgumentList` is correct
-there).
+there). The launcher itself is fixed to `/usr/bin/osascript` rather than resolved through `PATH`.
 
 **Output decoding is auto-detected, not a fixed encoding**: `ProcessCommandExecutor` reads stdout/stderr as **raw
 bytes** (both `BaseStream`s copied concurrently to avoid pipe deadlock), then decodes with a heuristic — strict
@@ -65,8 +72,8 @@ strict UTF-8, so the try-UTF-8-then-OEM order self-detects safely. `CodePagesEnc
 `ProcessCommandExecutor`'s static ctor (needed for `GetEncoding(932)`); it ships in the .NET 10 shared framework,
 so **no `System.Text.Encoding.CodePages` PackageReference is needed** (adding it triggers an NU1510 prune
 warning). `DecodeConsoleOutput` is `internal` + unit-tested (`ProcessCommandExecutorDecodeTests`). Both process
-executors terminate the whole process tree before rethrowing `OperationCanceledException`, so a canceled wait
-does not leave a privileged command running in the background.
+executors terminate the whole process tree both on cancellation and on other post-start exceptions, so a failed
+wait or output read does not leave a privileged command running in the background.
 
 ### DI: Windows-only features are optional dependencies, not stubbed
 
@@ -155,25 +162,32 @@ way the other Windows-only services are, so macOS silently skips this step) — 
 whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true: NetBIOS name-cache purge/reload,
 all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
 the IPv6 neighbor-discovery cache flush, and `netsh winsock set autotuning on` so old tweak tools cannot leave
-Winsock's independent send-buffer autotuning disabled. This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys
-log-buffer/server-response-cache operations remain available in the maintenance tab but are deliberately excluded
+Winsock's independent send-buffer autotuning disabled.
+The allowlist also restores UDP URO and USO to `default` with two separate `netsh interface udp set global` calls,
+so an unsupported option cannot prevent the other from running. It deliberately does not run `udp reset` or force
+offload `enabled`; both default-restoration actions are individually available in the maintenance tab.
+This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys log-buffer/server-response-cache operations
+remain available in the maintenance tab but are deliberately excluded
 from one-click because they do not optimize ordinary client or game traffic. DNS cache flushing is already handled
 once through `IDnsCacheService`. Finally
 — only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — restores all five TCP
 templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
-runs explicit fallback resets for congestion providers and common tweak-tool targets (RSS, RSC, ECN, timestamps,
+enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
 initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
 removes only the per-interface legacy tweak values `TcpAckFrequency`, `TCPNoDelay`, and `TcpDelAckTicks` from
 `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` so Windows falls back to its defaults,
-enables IPv4/IPv6 loopback Large MTU, and resets receive-window auto-tuning to Normal. The registry command emits
+disables IPv4/IPv6 loopback Large MTU as part of the BBR2 configuration, and resets receive-window auto-tuning to Normal. The registry command emits
 `REMOVED=N`, never deletes an interface key, and deliberately does not touch the unrelated MSMQ `TCPNoDelay` value.
 Because Microsoft documents these delayed-ACK registry changes as requiring a restart, the one-click description
 and success status tell Windows users to restart the PC. The explicit netsh commands make
 partial failures visible in the execution log and recover supported settings even if the aggregate reset fails.
-The TCP tab exposes the aggregate TCP reset, explicit global-option reset, and legacy ACK/Nagle registry cleanup,
-while the maintenance tab exposes Winsock send autotuning as a separate command,
-as three separate commands as well; one-click must not be the only UI path to any setting mutation it performs.
-This normalization intentionally stops at documented TCP/netsh state and those three specifically named legacy
+After the reset and explicit defaults, it enables both `rack` and `taillossprobe` on Internet, InternetCustom,
+Datacenter and DatacenterCustom. Compat's loss-recovery settings are left to the preceding TCP reset; its BBR2
+enablement remains unchanged. The paired loss-recovery command follows Microsoft's
+[netsh guidance](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface).
+The TCP tab exposes aggregate TCP reset, global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
+as separate commands; one-click must not be the only UI path to any setting mutation it performs.
+This normalization plus deliberate BBR2/loss-recovery enablement intentionally stops at documented TCP/UDP/netsh state and those three specifically named legacy
 per-interface values: it does not delete arbitrary registry values,
 change NIC driver advanced properties, alter BCD, or replace power plans. DoT is deliberately left untouched (see the DoT section above: DoH
 measured slightly faster and more consistent, so there's little benefit to enabling both). On Windows, one-click
@@ -183,10 +197,18 @@ This must run after every operation that uses the old connection name; if a rena
 before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
 are intentionally included and the button description warns that Windows will redetect them when reconnected. Other
 destructive maintenance actions (per-adapter MTU restoration and the 「ファイアウォール・スタックリセット」category)
-remain excluded. Since the congestion-provider reset / TCP global-option reset / loopback Large MTU / auto-tuning /
+remain excluded. Since UDP defaults / BBR2 and RACK/TLP enablement / TCP global-option reset / loopback Large MTU / auto-tuning /
 cache-maintenance commands are global, not scoped
 to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
 multi-NIC environments.
+
+Before reporting completion, one-click reads a fresh TCP snapshot inside the same mutation lease.
+`TcpSettingsVerifier` checks BBR2 across all five templates and the effective Internet auto-tuning level, including
+the GroupPolicy override. A mismatch, incomplete snapshot, or read failure is logged as a failed verification,
+without losing prior command results or preventing settings persistence/adapter cleanup. Manual BBR2 enablement
+and auto-tuning changes use the same verifier. Command failures remain failures even when readback matches.
+RACK/TLP, UDP and other settings are explicitly reported as command-acceptance-only, not verified live state:
+the PowerShell API lacks those properties and localized netsh labels are not parsed. MTU is not changed by one-click.
 
 Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
 `RefreshDohStateAsync` call (racing against this method's own `await`ed call at the end), the preset switch here
@@ -203,12 +225,19 @@ on non-English Windows. So the "current state" badges in the BBR2/TCP tab read s
 `Get-NetOffloadGlobalSetting` (RSS/RSC) + `Get-NetTCPSetting` (ECN/Timestamps/CongestionProvider). The keys are
 English-fixed by us and the enum values are English, so the whole output is locale-independent;
 `WindowsTcpStateParser` (pure, unit-tested) parses it. **BBR2 status = all 5 templates' `CongestionProvider`**
-(Enabled / Partial / Disabled). Two things are deliberately *not* in the badge: **FastOpen** (no PowerShell
+(Enabled / Partial / Disabled only when all five named templates are present exactly once; missing, duplicate,
+malformed or mixed named/legacy output becomes Unknown). Historical unnamed fixtures are accepted only with exactly
+five values. The PowerShell command uses `ErrorActionPreference='Stop'` so partial command failures cannot masquerade
+as successful reads. Two things are deliberately *not* in the badge: **FastOpen** (no PowerShell
 property exists → shown as 「取得非対応」) and **loopbacklargemtu** (only in fully-localized netsh output, unreadable
 locale-independently → the BBR2 enable button still sets it, but its live state isn't tracked).
 
-**Auto-tuning level** rides in the same one-line script (an `AUTOTUNE=` token added to the existing
-`Get-NetTCPSetting` call, parsed from `AutoTuningLevelLocal`), so reading it costs no extra process spawn. **MTU
+**Auto-tuning level** rides in the same one-line script: `AUTOTUNE=` holds `AutoTuningLevelLocal`,
+`AUTOTUNE_POLICY=` holds `AutoTuningLevelGroupPolicy`, and `AUTOTUNE_SOURCE=` holds `AutoTuningLevelEffective`
+(Local/GroupPolicy, not a tuning level). The badge and verifier use the effective value selected by that source;
+an unknown source never silently falls back to Local. The selector still shows the editable local setting.
+See [the Microsoft property contract](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/nettcpipprov/msft-nettcpsetting).
+Reading these adds no process spawn. **MTU
 is different**: it's per-adapter rather than global, so `WindowsMtuStateCommandBuilder`/`WindowsMtuStateParser`
 are a separate one-line `Get-NetIPInterface -InterfaceAlias <adapter>` command taking an adapter name, invoked
 whenever the MTU restoration card's own adapter selection changes rather than folded into the global TCP snapshot.
