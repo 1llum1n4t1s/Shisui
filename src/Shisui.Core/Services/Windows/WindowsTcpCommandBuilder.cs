@@ -38,6 +38,13 @@ public static class WindowsTcpCommandBuilder
         return commands;
     }
 
+    /// <summary>損失回復は RACK/TLP を組で有効化する。Compat の互換用設定は変更しない。</summary>
+    public static IReadOnlyList<string> BuildEnableLossRecovery() =>
+        SupplementalTemplates
+            .Where(template => template != "Compat")
+            .Select(template => $"int tcp set supplemental template={template} rack=enabled taillossprobe=enabled")
+            .ToArray();
+
     /// <summary>
     /// よくあるチューニングツールが変更する TCP グローバル設定を、Windows が現在のバージョンで定義する
     /// システム既定値へ戻す。<see cref="ResetAllToDefault"/> の後にも個別実行し、全体リセットが一部失敗した環境でも

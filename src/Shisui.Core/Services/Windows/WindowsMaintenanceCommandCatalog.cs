@@ -13,6 +13,7 @@ public static class WindowsMaintenanceCommandCatalog
 {
     private const string CategoryCache = "キャッシュ・登録";
     private const string CategoryOptimization = "送信最適化";
+    private const string CategoryUdp = "UDP オフロード";
     private const string CategoryReacquire = "IP アドレス再取得";
     private const string CategoryProxy = "プロキシ設定リセット";
     private const string CategoryStackReset = "ファイアウォール・スタックリセット (危険)";
@@ -50,6 +51,18 @@ public static class WindowsMaintenanceCommandCatalog
                 false,
                 true),
             "netsh", "winsock set autotuning on"),
+
+        // 全体 reset は行わず、対象を URO/USO に限定する。片方が非対応でも他方を実行できるよう分割する。
+        new(new MaintenanceCommandDefinition("netsh-udp-uro-default", CategoryUdp,
+                "UDP 受信オフロードを既定に戻す",
+                "netsh interface udp set global uro=default : PC 全体の URO を Windows 既定へ戻す (コマンド受付結果のみ確認)",
+                false, false, true),
+            "netsh", "interface udp set global uro=default"),
+        new(new MaintenanceCommandDefinition("netsh-udp-uso-default", CategoryUdp,
+                "UDP 送信オフロードを既定に戻す",
+                "netsh interface udp set global uso=default : PC 全体の USO を Windows 既定へ戻す (コマンド受付結果のみ確認)",
+                false, false, true),
+            "netsh", "interface udp set global uso=default"),
 
         new(new MaintenanceCommandDefinition("ipconfig-release", CategoryReacquire, "IPv4 アドレスを解放", "ipconfig /release : 現在の IPv4 リースを解放する (解放中は通信が切れる)", true, false),
             "ipconfig", "/release"),

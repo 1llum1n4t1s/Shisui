@@ -17,6 +17,7 @@ public static class WindowsTcpStateCommandBuilder
     // FastOpen は Get-NetTCPSetting に公開プロパティが無く空になる (取得非対応)。
     public const string Arguments =
         "-NoProfile -NonInteractive -Command \"" +
+        "$ErrorActionPreference='Stop';" +
         "$o=Get-NetOffloadGlobalSetting;" +
         "$t=Get-NetTCPSetting -SettingName Internet;" +
         "'RSS='+$o.ReceiveSideScaling;" +
@@ -25,6 +26,8 @@ public static class WindowsTcpStateCommandBuilder
         "'TIMESTAMPS='+$t.Timestamps;" +
         "'FASTOPEN='+$t.FastOpen;" +
         "'AUTOTUNE='+$t.AutoTuningLevelLocal;" +
+        "'AUTOTUNE_POLICY='+$t.AutoTuningLevelGroupPolicy;" +
+        "'AUTOTUNE_SOURCE='+$t.AutoTuningLevelEffective;" +
         "Get-NetTCPSetting -SettingName Internet,InternetCustom,Datacenter,DatacenterCustom,Compat|%{'CC='+$_.SettingName+'|'+$_.CongestionProvider}" +
         "\"";
 }

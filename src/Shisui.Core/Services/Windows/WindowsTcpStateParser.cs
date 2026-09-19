@@ -12,9 +12,14 @@ public static class WindowsTcpStateParser
     public static TcpSettingsSnapshot Parse(string stdout)
     {
         var options = new Dictionary<TcpGlobalOption, string>();
-        var providerValues = new List<string>();
+        var legacyProviderValues = new List<string>();
         var providers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var autoTuningLevel = string.Empty;
+        var autoTuningLevelGroupPolicy = string.Empty;
+        var autoTuningLevelEffective = string.Empty;
+        var hasInvalidProviderData = false;
+        var hasLegacyProviderData = false;
+        var hasNamedProviderData = false;
 
         foreach (var rawLine in stdout.Split('\n'))
         {
@@ -36,39 +41,106 @@ public static class WindowsTcpStateParser
                 case "TIMESTAMPS": options[TcpGlobalOption.Timestamps] = value; break;
                 case "FASTOPEN": options[TcpGlobalOption.FastOpen] = value; break;
                 case "AUTOTUNE": autoTuningLevel = value; break;
+                case "AUTOTUNE_POLICY": autoTuningLevelGroupPolicy = value; break;
+                case "AUTOTUNE_SOURCE": autoTuningLevelEffective = value; break;
                 case "CC":
-                    if (value.Length > 0)
+                    if (value.Length == 0)
                     {
-                        var separator = value.IndexOf('|');
-                        if (separator > 0 && separator < value.Length - 1)
+                        hasInvalidProviderData = true;
+                        break;
+                    }
+
+                    var separator = value.IndexOf('|');
+                    if (separator >= 0)
+                    {
+                        hasNamedProviderData = true;
+                        if (separator == 0 ||
+                            separator == value.Length - 1 ||
+                            value.IndexOf('|', separator + 1) >= 0)
                         {
-                            var template = value[..separator].Trim();
-                            var provider = value[(separator + 1)..].Trim();
-                            if (template.Length > 0 && provider.Length > 0)
-                            {
-                                providers[template] = provider;
-                                providerValues.Add(provider);
-                            }
+                            hasInvalidProviderData = true;
+                            break;
                         }
-                        else
+
+                        var template = value[..separator].Trim();
+                        var provider = value[(separator + 1)..].Trim();
+                        if (template.Length == 0 || provider.Length == 0)
                         {
-                            // 旧形式のテスト採取値もBBR2状態判定には引き続き利用する。
-                            providerValues.Add(value);
+                            hasInvalidProviderData = true;
+                            break;
                         }
+
+                        if (!WindowsTcpCommandBuilder.SupplementalTemplates.Contains(
+                                template, StringComparer.OrdinalIgnoreCase) ||
+                            providers.ContainsKey(template))
+                        {
+                            hasInvalidProviderData = true;
+                        }
+
+                        // 状態判定が Unknown になる場合でも、復元に使える名前付き取得値は保持する。
+                        providers[template] = provider;
+                    }
+                    else
+                    {
+                        hasLegacyProviderData = true;
+                        legacyProviderValues.Add(value);
                     }
 
                     break;
             }
         }
 
-        return new TcpSettingsSnapshot(ResolveBbr2(providerValues), options, autoTuningLevel, providers);
+        var bbr2 = ResolveBbr2(
+            legacyProviderValues,
+            providers,
+            hasLegacyProviderData,
+            hasNamedProviderData,
+            hasInvalidProviderData);
+
+        return new TcpSettingsSnapshot(
+            bbr2,
+            options,
+            autoTuningLevel,
+            providers,
+            autoTuningLevelGroupPolicy,
+            autoTuningLevelEffective);
     }
 
-    private static Bbr2Status ResolveBbr2(IReadOnlyList<string> providers)
+    private static Bbr2Status ResolveBbr2(
+        IReadOnlyList<string> legacyProviders,
+        IReadOnlyDictionary<string, string> namedProviders,
+        bool hasLegacyProviderData,
+        bool hasNamedProviderData,
+        bool hasInvalidProviderData)
     {
-        if (providers.Count == 0)
+        if (hasInvalidProviderData ||
+            hasLegacyProviderData == hasNamedProviderData)
         {
             return Bbr2Status.Unknown;
+        }
+
+        IReadOnlyList<string> providers;
+        if (hasNamedProviderData)
+        {
+            if (namedProviders.Count != WindowsTcpCommandBuilder.SupplementalTemplates.Count ||
+                WindowsTcpCommandBuilder.SupplementalTemplates.Any(
+                    template => !namedProviders.ContainsKey(template)))
+            {
+                return Bbr2Status.Unknown;
+            }
+
+            providers = WindowsTcpCommandBuilder.SupplementalTemplates
+                .Select(template => namedProviders[template])
+                .ToArray();
+        }
+        else
+        {
+            if (legacyProviders.Count != WindowsTcpCommandBuilder.SupplementalTemplates.Count)
+            {
+                return Bbr2Status.Unknown;
+            }
+
+            providers = legacyProviders;
         }
 
         var bbr2Count = providers.Count(p => p.Equals("BBR2", StringComparison.OrdinalIgnoreCase));

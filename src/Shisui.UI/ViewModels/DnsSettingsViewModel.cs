@@ -20,6 +20,9 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDotConfigurationService? _dotService;
     private readonly ITcpTuningService? _tcpTuningService;
     private readonly INetworkMaintenanceService? _maintenanceService;
+    private int _adapterDetailsRequestVersion;
+    private int _dohStateRequestVersion;
+    private int _busyOperationCount;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -90,7 +93,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>DoH/DoT 併用時の説明キャプションを表示するか (両方のチェックボックスが表示されているときだけ)。</summary>
     public bool ShowDohDotInteractionNote => IsDohAvailable && IsDotAvailable;
 
-    /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御・ループバック Large MTU・受信ウィンドウ自動調整も既定構成へ戻すか (Windows かつサービス登録済みのときだけ)。</summary>
+    /// <summary>「おまかせ高速化設定」で BBR2 輻輳制御を有効化し、TCP 詳細設定を整えるか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsTcpOptimizationAvailable => _tcpTuningService is not null;
 
     /// <summary>「おまかせ高速化設定」で NetBIOS 名前・ARP・経路キャッシュもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
@@ -102,8 +105,18 @@ public partial class DnsSettingsViewModel : ObservableObject
         get
         {
             var description = IsTcpOptimizationAvailable
-                ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻し、ループバック Large MTU を有効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
+                ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻したうえで BBR2 を有効化し、ループバック Large MTU を無効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します。Compat を除く 4 テンプレートで損失回復 (RACK / TLP) も有効化します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
                 : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
+
+            if (IsCacheMaintenanceAvailable)
+            {
+                description += " UDP の受信/送信オフロード (URO / USO) も PC 全体で Windows の既定値に戻します。";
+            }
+
+            if (IsTcpOptimizationAvailable)
+            {
+                description += " 適用後は BBR2 と受信ウィンドウ (Internet) の実効値を確認します。RACK / TLP・UDP など、それ以外の項目はコマンド受付結果のみの確認です。回線速度の向上を保証するものではありません。";
+            }
 
             return IsAdapterNameCleanupAvailable
                 ? $"{description} さらに、切断済みのネットワークデバイス登録をすべて削除し、可能なら選択中の接続名の連番も外します。取り外し中の USB LAN やドック内蔵 NIC も削除対象となり、再接続時にドライバーが再検出されます。"
@@ -168,20 +181,31 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     private async Task RefreshAdapterDetailsAsync(NetworkAdapterInfo? adapter)
     {
+        var requestVersion = Interlocked.Increment(ref _adapterDetailsRequestVersion);
         if (adapter is null)
         {
-            AdapterDetails = null;
+            if (requestVersion == Volatile.Read(ref _adapterDetailsRequestVersion))
+            {
+                AdapterDetails = null;
+            }
             return;
         }
 
         try
         {
-            AdapterDetails = await _adapterService.GetAdapterDetailsAsync(adapter.Id);
+            var details = await _adapterService.GetAdapterDetailsAsync(adapter.Id);
+            if (requestVersion == Volatile.Read(ref _adapterDetailsRequestVersion))
+            {
+                AdapterDetails = details;
+            }
         }
         catch
         {
             // 詳細情報の取得失敗は致命的ではない (DNS 設定自体は選択・適用できる) ので握りつぶす。
-            AdapterDetails = null;
+            if (requestVersion == Volatile.Read(ref _adapterDetailsRequestVersion))
+            {
+                AdapterDetails = null;
+            }
         }
     }
 
@@ -228,7 +252,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadAdaptersAsync()
     {
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             await LoadAdaptersCoreAsync();
@@ -239,7 +263,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
         }
     }
 
@@ -268,7 +292,6 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
 
         // await をまたぐ操作では、UIの選択状態を一度だけ読み取って固定する。
-        var adapter = SelectedAdapter;
         var preset = SelectedPreset;
         var customIpv4Primary = NullIfEmpty(CustomIpv4Primary);
         var customIpv4Secondary = NullIfEmpty(CustomIpv4Secondary);
@@ -294,10 +317,17 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             using var mutationLease = await _networkMutationGate.EnterAsync();
+            var adapter = SelectedAdapter;
+            if (adapter is null)
+            {
+                StatusText = "アダプタを選択してください";
+                return;
+            }
+
             var results = (await _dnsService.ApplyAsync(adapter.Id, servers)).ToList();
 
             if (dohAvailable)
@@ -345,15 +375,15 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
         }
     }
 
 
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
-    /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・BBR2 輻輳制御・TCP 詳細設定・
-    /// ループバック Large MTU・受信ウィンドウ自動調整の既定化・切断済みアダプタ登録の全削除を
+    /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・TCP 詳細設定の既定化・
+    /// BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化・切断済みアダプタ登録の全削除を
     /// まとめて行うワンクリック機能。
     /// </summary>
     internal async Task RunOneClickOptimizationAsync()
@@ -364,13 +394,19 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
-        var adapter = SelectedAdapter;
         var results = new List<CommandExecutionResult>();
         var resultsReported = false;
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             using var mutationLease = await _networkMutationGate.EnterAsync();
+            var adapter = SelectedAdapter;
+            if (adapter is null)
+            {
+                StatusText = "アダプタを選択してください";
+                return;
+            }
+
             // SelectedPreset のセッターではなくバッキングフィールドへ直接代入する。セッター経由だと
             // OnSelectedPresetChanged が同期発火し、その中の fire-and-forget な RefreshDohStateAsync
             // (旧プリセット向けの無駄な呼び出し)が、この後 EnableAsync 実行後に await する
@@ -424,11 +460,27 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // まず公式の TCP 全体リセットで、他のチューニングツールが変更した supplemental template や
                 // フィルターを含むユーザー構成を削除する。その後の個別コマンドは、全体リセットが一部失敗した
                 // 環境でのフォールバックと、実行ログ上で各項目の成否を確認できるようにするため意図的に重ねる。
+                // 全体リセット後に BBR2 を設定することで、既定化の対象に巻き込まれず最終状態を BBR2 にする。
                 results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
-                results.AddRange(await _tcpTuningService.RevertBbr2ToDefaultAsync());
+                results.AddRange(await _tcpTuningService.EnableBbr2Async());
                 results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
                 results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
+                results.AddRange(await _tcpTuningService.EnableLossRecoveryAsync());
+
+                // 設定コマンドが成功しても、非対応ビルドやポリシー上書きで目的の実状態とは限らない。
+                // 読み取り失敗は結果へ残し、完了した設定の保存と接続名整理は継続する。
+                try
+                {
+                    var snapshot = await _tcpTuningService.GetCurrentStateAsync();
+                    results.Add(TcpSettingsVerifier.VerifyBbr2Enabled(snapshot));
+                    results.Add(TcpSettingsVerifier.VerifyAutoTuning(snapshot, AutoTuningLevel.Normal));
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new(false, "TCP 適用後確認", -1, string.Empty,
+                        $"設定の実状態を確認できませんでした: {ex.Message}"));
+                }
             }
 
             if (_adapterNameService is not null)
@@ -440,6 +492,11 @@ public partial class DnsSettingsViewModel : ObservableObject
                     adapterNameCleanupResult = await _adapterNameService.CleanupAsync(adapter.DisplayName);
                     results.AddRange(adapterNameCleanupResult.CommandResults);
                     AdapterNameStatusText = FormatAdapterNameCleanupStatus(adapterNameCleanupResult);
+                    if (adapterNameCleanupResult.WasRenamed)
+                    {
+                        // 後続の一覧再取得が失敗しても、改名前の ID を次の変更操作へ渡さない。
+                        SelectedAdapter = null;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -470,9 +527,9 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             StatusText = allSucceeded
                 ? IsTcpOptimizationAvailable
-                    ? "おまかせ高速化設定を適用しました。TCP ACK 関連の既定値復元を反映するため PC を再起動してください"
+                    ? "設定コマンドを実行しました。BBR2 と受信ウィンドウ (Internet) の実効 Normal を確認済みです。RACK / TLP・UDP などの実状態は未検証です。TCP ACK 設定の反映には PC を再起動してください"
                     : "おまかせ高速化設定を適用しました"
-                : "一部の設定が失敗しました。ログを確認してください";
+                : "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
         }
         catch (Exception ex)
         {
@@ -489,30 +546,40 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
         }
     }
 
     private async Task RefreshDohStateAsync(DnsServerSet servers)
     {
+        var requestVersion = Interlocked.Increment(ref _dohStateRequestVersion);
         if (!IsDohAvailable)
         {
-            DohStateText = string.Empty;
-            UseDoh = false;
+            if (requestVersion == Volatile.Read(ref _dohStateRequestVersion))
+            {
+                DohStateText = string.Empty;
+                UseDoh = false;
+            }
             return;
         }
 
         try
         {
             var status = await _dohService!.GetStatusAsync(servers);
-            DohStateText = FormatDohStatus(status);
-            // チェックボックスは OS の実状態を反映する (全サーバーで有効なときだけ ON)。
-            UseDoh = status == DohStatus.Enabled;
+            if (requestVersion == Volatile.Read(ref _dohStateRequestVersion))
+            {
+                DohStateText = FormatDohStatus(status);
+                // チェックボックスは OS の実状態を反映する (全サーバーで有効なときだけ ON)。
+                UseDoh = status == DohStatus.Enabled;
+            }
         }
         catch
         {
             // 状態取得の失敗は致命的ではない (適用操作自体は完了している) ので握りつぶし、不明表示にする。
-            DohStateText = "⚪ 不明";
+            if (requestVersion == Volatile.Read(ref _dohStateRequestVersion))
+            {
+                DohStateText = "⚪ 不明";
+            }
         }
     }
 
@@ -532,11 +599,16 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
-        var adapter = SelectedAdapter;
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             using var mutationLease = await _networkMutationGate.EnterAsync();
+            var adapter = SelectedAdapter;
+            if (adapter is null)
+            {
+                return;
+            }
+
             var results = await _dnsService.ResetToAutomaticAsync(adapter.Id);
             foreach (var result in results)
             {
@@ -551,14 +623,14 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
         }
     }
 
     [RelayCommand]
     private async Task FlushDnsCacheAsync()
     {
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             using var mutationLease = await _networkMutationGate.EnterAsync();
@@ -568,7 +640,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
         }
     }
 
@@ -580,25 +652,26 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
-        var adapterName = SelectedAdapter?.DisplayName;
         IsAdapterNameBusy = true;
-        IsBusy = true;
+        BeginBusyOperation();
         try
         {
             NetworkAdapterNameCleanupResult result;
             using (var mutationLease = await _networkMutationGate.EnterAsync())
             {
+                var adapterName = SelectedAdapter?.DisplayName;
                 result = await _adapterNameService.CleanupAsync(adapterName);
+
+                if (result is { WasRenamed: true, TargetName: not null })
+                {
+                    // 改名前を参照する待機中の変更操作へゲートを渡す前に、選択中アダプタを新しい名前へ更新する。
+                    await ReloadAdaptersAfterNameChangeAsync(result.TargetName);
+                }
             }
 
             foreach (var commandResult in result.CommandResults)
             {
                 CommandExecuted?.Invoke(this, commandResult);
-            }
-
-            if (result is { WasRenamed: true, TargetName: not null })
-            {
-                await ReloadAdaptersAfterNameChangeAsync(result.TargetName);
             }
 
             AdapterNameStatusText = FormatAdapterNameCleanupStatus(result);
@@ -609,13 +682,31 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusyOperation();
             IsAdapterNameBusy = false;
+        }
+    }
+
+    private void BeginBusyOperation()
+    {
+        if (Interlocked.Increment(ref _busyOperationCount) == 1)
+        {
+            IsBusy = true;
+        }
+    }
+
+    private void EndBusyOperation()
+    {
+        if (Interlocked.Decrement(ref _busyOperationCount) == 0)
+        {
+            IsBusy = false;
         }
     }
 
     private async Task ReloadAdaptersAfterNameChangeAsync(string preferredName)
     {
+        // 再取得に失敗した場合も、既に無効になった改名前の ID を選択状態へ残さない。
+        SelectedAdapter = null;
         var adapters = await _adapterService.GetAdaptersAsync();
         Adapters.Clear();
         foreach (var adapter in adapters)

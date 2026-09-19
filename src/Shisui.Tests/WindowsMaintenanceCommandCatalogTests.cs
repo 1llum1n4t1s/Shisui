@@ -31,6 +31,8 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netsh-winhttp-reset-proxy", "netsh", "winhttp reset proxy")]
     [DataRow("netsh-winhttp-reset-autoproxy", "netsh", "winhttp reset autoproxy")]
     [DataRow("netsh-winsock-autotuning-on", "netsh", "winsock set autotuning on")]
+    [DataRow("netsh-udp-uro-default", "netsh", "interface udp set global uro=default")]
+    [DataRow("netsh-udp-uso-default", "netsh", "interface udp set global uso=default")]
     [DataRow("netsh-advfirewall-reset", "netsh", "advfirewall reset")]
     [DataRow("netsh-winsock-reset", "netsh", "winsock reset")]
     [DataRow("netsh-int-tcp-reset", "netsh", "int tcp reset")]
@@ -111,6 +113,8 @@ public class WindowsMaintenanceCommandCatalogTests
             "netsh-ipv6-delete-destinationcache",
             "netsh-ipv6-delete-neighbors",
             "netsh-winsock-autotuning-on",
+            "netsh-udp-uro-default",
+            "netsh-udp-uso-default",
         }, includedIds);
 
         CollectionAssert.DoesNotContain(includedIds, "nbtstat-reregister");
@@ -118,6 +122,8 @@ public class WindowsMaintenanceCommandCatalogTests
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-flush-logbuffer");
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-delete-cache");
         CollectionAssert.DoesNotContain(includedIds, "ipconfig-flushdns");
+        Assert.IsFalse(WindowsMaintenanceCommandCatalog.All
+            .Any(command => command.Arguments == "interface udp reset"), "UDP 全体のユーザー設定は削除しない");
     }
 
     [TestMethod]

@@ -145,4 +145,115 @@ public class WindowsTcpStateParserTests
         var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample);
         Assert.AreEqual(string.Empty, snapshot.AutoTuningLevel);
     }
+
+    [TestMethod]
+    public void Parse_NamedProviders_AllKnownTemplatesWithCaseDifferences_ReturnsEnabled()
+    {
+        const string sample = """
+            CC=internet|bbr2
+            CC=INTERNETCUSTOM|BBR2
+            CC=DataCenter|Bbr2
+            CC=datacentercustom|bBr2
+            CC=COMPAT|bbr2
+            """;
+
+        var snapshot = WindowsTcpStateParser.Parse(sample);
+
+        Assert.AreEqual(Bbr2Status.Enabled, snapshot.Bbr2);
+        Assert.AreEqual("bbr2", snapshot.GetCongestionProviders()["Internet"]);
+    }
+
+    [TestMethod]
+    public void Parse_NamedProviders_MissingTemplate_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=Internet|BBR2
+            CC=InternetCustom|BBR2
+            CC=Datacenter|BBR2
+            CC=DatacenterCustom|BBR2
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_NamedProviders_DuplicateTemplate_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=Internet|BBR2
+            CC=Internet|BBR2
+            CC=InternetCustom|BBR2
+            CC=Datacenter|BBR2
+            CC=DatacenterCustom|BBR2
+            CC=Compat|BBR2
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_NamedProviders_EmptyProvider_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=Internet|BBR2
+            CC=InternetCustom|BBR2
+            CC=Datacenter|BBR2
+            CC=DatacenterCustom|BBR2
+            CC=Compat|
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_NamedProviders_UnknownTemplate_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=Internet|BBR2
+            CC=InternetCustom|BBR2
+            CC=Datacenter|BBR2
+            CC=DatacenterCustom|BBR2
+            CC=Compat|BBR2
+            CC=FutureTemplate|BBR2
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_MixedNamedAndLegacyProviders_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=Internet|BBR2
+            CC=BBR2
+            CC=BBR2
+            CC=BBR2
+            CC=BBR2
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_LegacyProviders_TooFewValues_ReturnsUnknown()
+    {
+        const string sample = """
+            CC=BBR2
+            CC=BBR2
+            CC=BBR2
+            CC=BBR2
+            """;
+
+        Assert.AreEqual(Bbr2Status.Unknown, WindowsTcpStateParser.Parse(sample).Bbr2);
+    }
+
+    [TestMethod]
+    public void Parse_ReadsAutoTuningPolicyAndEffectiveSource()
+    {
+        var snapshot = WindowsTcpStateParser.Parse(
+            AllBbr2Sample + "\nAUTOTUNE_POLICY=Restricted\nAUTOTUNE_SOURCE=GroupPolicy");
+
+        Assert.AreEqual("Restricted", snapshot.AutoTuningLevelGroupPolicy);
+        Assert.AreEqual("GroupPolicy", snapshot.AutoTuningLevelEffective);
+    }
 }

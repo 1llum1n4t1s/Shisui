@@ -10,6 +10,9 @@ public interface ITcpTuningService
 {
     Task<IReadOnlyList<CommandExecutionResult>> EnableBbr2Async(CancellationToken ct = default);
 
+    /// <summary>互換用 Compat を除く 4 テンプレートで RACK と Tail Loss Probe を同時に有効化する。</summary>
+    Task<IReadOnlyList<CommandExecutionResult>> EnableLossRecoveryAsync(CancellationToken ct = default);
+
     Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default);
 
     /// <summary>ユーザーまたは他のチューニングツールが構成した TCP パラメーターを Windows の既定値へ一括リセットする。</summary>

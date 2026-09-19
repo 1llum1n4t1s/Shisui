@@ -25,6 +25,18 @@ public class WindowsTcpCommandBuilderTests
     }
 
     [TestMethod]
+    public void BuildEnableLossRecovery_EnablesBothAlgorithmsOnlyForModernTemplates()
+    {
+        CollectionAssert.AreEqual(new[]
+        {
+            "int tcp set supplemental template=Internet rack=enabled taillossprobe=enabled",
+            "int tcp set supplemental template=InternetCustom rack=enabled taillossprobe=enabled",
+            "int tcp set supplemental template=Datacenter rack=enabled taillossprobe=enabled",
+            "int tcp set supplemental template=DatacenterCustom rack=enabled taillossprobe=enabled",
+        }, WindowsTcpCommandBuilder.BuildEnableLossRecovery().ToArray());
+    }
+
+    [TestMethod]
     public void BuildRevertBbr2ToDefault_MirrorsEnableWithDefaultValues()
     {
         var commands = WindowsTcpCommandBuilder.BuildRevertBbr2ToDefault();

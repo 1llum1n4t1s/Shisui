@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
+using Shisui.Core.Services;
 
 namespace Shisui.UI.ViewModels;
 
@@ -15,6 +16,8 @@ public partial class TcpTuningViewModel(
     INetworkAdapterService adapterService,
     INetworkMutationGate networkMutationGate) : ObservableObject
 {
+    private int _mtuStateRequestVersion;
+
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
     [ObservableProperty]
@@ -97,7 +100,7 @@ public partial class TcpTuningViewModel(
         }
     }
 
-    partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshMtuStateAsync();
+    partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshMtuStateAsync(value);
 
     [RelayCommand]
     private async Task RevertMtuAsync()
@@ -127,20 +130,29 @@ public partial class TcpTuningViewModel(
             IsMtuBusy = false;
         }
 
-        await RefreshMtuStateAsync();
+        await RefreshMtuStateAsync(SelectedAdapter);
     }
 
-    private async Task RefreshMtuStateAsync()
+    private async Task RefreshMtuStateAsync(NetworkAdapterInfo? adapter)
     {
-        if (SelectedAdapter is null)
+        var requestVersion = Interlocked.Increment(ref _mtuStateRequestVersion);
+        if (adapter is null)
         {
-            MtuStateText = string.Empty;
+            if (requestVersion == Volatile.Read(ref _mtuStateRequestVersion))
+            {
+                MtuStateText = string.Empty;
+            }
             return;
         }
 
         try
         {
-            var mtu = await tcpTuningService.GetMtuAsync(SelectedAdapter.Id);
+            var mtu = await tcpTuningService.GetMtuAsync(adapter.Id);
+            if (requestVersion != Volatile.Read(ref _mtuStateRequestVersion))
+            {
+                return;
+            }
+
             if (mtu is not null)
             {
                 MtuStateText = $"現在の MTU: {mtu}";
@@ -152,13 +164,22 @@ public partial class TcpTuningViewModel(
         }
         catch
         {
-            MtuStateText = "⚪ 取得できませんでした";
+            if (requestVersion == Volatile.Read(ref _mtuStateRequestVersion))
+            {
+                MtuStateText = "⚪ 取得できませんでした";
+            }
         }
     }
 
     [RelayCommand]
     private async Task EnableBbr2Async() => await RunManyAsync(
-        tcpTuningService.EnableBbr2Async, "BBR2 を有効化しました");
+        tcpTuningService.EnableBbr2Async, "BBR2 の有効化を確認しました (ループバック Large MTU は受付結果のみ)",
+        TcpSettingsVerifier.VerifyBbr2Enabled);
+
+    [RelayCommand]
+    private async Task EnableLossRecoveryAsync() => await RunManyAsync(
+        tcpTuningService.EnableLossRecoveryAsync,
+        "4 テンプレートの RACK / TLP 有効化コマンドを実行しました (実状態は未検証)");
 
     [RelayCommand]
     private async Task RevertBbr2Async() => await RunManyAsync(
@@ -206,15 +227,17 @@ public partial class TcpTuningViewModel(
     [RelayCommand]
     private async Task SetAutoTuningLevelAsync()
     {
+        var level = SelectedAutoTuningLevel;
         IsBusy = true;
         try
         {
             using var mutationLease = await networkMutationGate.EnterAsync();
-            var result = await tcpTuningService.SetAutoTuningLevelAsync(SelectedAutoTuningLevel);
+            var result = await tcpTuningService.SetAutoTuningLevelAsync(level);
             CommandExecuted?.Invoke(this, result);
-            StatusText = result.Success
-                ? $"受信ウィンドウ自動調整を {SelectedAutoTuningLevel} にしました"
-                : "コマンドが失敗しました";
+            var verification = await VerifyStateAsync(snapshot => TcpSettingsVerifier.VerifyAutoTuning(snapshot, level));
+            StatusText = result.Success && verification.Success
+                ? $"受信ウィンドウ自動調整 (Internet) の実効値 {level} を確認しました"
+                : "設定の実行または適用後確認に失敗しました。ログを確認してください";
         }
         finally
         {
@@ -265,7 +288,7 @@ public partial class TcpTuningViewModel(
             TimestampsStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.Timestamps));
             RssStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.Rss));
             FastOpenStateText = FormatFastOpen(snapshot.GetOptionValue(TcpGlobalOption.FastOpen));
-            AutoTuningStateText = FormatAutoTuningLevel(snapshot.AutoTuningLevel);
+            AutoTuningStateText = FormatAutoTuningLevel(TcpSettingsVerifier.GetEffectiveAutoTuningLevel(snapshot));
             if (Enum.TryParse<AutoTuningLevel>(snapshot.AutoTuningLevel, ignoreCase: true, out var parsedLevel))
             {
                 SelectedAutoTuningLevel = parsedLevel;
@@ -330,7 +353,10 @@ public partial class TcpTuningViewModel(
     /// <summary>自動最適化タブなど、外部の設定操作後に手動調整タブの状態表示を同期する。</summary>
     internal Task RefreshStateAfterExternalChangeAsync() => LoadStateAsync();
 
-    private async Task RunManyAsync(Func<CancellationToken, Task<IReadOnlyList<CommandExecutionResult>>> action, string successMessage)
+    private async Task RunManyAsync(
+        Func<CancellationToken, Task<IReadOnlyList<CommandExecutionResult>>> action,
+        string successMessage,
+        Func<TcpSettingsSnapshot, CommandExecutionResult>? verify = null)
     {
         IsBusy = true;
         try
@@ -342,7 +368,10 @@ public partial class TcpTuningViewModel(
                 CommandExecuted?.Invoke(this, result);
             }
 
-            StatusText = results.All(r => r.Success) ? successMessage : "一部のコマンドが失敗しました。ログを確認してください";
+            var verification = verify is null ? null : await VerifyStateAsync(verify);
+            StatusText = results.All(r => r.Success) && (verification?.Success ?? true)
+                ? successMessage
+                : "設定の実行または適用後確認に失敗しました。ログを確認してください";
         }
         finally
         {
@@ -350,5 +379,22 @@ public partial class TcpTuningViewModel(
         }
 
         await LoadStateAsync();
+    }
+
+    private async Task<CommandExecutionResult> VerifyStateAsync(Func<TcpSettingsSnapshot, CommandExecutionResult> verify)
+    {
+        CommandExecutionResult result;
+        try
+        {
+            result = verify(await tcpTuningService.GetCurrentStateAsync());
+        }
+        catch (Exception ex)
+        {
+            result = new(false, "TCP 適用後確認", -1, string.Empty,
+                $"設定の実状態を確認できませんでした: {ex.Message}");
+        }
+
+        CommandExecuted?.Invoke(this, result);
+        return result;
     }
 }

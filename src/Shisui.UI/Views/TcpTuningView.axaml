@@ -31,10 +31,18 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="TCP 損失回復 (RACK / TLP)">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="Internet / InternetCustom / Datacenter / DatacenterCustom で RACK と Tail Loss Probe を同時に有効化し、TCP の損失回復を補助します。おまかせ高速化設定でも実行します。Compat の損失回復設定は変更しません。現在値は照会 API に公開されていないため、コマンド受付結果のみを確認します。" />
+          <Button Content="RACK / TLP を有効化" Command="{Binding EnableLossRecoveryCommand}" IsEnabled="{Binding !IsOperationRunning}" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="高速化ツール設定の復元">
         <StackPanel Spacing="12">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="「おまかせ高速化設定」で実行する TCP 復元処理を、それぞれ個別に実行できます。通常は上から順にすべて実行すれば Windows の既定構成へ戻せます。BBR2・ループバック Large MTU と受信ウィンドウ自動調整は、上の各カードから個別に戻せます。" />
+                     Text="このカードでは、「おまかせ高速化設定」のうち TCP の既定化処理を個別に実行できます。おまかせ高速化設定は既定化後に BBR2 と RACK / TLP を有効化します。Windows の既定構成へ戻す場合は、BBR2 の「既定値に戻す」とこのカードの各処理を実行し、受信ウィンドウ自動調整で Normal を選んで「設定」を押してください。" />
 
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
@@ -72,7 +80,7 @@
         <StackPanel Spacing="8">
           <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,8">
             <StackPanel Orientation="Horizontal" Spacing="8">
-              <TextBlock Text="現在の状態:" VerticalAlignment="Center" Foreground="{DynamicResource Brush.FG2}" />
+              <TextBlock Text="実効値 (Internet):" VerticalAlignment="Center" Foreground="{DynamicResource Brush.FG2}" />
               <TextBlock Text="{Binding AutoTuningStateText}" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
             </StackPanel>
           </Border>

@@ -29,7 +29,7 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}" Margin="8,0,0,0" />
+            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
           </Grid>
 
           <StackPanel IsVisible="{Binding SelectedAdapter, Converter={x:Static acv:ObjectConverters.IsNotNull}}" Spacing="2">
@@ -129,7 +129,7 @@
                      Text="PnP 上で現在接続されていないネットワークデバイスの登録をすべて削除します。セーフモード等でアダプタ一覧が空でも削除を実行でき、通常起動時にアダプタを選択している場合は「イーサネット 2」等の末尾の連番も外します。無効化しただけの現役デバイスは削除しません。取り外し中の USB LAN やドック内蔵 NIC も削除対象となり、再接続時にドライバーの再検出が行われます。連番なしの名前を別の現役アダプタが使っている場合、その名前は変更しません。" />
           <Button Content="切断済み登録を全削除（選択時は連番も解消）"
                   Command="{Binding CleanupAdapterNameCommand}"
-                  IsEnabled="{Binding !IsAdapterNameBusy}"
+                  IsEnabled="{Binding !IsBusy}"
                   HorizontalAlignment="Left" />
           <TextBlock Text="{Binding AdapterNameStatusText}" Classes="caption" TextWrapping="Wrap" />
         </StackPanel>

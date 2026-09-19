@@ -32,6 +32,17 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
     public Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.ResetAllToDefault, ct);
 
+    public async Task<IReadOnlyList<CommandExecutionResult>> EnableLossRecoveryAsync(CancellationToken ct = default)
+    {
+        var results = new List<CommandExecutionResult>();
+        foreach (var args in WindowsTcpCommandBuilder.BuildEnableLossRecovery())
+        {
+            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
+        }
+
+        return results;
+    }
+
     public async Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default)
     {
         var results = new List<CommandExecutionResult>();

@@ -25,7 +25,9 @@ public sealed record TcpSettingsSnapshot(
     Bbr2Status Bbr2,
     IReadOnlyDictionary<TcpGlobalOption, string> GlobalOptions,
     string AutoTuningLevel = "",
-    IReadOnlyDictionary<string, string>? CongestionProviders = null)
+    IReadOnlyDictionary<string, string>? CongestionProviders = null,
+    string AutoTuningLevelGroupPolicy = "",
+    string AutoTuningLevelEffective = "")
 {
     public static readonly TcpSettingsSnapshot Unknown =
         new(Bbr2Status.Unknown, new Dictionary<TcpGlobalOption, string>());
