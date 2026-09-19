@@ -19,7 +19,6 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 | `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
 | `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
 | `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、R2 公開・検証・世代整理 | ローカル署名環境と明示的なリリース操作を前提にする |
-| `web` | `/` の製品ページと R2 更新ファイルへの透過的な委譲 | 更新ファイルのレスポンスを加工しない |
 
 `Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
 `ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
@@ -63,8 +62,8 @@ UDP 全体の reset は行いません。適用後は同じリース内で BBR2 
 
 Windows リリースはローカルで win-x64 Native AOT publish、Velopack PerMachine MSI 生成、
 `ProgramFiles64Folder\Shisui` への配置修正、Authenticode 署名、R2 公開を行います。
-ランディング Worker は `/` と `/index.html` だけを返し、それ以外の MSI、nupkg、manifest は
-同一ホストの R2 origin へ透過的に委譲します。
+更新クライアントと移行処理は、固定された R2 カスタムドメイン `https://shisui.kagayoi.com` から
+manifest と署名済み MSI を取得します。
 
 ## 重要な不変条件
 

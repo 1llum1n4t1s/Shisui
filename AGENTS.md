@@ -8,9 +8,9 @@ Shisui is a cross-platform (Windows / macOS) desktop app for network configurati
 DNS providers (Cloudflare standard / malware-block / malware+adult-block, Google Public DNS, Quad9, NextDNS, or
 custom IPv4/IPv6), flush the DNS cache, run a Ping/Traceroute diagnostics tool, and — on Windows only — toggle
 DNS over HTTPS (DoH) and DNS over TLS (DoT) for the selected preset, toggle BBR2 congestion control / TCP global
-options (including receive-window auto-tuning and per-adapter MTU restoration to 1500), run a catalog of `netsh` / `ipconfig` /
-`nbtstat` network maintenance commands, view read-only adapter details (MAC address / link speed), and clean up
-disconnected "ghost" network devices.
+options (including RACK/TLP loss recovery, receive-window auto-tuning, UDP URO/USO restoration, and per-adapter
+MTU restoration to 1500), run a catalog of `netsh` / `ipconfig` / `nbtstat` network maintenance commands, view
+read-only adapter details (MAC address / link speed), and clean up disconnected "ghost" network devices.
 
 **Language**: Japanese (UI, comments, commit messages, README are all in Japanese). This AGENTS.md is in English
 to match the reference project's documentation conventions; code comments and user-facing text remain Japanese.
@@ -78,7 +78,8 @@ validates it with `ExecutableTrustVerifier` (WinVerifyTrust + expected publisher
 hardened verifier — System32-only DLL loading so a planted `wintrust.dll` next to the user-writable legacy exe
 can't be picked up by the elevated process, whole-chain revocation checks with `AuthenticodeRevocationMode.Online`
 for downloaded installers / `CacheOnly` for local executables, and certificate extraction from the verified trust
-chain rather than a second file read, closing the TOCTOU window), and invokes system `msiexec` with `runas`.
+chain rather than a second file read). The downloaded MSI is opened without write/delete sharing, verified through
+that same handle, and kept locked until system `msiexec` exits, closing the verification-to-install TOCTOU window.
 The installed Program Files build never executes the user-writable legacy `Update.exe`; it performs a bounded,
 no-reparse-point cleanup directly, preserving `%APPDATA%\Shisui` settings/logs while removing the old executable
 tree, package cache, HKCU uninstall entry, and per-user shortcuts. A trusted PerMachine build also detects the
