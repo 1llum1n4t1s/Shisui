@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Win32.SafeHandles;
 
 namespace Shisui.Core.Services.Windows;
 
@@ -32,12 +33,31 @@ public static class ExecutableTrustVerifier
         out string failureReason)
         => TryVerifyCore(
             filePath,
+            fileHandle: null,
+            revocationMode,
+            certificate => HasExpectedCommonName(certificate.Subject, expectedCommonName),
+            out failureReason);
+
+    /// <summary>
+    /// 呼び出し元が保持している読み取りハンドルと同じファイルを検証する。
+    /// ダウンロード済みインストーラーの検証後差し替えを防ぐ用途で使う。
+    /// </summary>
+    public static bool TryVerify(
+        string? filePath,
+        SafeFileHandle fileHandle,
+        string expectedCommonName,
+        AuthenticodeRevocationMode revocationMode,
+        out string failureReason)
+        => TryVerifyCore(
+            filePath,
+            fileHandle,
             revocationMode,
             certificate => HasExpectedCommonName(certificate.Subject, expectedCommonName),
             out failureReason);
 
     private static bool TryVerifyCore(
         string? filePath,
+        SafeFileHandle? fileHandle,
         AuthenticodeRevocationMode revocationMode,
         Func<X509Certificate2, bool> signerPolicy,
         out string failureReason)
@@ -45,6 +65,12 @@ public static class ExecutableTrustVerifier
         if (string.IsNullOrWhiteSpace(filePath) || !Path.IsPathFullyQualified(filePath) || !File.Exists(filePath))
         {
             failureReason = "検証対象の実行ファイルが見つかりません";
+            return false;
+        }
+
+        if (fileHandle is not null && (fileHandle.IsInvalid || fileHandle.IsClosed))
+        {
+            failureReason = "検証対象のファイルハンドルが無効です";
             return false;
         }
 
@@ -58,6 +84,7 @@ public static class ExecutableTrustVerifier
             {
                 Size = (uint)Marshal.SizeOf<WinTrustFileInfo>(),
                 FilePath = pathPointer,
+                FileHandle = fileHandle?.DangerousGetHandle() ?? nint.Zero,
             };
             fileInfoPointer = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
             Marshal.StructureToPtr(fileInfo, fileInfoPointer, fDeleteOld: false);
@@ -118,6 +145,8 @@ public static class ExecutableTrustVerifier
             {
                 Marshal.FreeCoTaskMem(pathPointer);
             }
+
+            GC.KeepAlive(fileHandle);
         }
     }
 

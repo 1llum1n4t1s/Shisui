@@ -45,4 +45,30 @@ public sealed class ExecutableTrustVerifierTests
             out var reason));
         StringAssert.Contains(reason, "見つかりません");
     }
+
+    [TestMethod]
+    public void TryVerify_HeldHandle_UsesHandleWithoutReopeningForWrite()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"unsigned-{Guid.NewGuid():N}.exe");
+        try
+        {
+            using var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+            file.WriteByte(0x42);
+            file.Flush(flushToDisk: true);
+            file.Position = 0;
+
+            Assert.IsFalse(ExecutableTrustVerifier.TryVerify(
+                path,
+                file.SafeFileHandle,
+                "Microsoft Windows",
+                AuthenticodeRevocationMode.CacheOnly,
+                out var reason));
+            Assert.IsFalse(string.IsNullOrWhiteSpace(reason));
+            Assert.ThrowsExactly<IOException>(() => File.OpenWrite(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

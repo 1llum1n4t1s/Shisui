@@ -8,6 +8,45 @@ namespace Shisui.Tests;
 public sealed class ProcessCommandExecutorTests
 {
     [TestMethod]
+    [DataRow("netsh", "netsh.exe")]
+    [DataRow("ipconfig.exe", "ipconfig.exe")]
+    [DataRow("pnputil", "pnputil.exe")]
+    [DataRow("nbtstat", "nbtstat.exe")]
+    [DataRow("route", "route.exe")]
+    [DataRow("netcfg", "netcfg.exe")]
+    public void ResolveWindowsExecutablePath_SystemCommand_UsesSystemDirectory(
+        string fileName,
+        string expectedFileName)
+    {
+        var systemDirectory = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "System32"));
+
+        var result = ProcessCommandExecutor.ResolveWindowsExecutablePath(fileName, systemDirectory);
+
+        Assert.AreEqual(Path.Combine(systemDirectory, expectedFileName), result);
+    }
+
+    [TestMethod]
+    public void ResolveWindowsExecutablePath_PowerShell_UsesWindowsPowerShellDirectory()
+    {
+        var systemDirectory = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "System32"));
+
+        var result = ProcessCommandExecutor.ResolveWindowsExecutablePath("powershell", systemDirectory);
+
+        Assert.AreEqual(
+            Path.Combine(systemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            result);
+    }
+
+    [TestMethod]
+    public void ResolveWindowsExecutablePath_UnknownBareName_IsRejected()
+    {
+        var systemDirectory = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "System32"));
+
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
+            ProcessCommandExecutor.ResolveWindowsExecutablePath("shisui-probe", systemDirectory));
+    }
+
+    [TestMethod]
     public async Task RunAsync_CanceledWait_TerminatesStartedProcess()
     {
         var markerPath = Path.Combine(Path.GetTempPath(), $"shisui-process-{Guid.NewGuid():N}.txt");
@@ -46,12 +85,51 @@ public sealed class ProcessCommandExecutorTests
         }
     }
 
-    private static (string FileName, string Arguments) BuildLongRunningCommand(string markerPath)
+    [TestMethod]
+    public async Task RunAsync_OutputReadFails_TerminatesStartedProcess()
+    {
+        var markerPath = Path.Combine(Path.GetTempPath(), $"shisui-process-{Guid.NewGuid():N}.txt");
+        var processId = 0;
+
+        try
+        {
+            var executor = new ThrowingOutputProcessCommandExecutor(markerPath);
+            var (fileName, arguments) = BuildLongRunningCommand(markerPath: null);
+
+            var result = await executor.RunAsync(fileName, arguments);
+
+            Assert.IsFalse(result.Success);
+            processId = int.Parse(await File.ReadAllTextAsync(markerPath), System.Globalization.CultureInfo.InvariantCulture);
+            Assert.IsFalse(IsProcessRunning(processId), "出力取得の失敗後も外部プロセスが残っています。");
+        }
+        finally
+        {
+            TryTerminate(processId);
+            File.Delete(markerPath);
+        }
+    }
+
+    private static (string FileName, string Arguments) BuildLongRunningCommand(string? markerPath)
     {
         if (OperatingSystem.IsWindows())
         {
+            var powershell = Path.Combine(
+                Environment.SystemDirectory,
+                "WindowsPowerShell",
+                "v1.0",
+                "powershell.exe");
+            if (markerPath is null)
+            {
+                return (powershell, "-NoLogo -NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 30\"");
+            }
+
             var escapedPath = markerPath.Replace("'", "''");
-            return ("pwsh", $"-NoLogo -NoProfile -NonInteractive -Command \"$PID | Set-Content -LiteralPath '{escapedPath}' -NoNewline; Start-Sleep -Seconds 30\"");
+            return (powershell, $"-NoLogo -NoProfile -NonInteractive -Command \"$PID | Set-Content -LiteralPath '{escapedPath}' -NoNewline; Start-Sleep -Seconds 30\"");
+        }
+
+        if (markerPath is null)
+        {
+            return ("/bin/sh", "-c \"sleep 30\"");
         }
 
         var shellEscapedPath = markerPath.Replace("'", "'\\''");
@@ -100,6 +178,19 @@ public sealed class ProcessCommandExecutorTests
         }
         catch (ArgumentException)
         {
+        }
+    }
+
+    private sealed class ThrowingOutputProcessCommandExecutor(string markerPath) : ProcessCommandExecutor
+    {
+        protected override Task CopyOutputAsync(
+            Process process,
+            MemoryStream stdoutBuffer,
+            MemoryStream stderrBuffer,
+            CancellationToken ct)
+        {
+            File.WriteAllText(markerPath, process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return Task.FromException(new IOException("simulated output failure"));
         }
     }
 }

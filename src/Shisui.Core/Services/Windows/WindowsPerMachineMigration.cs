@@ -125,9 +125,10 @@ public static class WindowsPerMachineMigration
         try
         {
             Directory.CreateDirectory(temporaryDirectory);
-            await DownloadMsiAsync(msiPath, ct);
+            await using var lockedMsi = await DownloadMsiAsync(msiPath, ct);
             if (!ExecutableTrustVerifier.TryVerify(
                     msiPath,
+                    lockedMsi.SafeFileHandle,
                     ExpectedPublisher,
                     AuthenticodeRevocationMode.Online,
                     out _))
@@ -396,9 +397,10 @@ public static class WindowsPerMachineMigration
         try
         {
             Directory.CreateDirectory(temporaryDirectory);
-            await DownloadMsiAsync(msiPath, ct);
+            await using var lockedMsi = await DownloadMsiAsync(msiPath, ct);
             if (!ExecutableTrustVerifier.TryVerify(
                     msiPath,
+                    lockedMsi.SafeFileHandle,
                     ExpectedPublisher,
                     AuthenticodeRevocationMode.Online,
                     out _))
@@ -471,7 +473,7 @@ public static class WindowsPerMachineMigration
         }
     }
 
-    private static async Task DownloadMsiAsync(string destinationPath, CancellationToken ct)
+    private static async Task<FileStream> DownloadMsiAsync(string destinationPath, CancellationToken ct)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Shisui", "PerMachineMigration"));
@@ -484,25 +486,42 @@ public static class WindowsPerMachineMigration
         }
 
         await using var source = await response.Content.ReadAsStreamAsync(ct);
-        await using var destination = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-        var buffer = new byte[81_920];
-        long totalBytes = 0;
-        while (true)
+        var destination = OpenLockedMsiDownloadTarget(destinationPath);
+        try
         {
-            var read = await source.ReadAsync(buffer, ct);
-            if (read == 0)
+            var buffer = new byte[81_920];
+            long totalBytes = 0;
+            while (true)
             {
-                break;
+                var read = await source.ReadAsync(buffer, ct);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                totalBytes += read;
+                if (totalBytes > MaximumMsiSizeBytes)
+                {
+                    throw new InvalidDataException("MSIのサイズが上限を超えています");
+                }
+                await destination.WriteAsync(buffer.AsMemory(0, read), ct);
             }
 
-            totalBytes += read;
-            if (totalBytes > MaximumMsiSizeBytes)
-            {
-                throw new InvalidDataException("MSIのサイズが上限を超えています");
-            }
-            await destination.WriteAsync(buffer.AsMemory(0, read), ct);
+            await destination.FlushAsync(ct);
+            destination.Flush(flushToDisk: true);
+            destination.Position = 0;
+            return destination;
+        }
+        catch
+        {
+            await destination.DisposeAsync();
+            throw;
         }
     }
+
+    /// <summary>検証からインストール完了まで、同一ユーザーによる書換え・削除・移動を拒否する。</summary>
+    internal static FileStream OpenLockedMsiDownloadTarget(string destinationPath) =>
+        new(destinationPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
 
     private static int InstallMsi(string msiPath, bool reinstallExistingProduct = false)
     {

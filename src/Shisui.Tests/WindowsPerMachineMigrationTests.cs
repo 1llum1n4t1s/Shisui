@@ -241,6 +241,30 @@ public class WindowsPerMachineMigrationTests
     }
 
     [TestMethod]
+    public void OpenLockedMsiDownloadTarget_HeldHandle_BlocksReplacementUntilDisposed()
+    {
+        var downloadDirectory = Path.Combine(testRoot, "download");
+        var movedDirectory = Path.Combine(testRoot, "moved");
+        Directory.CreateDirectory(downloadDirectory);
+        var msiPath = Path.Combine(downloadDirectory, "Shisui-win.msi");
+
+        using (var lockedMsi = WindowsPerMachineMigration.OpenLockedMsiDownloadTarget(msiPath))
+        {
+            lockedMsi.WriteByte(0x42);
+            lockedMsi.Flush(flushToDisk: true);
+
+            Assert.ThrowsExactly<IOException>(() => File.OpenWrite(msiPath));
+            Assert.ThrowsExactly<IOException>(() => File.Delete(msiPath));
+            Assert.ThrowsExactly<IOException>(() => File.Move(msiPath, msiPath + ".replaced"));
+            Assert.ThrowsExactly<IOException>(() => Directory.Move(downloadDirectory, movedDirectory));
+        }
+
+        File.Delete(msiPath);
+        Directory.Move(downloadDirectory, movedDirectory);
+        Assert.IsTrue(Directory.Exists(movedDirectory));
+    }
+
+    [TestMethod]
     public void TryDeleteTreeWithoutFollowingReparsePoints_LockedFile_RemovesUnlockedSiblingAndRetries()
     {
         var legacyRoot = Path.Combine(testRoot, "LocalAppData", "Shisui");

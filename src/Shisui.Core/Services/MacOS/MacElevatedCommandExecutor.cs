@@ -22,7 +22,7 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
         var shellCommand = string.IsNullOrEmpty(arguments) ? fileName : $"{fileName} {arguments}";
         var appleScript = $"do shell script \"{EscapeForAppleScript(shellCommand)}\" with administrator privileges";
 
-        var psi = new ProcessStartInfo("osascript")
+        var psi = new ProcessStartInfo("/usr/bin/osascript")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -59,6 +59,7 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            await ProcessCommandExecutor.TerminateProcessAsync(process);
             return new CommandExecutionResult(false, shellCommand, -1, string.Empty, ex.Message);
         }
     }

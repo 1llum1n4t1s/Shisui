@@ -38,7 +38,19 @@ public class ProcessCommandExecutor : ICommandExecutor
     {
         var commandLine = string.IsNullOrEmpty(arguments) ? fileName : $"{fileName} {arguments}";
 
-        var psi = new ProcessStartInfo(fileName)
+        string executablePath;
+        try
+        {
+            executablePath = OperatingSystem.IsWindows()
+                ? ResolveWindowsExecutablePath(fileName, Environment.SystemDirectory)
+                : fileName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message);
+        }
+
+        var psi = new ProcessStartInfo(executablePath)
         {
             Arguments = arguments,
             RedirectStandardOutput = true,
@@ -46,6 +58,11 @@ public class ProcessCommandExecutor : ICommandExecutor
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        if (OperatingSystem.IsWindows())
+        {
+            // 子プロセスが相対パスを解決する場合にも、ユーザー書き込み可能な作業ディレクトリを参照させない。
+            psi.WorkingDirectory = Environment.SystemDirectory;
+        }
 
         using var process = new Process { StartInfo = psi };
         try
@@ -59,9 +76,7 @@ public class ProcessCommandExecutor : ICommandExecutor
             // デッドロックを避ける。
             using var stdoutBuffer = new MemoryStream();
             using var stderrBuffer = new MemoryStream();
-            var readOut = process.StandardOutput.BaseStream.CopyToAsync(stdoutBuffer, ct);
-            var readErr = process.StandardError.BaseStream.CopyToAsync(stderrBuffer, ct);
-            await Task.WhenAll(readOut, readErr);
+            await CopyOutputAsync(process, stdoutBuffer, stderrBuffer, ct);
             await process.WaitForExitAsync(ct);
 
             return new CommandExecutionResult(
@@ -78,8 +93,55 @@ public class ProcessCommandExecutor : ICommandExecutor
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            await TerminateProcessAsync(process);
             return new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message);
         }
+    }
+
+    /// <summary>Windows の特権子プロセスは、検索順に依存しない信頼済みシステムパスへ限定する。</summary>
+    internal static string ResolveWindowsExecutablePath(string fileName, string systemDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException("実行ファイル名が空です。", nameof(fileName));
+        }
+
+        if (Path.IsPathFullyQualified(fileName))
+        {
+            return Path.GetFullPath(fileName);
+        }
+
+        if (string.IsNullOrWhiteSpace(systemDirectory) || !Path.IsPathFullyQualified(systemDirectory))
+        {
+            throw new ArgumentException("Windows システムディレクトリの絶対パスが必要です。", nameof(systemDirectory));
+        }
+
+        var commandName = Path.GetFileNameWithoutExtension(fileName);
+        if (!string.Equals(fileName, commandName, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(fileName, commandName + ".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"相対パスの外部コマンドは実行できません: {fileName}");
+        }
+
+        return commandName.ToLowerInvariant() switch
+        {
+            "powershell" => Path.Combine(systemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
+            "netsh" or "ipconfig" or "pnputil" or "nbtstat" or "route" or "netcfg" =>
+                Path.Combine(systemDirectory, commandName.ToLowerInvariant() + ".exe"),
+            _ => throw new InvalidOperationException($"許可されていない Windows 外部コマンドです: {fileName}"),
+        };
+    }
+
+    /// <summary>テストで読み取り失敗を注入できるよう、プロセス開始後の出力取得だけを分離する。</summary>
+    protected virtual async Task CopyOutputAsync(
+        Process process,
+        MemoryStream stdoutBuffer,
+        MemoryStream stderrBuffer,
+        CancellationToken ct)
+    {
+        var readOut = process.StandardOutput.BaseStream.CopyToAsync(stdoutBuffer, ct);
+        var readErr = process.StandardError.BaseStream.CopyToAsync(stderrBuffer, ct);
+        await Task.WhenAll(readOut, readErr);
     }
 
     /// <summary>待機のキャンセル後も管理者権限の子プロセスを残さないよう、プロセスツリーを終了する。</summary>
