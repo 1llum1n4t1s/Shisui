@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services.Windows;
 
@@ -9,16 +10,34 @@ public class WindowsMtuStateCommandBuilderTests
     [TestMethod]
     public void BuildArguments_ContainsAdapterName()
     {
-        var args = WindowsMtuStateCommandBuilder.BuildArguments("Wi-Fi 2");
+        var script = DecodeScript(WindowsMtuStateCommandBuilder.BuildArguments("Wi-Fi 2"));
 
-        Assert.IsTrue(args.Contains("-InterfaceAlias 'Wi-Fi 2'"));
+        StringAssert.Contains(script, "-InterfaceAlias 'Wi-Fi 2'");
     }
 
     [TestMethod]
     public void BuildArguments_EscapesSingleQuoteInAdapterName()
     {
-        var args = WindowsMtuStateCommandBuilder.BuildArguments("evil'; Remove-Item C:\\");
+        var script = DecodeScript(WindowsMtuStateCommandBuilder.BuildArguments("evil'; Remove-Item C:\\"));
 
-        Assert.IsTrue(args.Contains("evil''; Remove-Item C:\\"));
+        StringAssert.Contains(script, "evil''; Remove-Item C:\\");
+    }
+
+    [TestMethod]
+    public void BuildArguments_DoubleQuoteInAdapterName_RemainsInsideEncodedScript()
+    {
+        var arguments = WindowsMtuStateCommandBuilder.BuildArguments("Wi-\"Fi");
+        var script = DecodeScript(arguments);
+
+        StringAssert.StartsWith(arguments, "-NoProfile -NonInteractive -EncodedCommand ");
+        StringAssert.Contains(script, "-InterfaceAlias 'Wi-\"Fi'");
+        Assert.IsFalse(arguments.Contains("Wi-\"Fi", StringComparison.Ordinal));
+    }
+
+    private static string DecodeScript(string arguments)
+    {
+        const string marker = "-EncodedCommand ";
+        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
+        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 }

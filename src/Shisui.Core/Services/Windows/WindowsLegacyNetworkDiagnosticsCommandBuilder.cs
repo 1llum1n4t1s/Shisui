@@ -12,8 +12,7 @@ public static class WindowsLegacyNetworkDiagnosticsCommandBuilder
     public static string BuildAdapterSnapshotArguments(string adapterName)
     {
         var name = QuotePowerShellLiteral(adapterName);
-        return
-            "-NoProfile -NonInteractive -Command \"" +
+        var script =
             "$ErrorActionPreference='Stop';" +
             $"$s=Get-NetAdapterStatistics -Name '{name}';" +
             $"$a=Get-NetAdapter -Name '{name}';" +
@@ -30,19 +29,18 @@ public static class WindowsLegacyNetworkDiagnosticsCommandBuilder
             "'TX_DISCARDS='+[uint64]$s.OutboundDiscardedPackets;" +
             "'RX_PACKETS='+$rx;" +
             "'TX_PACKETS='+$tx;" +
-            "'TASK_OFFLOAD_DISABLED='+$(if($null -eq $task){''}else{[int]$task})" +
-            "\"";
+            "'TASK_OFFLOAD_DISABLED='+$(if($null -eq $task){''}else{[int]$task})";
+        return WindowsPowerShellArgumentEncoder.Encode(script);
     }
 
     public static string BuildResetAdapterAdvancedPropertiesArguments(string adapterName)
     {
         var name = QuotePowerShellLiteral(adapterName);
-        return
-            "-NoProfile -NonInteractive -Command \"" +
+        var script =
             "$ErrorActionPreference='Stop';" +
             $"Reset-NetAdapterAdvancedProperty -Name '{name}' -DisplayName '*' -Confirm:$false;" +
-            $"'RESET={name}'" +
-            "\"";
+            $"'RESET={name}'";
+        return WindowsPowerShellArgumentEncoder.Encode(script);
     }
 
     private static string QuotePowerShellLiteral(string value)

@@ -10,6 +10,9 @@ public sealed record CommandExecutionResult(
     string StandardOutput,
     string StandardError)
 {
+    /// <summary>ファイルログの開始・終了・画面通知を結ぶID。画面表示には使わない。</summary>
+    public string? DiagnosticId { get; init; }
+
     public static CommandExecutionResult Skipped(string reason) =>
         new(false, reason, -1, string.Empty, reason);
 }

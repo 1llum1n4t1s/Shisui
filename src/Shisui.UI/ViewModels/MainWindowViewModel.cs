@@ -68,17 +68,8 @@ public partial class MainWindowViewModel : ObservableObject
         var detail = result.Success ? result.StandardOutput : result.StandardError;
         LogEntries.Insert(0, new CommandLogEntry(DateTime.Now, result.CommandLine, result.Success, detail));
 
-        // ネットワーク設定変更コマンドの実行痕跡をファイルにも残す (2026-07-06 /rere レビューで発見:
-        // 従来は上の LogEntries (インメモリ、アプリ終了で消滅) にしか記録されておらず、事後のトラブル
-        // シュートが不可能だった)。
-        if (result.Success)
-        {
-            LoggerBootstrap.Log.Info($"{result.CommandLine}");
-        }
-        else
-        {
-            LoggerBootstrap.Log.Error($"{result.CommandLine} (exit={result.ExitCode}): {result.StandardError}");
-        }
+        // 実行時点の記録は executor 側。ここでは適用後確認を含む画面への通知結果を記録する。
+        LoggerBootstrap.LogCommandResult(result);
 
         // ログパネルの肥大化を防ぐため直近 200 件だけ保持する
         while (LogEntries.Count > 200)

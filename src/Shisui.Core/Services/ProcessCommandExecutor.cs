@@ -37,6 +37,7 @@ public class ProcessCommandExecutor : ICommandExecutor
     public async Task<CommandExecutionResult> RunAsync(string fileName, string arguments, CancellationToken ct = default)
     {
         var commandLine = string.IsNullOrEmpty(arguments) ? fileName : $"{fileName} {arguments}";
+        var trace = new CommandExecutionTrace(FormatDiagnosticCommandLine(fileName, arguments), WriteDiagnostic);
 
         string executablePath;
         try
@@ -47,7 +48,8 @@ public class ProcessCommandExecutor : ICommandExecutor
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            return new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message);
+            trace.Interrupted(ex);
+            return trace.Complete(new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message));
         }
 
         var psi = new ProcessStartInfo(executablePath)
@@ -65,36 +67,71 @@ public class ProcessCommandExecutor : ICommandExecutor
         }
 
         using var process = new Process { StartInfo = psi };
+        using var stdoutBuffer = new MemoryStream();
+        using var stderrBuffer = new MemoryStream();
         try
         {
             process.Start();
+            trace.Started(process);
 
             // 生バイトで受け取ってから自前でデコードする。netsh / ipconfig 等の出力は環境によって
             // UTF-8 だったり OEM コードページ (日本語 = CP932) だったりするため、StandardOutputEncoding を
             // 固定するとどちらかの環境で文字化けする (GUI アプリは Console.OutputEncoding が OEM に解決され、
             // netsh が UTF-8 を吐くマシンだと化ける)。両ストリームを並行して読み、片方のバッファが詰まる
             // デッドロックを避ける。
-            using var stdoutBuffer = new MemoryStream();
-            using var stderrBuffer = new MemoryStream();
             await CopyOutputAsync(process, stdoutBuffer, stderrBuffer, ct);
             await process.WaitForExitAsync(ct);
 
-            return new CommandExecutionResult(
+            return trace.Complete(new CommandExecutionResult(
                 process.ExitCode == 0,
                 commandLine,
                 process.ExitCode,
                 DecodeConsoleOutput(stdoutBuffer.ToArray()).TrimEnd(),
-                DecodeConsoleOutput(stderrBuffer.ToArray()).TrimEnd());
+                DecodeConsoleOutput(stderrBuffer.ToArray()).TrimEnd()));
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             await TerminateProcessAsync(process);
+            trace.Interrupted(ex, DecodeConsoleOutput(stdoutBuffer.ToArray()), DecodeConsoleOutput(stderrBuffer.ToArray()));
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             await TerminateProcessAsync(process);
-            return new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message);
+            trace.Interrupted(ex, DecodeConsoleOutput(stdoutBuffer.ToArray()), DecodeConsoleOutput(stderrBuffer.ToArray()));
+            return trace.Complete(new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message));
+        }
+    }
+
+    /// <summary>診断テストでは実際のファイルロガーを共有せず記録内容を取得する。</summary>
+    protected virtual void WriteDiagnostic(string message, bool error) => CommandExecutionTrace.Write(message, error);
+
+    /// <summary>EncodedCommand は実行引数のまま渡しつつ、診断ログでは原因を追えるスクリプトへ戻す。</summary>
+    internal static string FormatDiagnosticCommandLine(string fileName, string arguments)
+    {
+        var commandLine = string.IsNullOrEmpty(arguments) ? fileName : $"{fileName} {arguments}";
+        const string marker = "-EncodedCommand ";
+        if (!string.Equals(Path.GetFileNameWithoutExtension(fileName), "powershell", StringComparison.OrdinalIgnoreCase))
+        {
+            return commandLine;
+        }
+
+        var markerIndex = arguments.IndexOf(marker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+        {
+            return commandLine;
+        }
+
+        var encoded = arguments[(markerIndex + marker.Length)..].Trim();
+        try
+        {
+            var script = Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
+            var prefix = arguments[..markerIndex];
+            return $"{fileName} {prefix}-Command <decoded>\n{script}";
+        }
+        catch (FormatException)
+        {
+            return commandLine;
         }
     }
 

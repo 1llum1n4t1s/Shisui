@@ -243,8 +243,11 @@ public class WindowsPerMachineMigrationTests
     [TestMethod]
     public void OpenLockedMsiDownloadTarget_HeldHandle_BlocksReplacementUntilDisposed()
     {
-        var downloadDirectory = Path.Combine(testRoot, "download");
+        var stagingDirectory = Path.Combine(testRoot, "staging");
+        var migrationDirectory = Path.Combine(stagingDirectory, "per-machine-migration");
+        var downloadDirectory = Path.Combine(migrationDirectory, "download");
         var movedDirectory = Path.Combine(testRoot, "moved");
+        var movedStagingDirectory = Path.Combine(testRoot, "moved-staging");
         Directory.CreateDirectory(downloadDirectory);
         var msiPath = Path.Combine(downloadDirectory, "Shisui-win.msi");
 
@@ -257,11 +260,12 @@ public class WindowsPerMachineMigrationTests
             Assert.ThrowsExactly<IOException>(() => File.Delete(msiPath));
             Assert.ThrowsExactly<IOException>(() => File.Move(msiPath, msiPath + ".replaced"));
             Assert.ThrowsExactly<IOException>(() => Directory.Move(downloadDirectory, movedDirectory));
+            Assert.ThrowsExactly<IOException>(() => Directory.Move(stagingDirectory, movedStagingDirectory));
         }
 
         File.Delete(msiPath);
-        Directory.Move(downloadDirectory, movedDirectory);
-        Assert.IsTrue(Directory.Exists(movedDirectory));
+        Directory.Move(stagingDirectory, movedStagingDirectory);
+        Assert.IsTrue(Directory.Exists(Path.Combine(movedStagingDirectory, "per-machine-migration", "download")));
     }
 
     [TestMethod]

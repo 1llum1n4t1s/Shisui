@@ -11,9 +11,8 @@ public static class WindowsMtuStateCommandBuilder
     public static string BuildArguments(string adapterName)
     {
         var safeName = adapterName.Replace("'", "''");
-        return "-NoProfile -NonInteractive -Command \"" +
-               $"$i=Get-NetIPInterface -InterfaceAlias '{safeName}' -AddressFamily IPv4 -ErrorAction SilentlyContinue;" +
-               "if($i){'MTU='+$i.NlMtu}" +
-               "\"";
+        var script = $"$i=Get-NetIPInterface -InterfaceAlias '{safeName}' -AddressFamily IPv4 -ErrorAction SilentlyContinue;" +
+                     "if($i){'MTU='+$i.NlMtu}";
+        return WindowsPowerShellArgumentEncoder.Encode(script);
     }
 }

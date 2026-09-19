@@ -153,6 +153,29 @@ public class TcpTuningViewModelTests
         Assert.AreEqual("現在の MTU: 1492", viewModel.MtuStateText);
     }
 
+    [TestMethod]
+    public async Task RevertMtuCommand_SelectionChangesWhileWaitingForGate_UsesOriginalAdapter()
+    {
+        var ethernet = new NetworkAdapterInfo("Ethernet", "有線LAN", null, true, [], []);
+        var wifi = new NetworkAdapterInfo("Wi-Fi", "Wi-Fi", null, true, [], []);
+        var service = new FakeTcpTuningService();
+        var gate = new BlockingNetworkMutationGate();
+        var viewModel = new TcpTuningViewModel(service, new FakeNetworkAdapterService(), gate)
+        {
+            SelectedAdapter = ethernet,
+        };
+
+        var operation = viewModel.RevertMtuCommand.ExecuteAsync(null);
+        await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        viewModel.SelectedAdapter = wifi;
+        gate.Release();
+        await operation;
+
+        Assert.AreEqual(ethernet.Id, service.RevertedAdapterId);
+        StringAssert.Contains(viewModel.StatusText, ethernet.DisplayName);
+        Assert.AreEqual(wifi, viewModel.SelectedAdapter);
+    }
+
     private static TcpTuningViewModel CreateViewModel(FakeTcpTuningService service) =>
         new(service, new FakeNetworkAdapterService(), new FakeNetworkMutationGate());
 
@@ -187,6 +210,7 @@ public class TcpTuningViewModelTests
         public TcpSettingsSnapshot CurrentState { get; init; } = CreateSnapshot();
         public Exception? StateException { get; init; }
         public int GetCurrentStateCallCount { get; private set; }
+        public string? RevertedAdapterId { get; private set; }
         public Func<string, Task<int?>> MtuHandler { get; set; } = _ => Task.FromResult<int?>(null);
 
         public override Task<IReadOnlyList<CommandExecutionResult>> EnableBbr2Async(CancellationToken ct = default) =>
@@ -210,6 +234,14 @@ public class TcpTuningViewModelTests
 
         public override Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default) =>
             MtuHandler(adapterId);
+
+        public override Task<IReadOnlyList<CommandExecutionResult>> RevertMtuToDefaultAsync(
+            string adapterId,
+            CancellationToken ct = default)
+        {
+            RevertedAdapterId = adapterId;
+            return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([Success(), Success()]);
+        }
     }
 
     private sealed class FakeNetworkAdapterService(IReadOnlyList<NetworkAdapterInfo>? adapters = null) : INetworkAdapterService
@@ -227,6 +259,29 @@ public class TcpTuningViewModelTests
     {
         public Task<IDisposable> EnterAsync(CancellationToken ct = default) =>
             Task.FromResult<IDisposable>(new Lease());
+
+        private sealed class Lease : IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+    }
+
+    private sealed class BlockingNetworkMutationGate : INetworkMutationGate
+    {
+        private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IDisposable> EnterAsync(CancellationToken ct = default)
+        {
+            Entered.TrySetResult();
+            await release.Task.WaitAsync(ct);
+            return new Lease();
+        }
+
+        public void Release() => release.TrySetResult();
 
         private sealed class Lease : IDisposable
         {

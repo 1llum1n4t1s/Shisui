@@ -1,5 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Runtime.Versioning;
+using System.Text;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
 using Shisui.Core.Services.Windows;
@@ -28,22 +29,34 @@ public class WindowsLegacyNetworkDiagnosticsTests
     public void BuildAdapterSnapshotArguments_QuotesPowerShellLiteralAndUsesFixedKeys()
     {
         var args = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildAdapterSnapshotArguments("Wi-Fi 'Test'");
+        var script = DecodeScript(args);
 
-        StringAssert.Contains(args, "Get-NetAdapterStatistics -Name 'Wi-Fi ''Test'''", args);
-        StringAssert.Contains(args, "[string]$a.DriverDate", args);
-        Assert.IsFalse(args.Contains("DriverDate.ToString", StringComparison.Ordinal), args);
-        StringAssert.Contains(args, "'RX_ERRORS='", args);
-        StringAssert.Contains(args, "'TASK_OFFLOAD_DISABLED='", args);
+        StringAssert.Contains(script, "Get-NetAdapterStatistics -Name 'Wi-Fi ''Test'''", script);
+        StringAssert.Contains(script, "[string]$a.DriverDate", script);
+        Assert.IsFalse(script.Contains("DriverDate.ToString", StringComparison.Ordinal), script);
+        StringAssert.Contains(script, "'RX_ERRORS='", script);
+        StringAssert.Contains(script, "'TASK_OFFLOAD_DISABLED='", script);
     }
 
     [TestMethod]
     public void BuildResetAdapterAdvancedPropertiesArguments_TargetsOnlySelectedAdapter()
     {
         var args = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildResetAdapterAdvancedPropertiesArguments("Ethernet 2");
+        var script = DecodeScript(args);
 
         Assert.AreEqual(
-            "-NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop';Reset-NetAdapterAdvancedProperty -Name 'Ethernet 2' -DisplayName '*' -Confirm:$false;'RESET=Ethernet 2'\"",
-            args);
+            "$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop';Reset-NetAdapterAdvancedProperty -Name 'Ethernet 2' -DisplayName '*' -Confirm:$false;'RESET=Ethernet 2'",
+            script);
+    }
+
+    [TestMethod]
+    public void BuildResetAdapterAdvancedPropertiesArguments_DoubleQuoteCannotBreakOuterCommand()
+    {
+        var arguments = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildResetAdapterAdvancedPropertiesArguments("Ether\"net");
+        var script = DecodeScript(arguments);
+
+        StringAssert.Contains(script, "-Name 'Ether\"net'");
+        Assert.IsFalse(arguments.Contains("Ether\"net", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -113,7 +126,8 @@ public class WindowsLegacyNetworkDiagnosticsTests
         var result = await service.ResetAdapterAdvancedPropertiesAsync("Ethernet");
 
         Assert.IsTrue(result.Success);
-        StringAssert.Contains(result.CommandLine, "Reset-NetAdapterAdvancedProperty");
+        StringAssert.Contains(result.CommandLine, "-EncodedCommand ");
+        StringAssert.Contains(DecodeScript(result.CommandLine), "Reset-NetAdapterAdvancedProperty");
     }
 
     private sealed class FakeExecutor : ICommandExecutor
@@ -121,14 +135,17 @@ public class WindowsLegacyNetworkDiagnosticsTests
         public Task<CommandExecutionResult> RunAsync(
             string fileName, string arguments, CancellationToken ct = default)
         {
-            var output = arguments switch
+            var commandText = arguments.Contains("-EncodedCommand ", StringComparison.Ordinal)
+                ? DecodeScript(arguments)
+                : arguments;
+            var output = commandText switch
             {
                 WindowsLegacyNetworkDiagnosticsCommandBuilder.WinsockArguments =>
                     "Winsock 送信自動チューニングは無効にされています。",
                 WindowsLegacyNetworkDiagnosticsCommandBuilder.ProblemDevicesArguments =>
                     "<PnpUtil><Device InstanceId=\"PROBLEM\"/></PnpUtil>",
-                _ when arguments.Contains("Get-NetAdapterStatistics", StringComparison.Ordinal) => AdapterOutput,
-                _ when arguments.Contains("Reset-NetAdapterAdvancedProperty", StringComparison.Ordinal) => "RESET=Ethernet",
+                _ when commandText.Contains("Get-NetAdapterStatistics", StringComparison.Ordinal) => AdapterOutput,
+                _ when commandText.Contains("Reset-NetAdapterAdvancedProperty", StringComparison.Ordinal) => "RESET=Ethernet",
                 _ => string.Empty,
             };
             return Task.FromResult(new CommandExecutionResult(
@@ -138,6 +155,13 @@ public class WindowsLegacyNetworkDiagnosticsTests
                 output,
                 string.Empty));
         }
+    }
+
+    private static string DecodeScript(string arguments)
+    {
+        const string marker = "-EncodedCommand ";
+        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
+        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 
     private sealed class FakeGhostAdapterService : IGhostAdapterService

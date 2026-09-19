@@ -20,6 +20,7 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
     public async Task<CommandExecutionResult> RunAsync(string fileName, string arguments, CancellationToken ct = default)
     {
         var shellCommand = string.IsNullOrEmpty(arguments) ? fileName : $"{fileName} {arguments}";
+        var trace = new CommandExecutionTrace(shellCommand);
         var appleScript = $"do shell script \"{EscapeForAppleScript(shellCommand)}\" with administrator privileges";
 
         var psi = new ProcessStartInfo("/usr/bin/osascript")
@@ -33,34 +34,37 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
         psi.ArgumentList.Add(appleScript);
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
         try
         {
-            var stdout = new StringBuilder();
-            var stderr = new StringBuilder();
             process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
             process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
 
             process.Start();
+            trace.Started(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(ct);
 
-            return new CommandExecutionResult(
+            return trace.Complete(new CommandExecutionResult(
                 process.ExitCode == 0,
                 shellCommand,
                 process.ExitCode,
                 stdout.ToString().TrimEnd(),
-                stderr.ToString().TrimEnd());
+                stderr.ToString().TrimEnd()));
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             await ProcessCommandExecutor.TerminateProcessAsync(process);
+            trace.Interrupted(ex, stdout.ToString(), stderr.ToString());
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             await ProcessCommandExecutor.TerminateProcessAsync(process);
-            return new CommandExecutionResult(false, shellCommand, -1, string.Empty, ex.Message);
+            trace.Interrupted(ex, stdout.ToString(), stderr.ToString());
+            return trace.Complete(new CommandExecutionResult(false, shellCommand, -1, string.Empty, ex.Message));
         }
     }
 

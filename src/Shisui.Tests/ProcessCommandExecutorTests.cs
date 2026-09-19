@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services;
 
@@ -47,6 +48,21 @@ public sealed class ProcessCommandExecutorTests
     }
 
     [TestMethod]
+    public void FormatDiagnosticCommandLine_EncodedPowerShell_RecordsDecodedScript()
+    {
+        const string script = "Get-NetAdapter -Name 'Wi-\"Fi'";
+        var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+
+        var result = ProcessCommandExecutor.FormatDiagnosticCommandLine(
+            "powershell",
+            $"-NoProfile -NonInteractive -EncodedCommand {encoded}");
+
+        StringAssert.Contains(result, "-Command <decoded>");
+        StringAssert.Contains(result, script);
+        Assert.IsFalse(result.Contains(encoded, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task RunAsync_CanceledWait_TerminatesStartedProcess()
     {
         var markerPath = Path.Combine(Path.GetTempPath(), $"shisui-process-{Guid.NewGuid():N}.txt");
@@ -56,7 +72,7 @@ public sealed class ProcessCommandExecutorTests
 
         try
         {
-            var executor = new ProcessCommandExecutor();
+            var executor = new RecordingProcessCommandExecutor();
             var (fileName, arguments) = BuildLongRunningCommand(markerPath);
             runTask = executor.RunAsync(fileName, arguments, cancellation.Token);
 
@@ -65,6 +81,7 @@ public sealed class ProcessCommandExecutorTests
 
             await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await runTask);
             Assert.IsFalse(IsProcessRunning(processId), "キャンセル後も外部プロセスが残っています。");
+            Assert.IsTrue(executor.Messages.Any(message => message.Contains("status=Canceled")));
         }
         finally
         {
@@ -99,6 +116,7 @@ public sealed class ProcessCommandExecutorTests
             var result = await executor.RunAsync(fileName, arguments);
 
             Assert.IsFalse(result.Success);
+            Assert.IsTrue(executor.Messages.Any(message => message.Contains("System.IO.IOException: simulated output failure")));
             processId = int.Parse(await File.ReadAllTextAsync(markerPath), System.Globalization.CultureInfo.InvariantCulture);
             Assert.IsFalse(IsProcessRunning(processId), "出力取得の失敗後も外部プロセスが残っています。");
         }
@@ -139,13 +157,23 @@ public sealed class ProcessCommandExecutorTests
     private static async Task<int> WaitForProcessIdAsync(string markerPath)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        while (!File.Exists(markerPath))
+        while (true)
         {
+            try
+            {
+                var text = await File.ReadAllTextAsync(markerPath, timeout.Token);
+                if (int.TryParse(text, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out var processId))
+                {
+                    return processId;
+                }
+            }
+            catch (IOException)
+            {
+                // ファイル作成と書き込み完了は別。書き込み中の共有違反も完了まで待つ。
+            }
             await Task.Delay(25, timeout.Token);
         }
-
-        var text = await File.ReadAllTextAsync(markerPath, timeout.Token);
-        return int.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static bool IsProcessRunning(int processId)
@@ -181,7 +209,13 @@ public sealed class ProcessCommandExecutorTests
         }
     }
 
-    private sealed class ThrowingOutputProcessCommandExecutor(string markerPath) : ProcessCommandExecutor
+    private class RecordingProcessCommandExecutor : ProcessCommandExecutor
+    {
+        public List<string> Messages { get; } = [];
+        protected override void WriteDiagnostic(string message, bool error) => Messages.Add(message);
+    }
+
+    private sealed class ThrowingOutputProcessCommandExecutor(string markerPath) : RecordingProcessCommandExecutor
     {
         protected override Task CopyOutputAsync(
             Process process,
