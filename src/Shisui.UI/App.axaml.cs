@@ -63,6 +63,7 @@ public partial class App : Application
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
             services.AddSingleton<INetworkAdapterNameService, Core.Services.Windows.WindowsNetworkAdapterNameService>();
             services.AddSingleton<ILegacyNetworkDiagnosticsService, Core.Services.Windows.WindowsLegacyNetworkDiagnosticsService>();
+            services.AddSingleton<IGamingNetworkProfileService, Core.Services.Windows.WindowsGamingNetworkProfileService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
             services.AddSingleton<TcpTuningViewModel>();
             services.AddSingleton<MaintenanceViewModel>();

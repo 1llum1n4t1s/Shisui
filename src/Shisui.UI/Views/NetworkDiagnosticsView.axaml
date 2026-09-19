@@ -32,18 +32,30 @@
             </ComboBox.ItemTemplate>
           </ComboBox>
           <TextBlock Text="またはホストを直接入力" FontWeight="SemiBold" Margin="0,2,0,0" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Ping測定回数" VerticalAlignment="Center" />
+            <ComboBox ItemsSource="{Binding PingCounts}" SelectedItem="{Binding PingCount}"
+                      IsEnabled="{Binding !IsBusy}" MinWidth="90" />
+            <Button Content="測定を中止" Command="{Binding PingCancelCommand}" />
+          </StackPanel>
           <Grid ColumnDefinitions="*,Auto,Auto">
             <TextBox Grid.Column="0" Text="{Binding Host}" PlaceholderText="例: 1.1.1.1 または example.com"
                      IsEnabled="{Binding !IsBusy}" />
             <Button Grid.Column="1" Content="Ping" Command="{Binding PingCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
             <Button Grid.Column="2" Content="トレースルート" Command="{Binding TraceRouteCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
           </Grid>
-          <TextBlock Text="{Binding StatusText}" Classes="caption" />
+          <TextBlock Text="{Binding StatusText}" Classes="caption" TextWrapping="Wrap" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="ゲーム向け比較は同じ相手・同じ負荷で100回を目安に複数回実施してください。通信経路はOSが選ぶため、自動最適化タブのNIC選択とは連動しません。損失にはICMPの応答制限も含まれ、ゲームのパケットロスとは限りません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 
       <primitives:HeaderedContentControl Header="Ping 結果">
-        <TextBlock Text="{Binding PingResultText}" FontFamily="Consolas,Menlo,monospace" />
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding PingResultText}" TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="Windowsではp95（成功応答の95パーセンタイル）とジッター（連続した成功応答間のRTT差の絶対値の平均）を表示します。失敗をまたぐ差は含めません。取得なしは0ではありません。結果はファイルログにも保存します。" />
+        </StackPanel>
       </primitives:HeaderedContentControl>
 
       <primitives:HeaderedContentControl Header="トレースルート結果">

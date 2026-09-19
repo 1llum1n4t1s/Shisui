@@ -394,6 +394,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             return;
         }
 
+        using var diagnosticOperation = LoggerBootstrap.BeginOperation("おまかせ高速化設定", SelectedAdapter.Id);
         var results = new List<CommandExecutionResult>();
         var resultsReported = false;
         BeginBusyOperation();

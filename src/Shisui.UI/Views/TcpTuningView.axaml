@@ -34,7 +34,7 @@
       <primitives:HeaderedContentControl Header="TCP 損失回復 (RACK / TLP)">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Internet / InternetCustom / Datacenter / DatacenterCustom で RACK と Tail Loss Probe を同時に有効化し、TCP の損失回復を補助します。おまかせ高速化設定でも実行します。Compat の損失回復設定は変更しません。現在値は照会 API に公開されていないため、コマンド受付結果のみを確認します。" />
+                     Text="Internet / InternetCustom / Datacenter / DatacenterCustom の RACK と Tail Loss Probe を確認し、両方が既に有効なら変更せず維持します。それ以外は有効化を試み、対応していない環境では失敗理由を記録します。おまかせ高速化設定でも実行します。Compat の損失回復設定は変更しません。" />
           <Button Content="RACK / TLP を有効化" Command="{Binding EnableLossRecoveryCommand}" IsEnabled="{Binding !IsOperationRunning}" />
         </StackPanel>
       </primitives:HeaderedContentControl>
@@ -99,7 +99,8 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="高速化ツールなどで変更された、指定アダプタの IPv4/IPv6 MTU (最大転送単位) を標準値の 1500 に戻します。" />
           <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}" HorizontalAlignment="Stretch">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
+                      IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
                 <DataTemplate>
                   <TextBlock Text="{Binding DisplayName}" />

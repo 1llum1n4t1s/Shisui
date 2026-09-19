@@ -46,6 +46,27 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="ゲーム優先・有線／Wi-Fiの低遅延設定"
+                                         IsVisible="{Binding IsGamingProfileAvailable}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="選択した物理NICで対応している項目だけ無効にします。有線は割り込み調整とEEE、Wi-Fiは標準の割り込み調整（存在する場合）と、対応するMediaTek製PCI無線NICの省電力・U-APSDが対象です。未確認のメーカー独自設定と仮想NICは変更しません。" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="処理待ちや省電力による遅延を減らすための設定です。CPU負荷・消費電力・発熱が増え、バッテリー駆動時間が短くなる場合があります。電波状態やアクセスポイント次第では逆効果になり、改善は保証されません。" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="元の値は適用前に保存します。接続を切断しないようNICの再起動は行わず、反映にはPCを再起動してください。表示する確認結果は保存値で、稼働中の反映やゲームの改善を保証するものではありません。RSS・オフロード・リンク速度・バッファー・周波数帯・チャンネル幅・ローミングは変更しません。" />
+          <WrapPanel Orientation="Horizontal">
+            <Button Content="ゲーム向け設定を保存" Command="{Binding ApplyGamingProfileCommand}"
+                    Classes="accent" IsEnabled="{Binding !IsOperationRunning}" Margin="0,0,8,6" />
+            <Button Content="保存した変更前の値へ戻す" Command="{Binding RestoreGamingProfileCommand}"
+                    IsEnabled="{Binding !IsOperationRunning}" Margin="0,0,0,6" />
+          </WrapPanel>
+          <TextBlock Text="{Binding GamingProfileStatusText}" Classes="caption" TextWrapping="Wrap" />
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="比較方法: 変更前と再起動後に「ネットワーク診断」で同じ相手へ100回ずつ測定し、損失率・p95・ジッターを比較してください。アイドル時と普段のゲーム・通信負荷時を分け、悪化したら元の値へ戻して再起動します。ICMPはゲーム通信そのものではなく、ルーターや回線側の混雑をこの設定だけで解消することはできません。" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="使い込んだPC向けネットワーク診断"
                                          IsVisible="{Binding IsLegacyDiagnosticsAvailable}">
         <StackPanel Spacing="10">

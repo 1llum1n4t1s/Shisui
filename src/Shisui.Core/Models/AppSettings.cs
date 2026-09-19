@@ -27,6 +27,12 @@ public sealed class AppSettings
     public string? IgnoreUpdateTag { get; set; }
 
     /// <summary>
+    /// ゲーム向け NIC 設定を適用する前の復元情報。
+    /// 同じ NIC の再適用では元の値を上書きせず、復元完了まで保持する。
+    /// </summary>
+    public List<GamingNetworkProfileSnapshot> GamingNetworkProfileSnapshots { get; set; } = [];
+
+    /// <summary>
     /// Velopack 自動更新の配信元。Cloudflare R2 (カスタムドメイン) をハードコード固定する。
     /// <see cref="JsonIgnore"/> なので settings.json から書き換え不可 (悪意ある第三者ホストへの誘導を防ぐ)。
     /// </summary>

@@ -35,9 +35,20 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
     public async Task<IReadOnlyList<CommandExecutionResult>> EnableLossRecoveryAsync(CancellationToken ct = default)
     {
         var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildEnableLossRecovery())
+        foreach (var template in WindowsTcpCommandBuilder.SupplementalTemplates.Where(value => value != "Compat"))
         {
-            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
+            var state = await executor.RunAsync(WindowsTcpCommandBuilder.FileName,
+                $"int tcp show supplemental template={template}", ct);
+            if (state.Success && WindowsLossRecoveryStateParser.AreBothEnabled(state.StandardOutput))
+            {
+                // Windows によっては読み取り可能でも書き込みを拒否する。既有効なら再設定しない。
+                results.Add(new CommandExecutionResult(true, $"RACK / TLP 確認 ({template}): 既に有効・変更不要",
+                    0, state.StandardOutput, string.Empty));
+                continue;
+            }
+
+            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName,
+                WindowsTcpCommandBuilder.BuildEnableLossRecovery(template), ct));
         }
 
         return results;

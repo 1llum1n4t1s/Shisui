@@ -42,8 +42,11 @@ public static class WindowsTcpCommandBuilder
     public static IReadOnlyList<string> BuildEnableLossRecovery() =>
         SupplementalTemplates
             .Where(template => template != "Compat")
-            .Select(template => $"int tcp set supplemental template={template} rack=enabled taillossprobe=enabled")
+            .Select(BuildEnableLossRecovery)
             .ToArray();
+
+    internal static string BuildEnableLossRecovery(string template) =>
+        $"int tcp set supplemental template={template} rack=enabled taillossprobe=enabled";
 
     /// <summary>
     /// よくあるチューニングツールが変更する TCP グローバル設定を、Windows が現在のバージョンで定義する

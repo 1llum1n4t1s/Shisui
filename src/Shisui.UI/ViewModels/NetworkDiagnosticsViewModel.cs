@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
+using Shisui.Core.Services;
 
 namespace Shisui.UI.ViewModels;
 
@@ -11,8 +12,12 @@ namespace Shisui.UI.ViewModels;
 /// </summary>
 public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diagnosticsService) : ObservableObject
 {
-    private const int PingCount = 4;
     private const int MaxHops = 30;
+
+    public IReadOnlyList<int> PingCounts { get; } = [4, 30, 100];
+
+    [ObservableProperty]
+    private int pingCount = 30;
 
     [ObservableProperty]
     private string host = string.Empty;
@@ -49,8 +54,8 @@ public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diag
         }
     }
 
-    [RelayCommand]
-    private async Task PingAsync()
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task PingAsync(CancellationToken cancellationToken)
     {
         var target = Host.Trim();
         if (target.Length == 0)
@@ -59,15 +64,33 @@ public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diag
             return;
         }
 
+        var count = PingCount;
+        if (!PingCounts.Contains(count))
+        {
+            StatusText = "測定回数は4・30・100回から選択してください";
+            return;
+        }
+
         IsBusy = true;
         PingResultText = string.Empty;
+        StatusText = $"{target} へ {count} 回測定しています…（約 {count} 秒以上）";
+        using var operation = LoggerBootstrap.BeginOperation("遅延・損失測定", target);
         try
         {
-            var result = await diagnosticsService.PingAsync(target, PingCount);
-            PingResultText = result.Success
-                ? $"🟢 応答あり: {result.Received}/{result.Sent} 件 (平均 {result.AverageRoundtripMs:F0} ms)"
-                : $"🔴 応答なし: {result.Received}/{result.Sent} 件";
-            StatusText = $"{target} への ping が完了しました";
+            var result = await diagnosticsService.PingAsync(target, count, cancellationToken);
+            PingResultText = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz} / {target}\n" +
+                $"応答 {result.Received}/{result.Sent} / 損失率 {Format(result.LossPercent, "%")}\n" +
+                $"平均 {Format(result.AverageRoundtripMs)} / 最小 {Format(result.MinimumRoundtripMs)} / 最大 {Format(result.MaximumRoundtripMs)}\n" +
+                $"p95 {Format(result.P95RoundtripMs)} / ジッター {Format(result.JitterMs)}";
+            LoggerBootstrap.Log.Info($"LatencyMeasurement target={target} requested={count}\n{PingResultText}\n" +
+                "ICMP・OSの経路選択を使用。NIC指定なし。ゲーム通信の実測値ではありません。");
+            StatusText = result.Sent == 0
+                ? $"測定を開始できませんでした: {result.RawOutput}"
+                : $"{target} への ping が完了しました";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            StatusText = "測定を中止しました。未完了の結果は比較に使用しません";
         }
         catch (Exception ex)
         {
@@ -78,6 +101,9 @@ public partial class NetworkDiagnosticsViewModel(INetworkDiagnosticsService diag
             IsBusy = false;
         }
     }
+
+    private static string Format(double? value, string unit = "ms") =>
+        value is { } number ? $"{number:F2} {unit}" : "取得なし";
 
     [RelayCommand]
     private async Task TraceRouteAsync()

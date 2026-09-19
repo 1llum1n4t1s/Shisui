@@ -53,6 +53,10 @@ are resolved to absolute paths below `Environment.SystemDirectory` (PowerShell u
 is also System32. This is required because the whole app is elevated and an unqualified executable search could
 otherwise select a user-writable binary before the Windows system copy.
 
+アダプター名を含む PowerShell スクリプトは `-EncodedCommand` で渡し、接続名に含まれる生の `"` が
+外側の `-Command "..."` を終端しないようにします。スクリプト内ではシングルクォートを二重化して
+文字列リテラルとして扱い、executor の詳細ログでは Base64 ではなく復号したスクリプトを記録します。
+
 On macOS, read-only adapter discovery and ping/traceroute run through `ProcessCommandExecutor` without elevation.
 Only DNS mutation and cache flush use `MacElevatedCommandExecutor`, which re-wraps the already-quoted
 `fileName + " " + arguments` shell command inside an AppleScript string literal (backslash/quote escaping only)
@@ -182,7 +186,11 @@ Because Microsoft documents these delayed-ACK registry changes as requiring a re
 and success status tell Windows users to restart the PC. The explicit netsh commands make
 partial failures visible in the execution log and recover supported settings even if the aggregate reset fails.
 After the reset and explicit defaults, it enables both `rack` and `taillossprobe` on Internet, InternetCustom,
-Datacenter and DatacenterCustom. Compat's loss-recovery settings are left to the preceding TCP reset; its BBR2
+Datacenter and DatacenterCustom unless a fresh read confirms both are already enabled. In that case it reports
+"already enabled, no change" without a write: Windows build 26300.9457 rejects even individual RACK/TLP writes
+as unsupported while exposing both as enabled. This narrow readback accepts only exact known English/Japanese
+labels and explicit `enabled` values; unknown labels, missing/duplicate fields or a failed query cannot skip a write.
+Compat's loss-recovery settings are left to the preceding TCP reset; its BBR2
 enablement remains unchanged. The paired loss-recovery command follows Microsoft's
 [netsh guidance](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface).
 The TCP tab exposes aggregate TCP reset, global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
@@ -207,8 +215,8 @@ Before reporting completion, one-click reads a fresh TCP snapshot inside the sam
 the GroupPolicy override. A mismatch, incomplete snapshot, or read failure is logged as a failed verification,
 without losing prior command results or preventing settings persistence/adapter cleanup. Manual BBR2 enablement
 and auto-tuning changes use the same verifier. Command failures remain failures even when readback matches.
-RACK/TLP, UDP and other settings are explicitly reported as command-acceptance-only, not verified live state:
-the PowerShell API lacks those properties and localized netsh labels are not parsed. MTU is not changed by one-click.
+RACK/TLP writes still report command acceptance only; only the no-change path confirms the pre-existing state.
+UDP and other settings remain command-acceptance-only. MTU is not changed by one-click.
 
 Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
 `RefreshDohStateAsync` call (racing against this method's own `await`ed call at the end), the preset switch here
@@ -271,8 +279,10 @@ correctness boundary.
 ### Network diagnostics (`INetworkDiagnosticsService`, cross-platform)
 
 Same locale trap as the TCP-state badges, different tool: `ping.exe`/`tracert.exe` text output is localized, so
-neither Windows parser touches it directly. `WindowsPingCommandBuilder` uses `Test-Connection` (`StatusCode`/
-`ResponseTime`, English-fixed numeric properties) instead of `ping.exe`; `WindowsTraceRouteCommandBuilder` gets
+neither Windows parser touches it directly. `WindowsPingCommandBuilder` uses a sequential `.NET Ping` loop
+with a one-second timeout and approximately one-second start spacing. Every attempt emits numeric `STATUS`/`RTT`,
+including failed probes, so missing replies cannot be bridged when calculating jitter. Counts are bounded to 1–100.
+`WindowsTraceRouteCommandBuilder` gets
 the hop path from `Test-NetConnection -TraceRoute`'s `.TraceRoute` property (a plain ordered IP-address array,
 not text) and then, since that cmdlet doesn't also report per-hop RTT, issues one follow-up
 `WindowsPingCommandBuilder` ping per discovered hop to time it (a Service-layer responsibility, not the pure
@@ -284,6 +294,40 @@ whichever DNS IP is currently selected) and the standalone ネットワーク診
 `NetworkDiagnosticTargetCatalog` presets (local loopback, three public DNS targets, Google, and GitHub); selecting
 one copies its host into the same field used by Ping and traceroute. Free-form host/IP input remains available,
 and editing it clears the preset selection so the UI never implies that a custom value is still the selected preset.
+
+The diagnostic UI offers 4/30/100 probes and cancellation. Windows results include loss, min/max/average,
+nearest-rank p95 of successful RTTs, and mean absolute differences of consecutive successful RTTs; failed or
+malformed probes break the jitter chain. Missing statistics are null, not zero. Measurements use OS routing,
+not the adapter selector; raw RTT is millisecond-resolution and ICMP loss may reflect response throttling.
+Summaries are timestamped in the UI and file log. macOS does not fabricate unavailable per-probe statistics.
+
+### Gaming NIC profile (`IGamingNetworkProfileService`, Windows)
+
+The separate gaming card in AutoOptimization calls `WindowsGamingNetworkProfileService`, which owns the shared
+mutation gate from read through journal persistence and verification. It does not run the broad one-click reset.
+Only physical Ethernet (type 6) or Wi-Fi (type 71) is eligible. `WindowsGamingNetworkProfilePolicy` selects exact
+keywords by media/provider/PCI identity: standard `*InterruptModeration` for either media, `*EEE` only for Ethernet,
+and `LowPowerEnable` / `UAPSDSupport` only for MediaTek Wi-Fi (`MediaTek, Inc.` and PCI vendor 14C3).
+Binary 0/1 semantics for those MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
+This is not a generic manufacturer-independent Wi-Fi power switch. Missing properties are reported;
+malformed values, wrong media/provider combinations and identity changes cannot authorize writes or restore.
+PowerShell emits strictly validated JSON (JsonDocument, without reflection), uses exact names after wildcard escaping,
+and sets the selected property CIM object with `-NoRestart`. GUID, interface description and the property's
+InstanceID are rechecked before each write. Persistent journal models use the source-generated JSON context.
+Original changed values are persisted in AppSettings before writing; reapplication never replaces the original.
+Restoration touches only the journal's allowlisted entries and refuses external-value conflicts. Failed/cancelled
+changes retain restoration information. A journal is removed only after successful readback and settings save.
+Readback confirms saved configuration only. UI requires a PC restart after apply/restore and never claims a
+performance improvement. Wi-Fi power savings are exchanged for potential latency reduction, not a guaranteed win;
+battery usage and heat may increase. The operation leaves virtual NICs, RSS, offloads, speed/duplex, buffers,
+band preference, channel width and roaming settings alone.
+
+Rationale: [Microsoft low-latency NIC guidance](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics)
+describes interrupt moderation's CPU/latency tradeoff; [Intel EEE documentation](https://edc.intel.com/content/www/us/en/design/products/ethernet/adapters-and-devices-user-guide/other-power-options/)
+describes the low-power transition latency. Neither supports a universal WAN latency or packet-loss improvement.
+[Microsoft Wi-Fi power management](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/wi-fi-power-management-for-modern-standby-platforms)
+describes wireless power/latency tradeoffs; exact MediaTek registry values come from the installed driver INF,
+not from assumed equivalence with Intel or Realtek settings.
 
 ### Adapter list filtering (`WindowsNetworkAdapterFilter`, pure)
 
@@ -355,6 +399,16 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   `~/Library/Application Support/Shisui/settings.json` (macOS).
 - Logging: `SuperLightLogger` NuGet package (same as RealTimeTranslator), via `LoggerBootstrap`. Logs to
   `AppPaths.LogsDirectory`.
+  Session startup records the app version, OS/build, architecture, runtime, culture and Windows elevation state.
+  One-click optimization also records its operation ID and selected adapter; an async-local scope ties its
+  commands and synthetic verification results together without mixing concurrent background reads.
+  Both executors record command IDs, actual start/end timestamps, elapsed time, resolved executable/PID,
+  exit codes and both output streams regardless of success. Cancellation and exceptions are separate diagnostic
+  events with full exception details; the raw-stream executor also retains captured partial output.
+  UI notifications reference the execution ID instead of pretending their delayed notification time is the
+  execution time. Synthetic verification results retain stdout and stderr in the file; screen logs are unchanged.
+  Logs contain network addresses, adapter names and diagnostic output; they stay local and should be reviewed
+  before sharing. Do not pass passwords, tokens or other secrets in command arguments or output.
 - Single-instance: `SingleInstanceGuard` uses a `FileShare.None`-locked file under the OS temp directory, not a
   named `Mutex` — named mutexes with `Local\`/`Global\` prefixes are a Windows-only convention and behave
   differently (or not at all) cross-platform, so a plain file lock is used for portability instead.

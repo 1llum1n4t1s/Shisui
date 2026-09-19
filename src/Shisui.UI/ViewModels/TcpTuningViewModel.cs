@@ -105,7 +105,8 @@ public partial class TcpTuningViewModel(
     [RelayCommand]
     private async Task RevertMtuAsync()
     {
-        if (SelectedAdapter is null)
+        var targetAdapter = SelectedAdapter;
+        if (targetAdapter is null)
         {
             StatusText = "MTU を戻すアダプタを選択してください";
             return;
@@ -115,14 +116,14 @@ public partial class TcpTuningViewModel(
         try
         {
             using var mutationLease = await networkMutationGate.EnterAsync();
-            var results = await tcpTuningService.RevertMtuToDefaultAsync(SelectedAdapter.Id);
+            var results = await tcpTuningService.RevertMtuToDefaultAsync(targetAdapter.Id);
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
             }
 
             StatusText = results.All(r => r.Success)
-                ? $"{SelectedAdapter.DisplayName} の IPv4/IPv6 MTU を 1500 に戻しました"
+                ? $"{targetAdapter.DisplayName} の IPv4/IPv6 MTU を 1500 に戻しました"
                 : "一部のコマンドが失敗しました。ログを確認してください";
         }
         finally
@@ -130,7 +131,10 @@ public partial class TcpTuningViewModel(
             IsMtuBusy = false;
         }
 
-        await RefreshMtuStateAsync(SelectedAdapter);
+        if (SelectedAdapter?.Id == targetAdapter.Id)
+        {
+            await RefreshMtuStateAsync(targetAdapter);
+        }
     }
 
     private async Task RefreshMtuStateAsync(NetworkAdapterInfo? adapter)
@@ -179,7 +183,7 @@ public partial class TcpTuningViewModel(
     [RelayCommand]
     private async Task EnableLossRecoveryAsync() => await RunManyAsync(
         tcpTuningService.EnableLossRecoveryAsync,
-        "4 テンプレートの RACK / TLP 有効化コマンドを実行しました (実状態は未検証)");
+        "4 テンプレートの RACK / TLP を確認し、既に有効な項目を除いて有効化コマンドを実行しました");
 
     [RelayCommand]
     private async Task RevertBbr2Async() => await RunManyAsync(

@@ -17,6 +17,78 @@ public sealed class DnsSettingsViewModelTests
         new("Wi-Fi", "Wi-Fi", null, true, [], []);
 
     [TestMethod]
+    public async Task GamingProfile_UsesSelectedAdapterAndReportsFailureWithoutQuickReset()
+    {
+        var dnsService = new FakeDnsConfigurationService();
+        using var gate = new NetworkMutationGate();
+        var dns = CreateViewModel(dnsService, gate);
+        dns.SelectedAdapter = Adapter;
+        var profile = new FakeGamingProfileService();
+        var vm = new AutoOptimizationViewModel(dns, gate, gamingNetworkProfileService: profile);
+        var results = new List<CommandExecutionResult>();
+        vm.CommandExecuted += (_, result) => results.Add(result);
+
+        await vm.ApplyGamingProfileCommand.ExecuteAsync(null);
+
+        Assert.AreEqual(Adapter.Id, profile.AppliedAdapter);
+        Assert.AreEqual(0, dnsService.ApplyCallCount);
+        Assert.AreEqual(1, results.Count);
+        StringAssert.Contains(vm.GamingProfileStatusText, "未適用または失敗");
+        Assert.IsFalse(vm.IsOperationRunning);
+
+        await vm.RestoreGamingProfileCommand.ExecuteAsync(null);
+        Assert.AreEqual(Adapter.Id, profile.RestoredAdapter);
+        StringAssert.Contains(vm.GamingProfileStatusText, "復元確認");
+    }
+
+    [TestMethod]
+    public async Task GamingProfile_ServiceExceptionAlwaysClearsBusy()
+    {
+        using var gate = new NetworkMutationGate();
+        var dns = CreateViewModel(new FakeDnsConfigurationService(), gate);
+        dns.SelectedAdapter = Adapter;
+        var vm = new AutoOptimizationViewModel(dns, gate,
+            gamingNetworkProfileService: new FakeGamingProfileService { Throw = true });
+        await vm.ApplyGamingProfileCommand.ExecuteAsync(null);
+        Assert.IsFalse(vm.IsOperationRunning);
+        StringAssert.Contains(vm.GamingProfileStatusText, "完了できませんでした");
+    }
+
+    [TestMethod]
+    public async Task GamingProfile_WifiSelectionIsPassedToServiceAndNamedInResult()
+    {
+        using var gate = new NetworkMutationGate();
+        var dns = CreateViewModel(new FakeDnsConfigurationService(), gate);
+        dns.SelectedAdapter = Adapter2;
+        var profile = new FakeGamingProfileService();
+        var vm = new AutoOptimizationViewModel(dns, gate, gamingNetworkProfileService: profile);
+        await vm.ApplyGamingProfileCommand.ExecuteAsync(null);
+        Assert.AreEqual("Wi-Fi", profile.AppliedAdapter);
+        StringAssert.Contains(vm.GamingProfileStatusText, "対象: Wi-Fi");
+        await vm.RestoreGamingProfileCommand.ExecuteAsync(null);
+        Assert.AreEqual("Wi-Fi", profile.RestoredAdapter);
+    }
+
+    private sealed class FakeGamingProfileService : IGamingNetworkProfileService
+    {
+        public string? AppliedAdapter { get; private set; }
+        public string? RestoredAdapter { get; private set; }
+        public bool Throw { get; init; }
+        public Task<IReadOnlyList<CommandExecutionResult>> ApplyAsync(string adapterName, CancellationToken ct = default)
+        {
+            AppliedAdapter = adapterName;
+            return Throw
+                ? Task.FromException<IReadOnlyList<CommandExecutionResult>>(new IOException("test failure"))
+                : Task.FromResult<IReadOnlyList<CommandExecutionResult>>([new(false, "適用確認", 1, "", "設定不一致")]);
+        }
+        public Task<IReadOnlyList<CommandExecutionResult>> RestoreAsync(string adapterName, CancellationToken ct = default)
+        {
+            RestoredAdapter = adapterName;
+            return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([new(true, "復元", 0, "復元確認・再起動が必要", "")]);
+        }
+    }
+
+    [TestMethod]
     public async Task ApplyCommand_InvalidCustomAddress_DoesNotInvokeDnsService()
     {
         var dnsService = new FakeDnsConfigurationService();

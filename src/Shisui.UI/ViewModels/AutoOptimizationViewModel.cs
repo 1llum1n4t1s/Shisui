@@ -13,17 +13,20 @@ public partial class AutoOptimizationViewModel : ObservableObject
     private readonly INetworkMutationGate _networkMutationGate;
     private readonly ILegacyNetworkDiagnosticsService? _legacyNetworkDiagnosticsService;
     private readonly TcpTuningViewModel? _tcpTuningViewModel;
+    private readonly IGamingNetworkProfileService? _gamingNetworkProfileService;
 
     public AutoOptimizationViewModel(
         DnsSettingsViewModel dnsSettings,
         INetworkMutationGate networkMutationGate,
         ILegacyNetworkDiagnosticsService? legacyNetworkDiagnosticsService = null,
-        TcpTuningViewModel? tcpTuningViewModel = null)
+        TcpTuningViewModel? tcpTuningViewModel = null,
+        IGamingNetworkProfileService? gamingNetworkProfileService = null)
     {
         DnsSettings = dnsSettings;
         _networkMutationGate = networkMutationGate;
         _legacyNetworkDiagnosticsService = legacyNetworkDiagnosticsService;
         _tcpTuningViewModel = tcpTuningViewModel;
+        _gamingNetworkProfileService = gamingNetworkProfileService;
 
         DnsSettings.PropertyChanged += (_, e) =>
         {
@@ -37,6 +40,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
                 LegacyDiagnosticsStatusText = string.Empty;
                 HasLegacyDiagnosticsWarnings = false;
                 CanResetSelectedNic = false;
+                GamingProfileStatusText = string.Empty;
             }
         };
     }
@@ -46,18 +50,76 @@ public partial class AutoOptimizationViewModel : ObservableObject
     public ObservableCollection<LegacyNetworkDiagnosticFinding> LegacyNetworkFindings { get; } = [];
 
     public bool IsLegacyDiagnosticsAvailable => _legacyNetworkDiagnosticsService is not null;
+    public bool IsGamingProfileAvailable => _gamingNetworkProfileService is not null;
 
     public bool IsOperationRunning =>
-        DnsSettings.IsBusy || IsLegacyDiagnosticsRunning || IsResettingNic;
+        DnsSettings.IsBusy || IsLegacyDiagnosticsRunning || IsResettingNic || IsGamingProfileRunning;
 
     [ObservableProperty] private bool isLegacyDiagnosticsRunning;
     [ObservableProperty] private bool isResettingNic;
     [ObservableProperty] private bool hasLegacyDiagnosticsWarnings;
     [ObservableProperty] private bool canResetSelectedNic;
     [ObservableProperty] private string legacyDiagnosticsStatusText = string.Empty;
+    [ObservableProperty] private bool isGamingProfileRunning;
+    [ObservableProperty] private string gamingProfileStatusText = string.Empty;
 
     partial void OnIsLegacyDiagnosticsRunningChanged(bool value) => NotifyOperationState();
     partial void OnIsResettingNicChanged(bool value) => NotifyOperationState();
+    partial void OnIsGamingProfileRunningChanged(bool value) => NotifyOperationState();
+
+    [RelayCommand]
+    private Task ApplyGamingProfileAsync() => RunGamingProfileAsync(restore: false);
+
+    [RelayCommand]
+    private Task RestoreGamingProfileAsync() => RunGamingProfileAsync(restore: true);
+
+    private async Task RunGamingProfileAsync(bool restore)
+    {
+        if (IsOperationRunning || _gamingNetworkProfileService is null)
+        {
+            return;
+        }
+
+        if (DnsSettings.SelectedAdapter is not { } adapter)
+        {
+            GamingProfileStatusText = "対象の有線またはWi-Fiネットワークアダプターを選択してください";
+            return;
+        }
+
+        IsGamingProfileRunning = true;
+        using var operation = LoggerBootstrap.BeginOperation(
+            restore ? "ゲーム向けNIC設定の復元" : "ゲーム向け低遅延NIC設定", adapter.Id);
+        try
+        {
+            // service が永続復元情報の保存から読み戻しまで同じゲートを保持する。
+            var results = restore
+                ? await _gamingNetworkProfileService.RestoreAsync(adapter.Id)
+                : await _gamingNetworkProfileService.ApplyAsync(adapter.Id);
+            foreach (var result in results)
+            {
+                CommandExecuted?.Invoke(this, result);
+            }
+
+            GamingProfileStatusText = results.Count == 0
+                ? "変更結果を取得できませんでした。実行ログを確認してください"
+                : string.Join(Environment.NewLine, results.Where(r => r.DiagnosticId is null)
+                    .Select(r => r.Success ? r.StandardOutput : r.StandardError));
+            if (results.Any(r => !r.Success))
+            {
+                GamingProfileStatusText = "未適用または失敗した項目があります。実行ログを確認してください。\n" + GamingProfileStatusText;
+            }
+            GamingProfileStatusText = $"対象: {adapter.DisplayName}\n{GamingProfileStatusText}";
+        }
+        catch (Exception ex)
+        {
+            GamingProfileStatusText = $"対象: {adapter.DisplayName}\nゲーム向けNIC設定を完了できませんでした: {ex.Message}";
+            LoggerBootstrap.Log.Error("ゲーム向けNIC設定に失敗しました", ex);
+        }
+        finally
+        {
+            IsGamingProfileRunning = false;
+        }
+    }
 
     private void NotifyOperationState() =>
         OnPropertyChanged(nameof(IsOperationRunning));
