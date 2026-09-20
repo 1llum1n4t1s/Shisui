@@ -31,8 +31,10 @@ public class WindowsLegacyNetworkDiagnosticsTests
         var args = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildAdapterSnapshotArguments("Wi-Fi 'Test'");
         var script = DecodeScript(args);
 
-        StringAssert.Contains(script, "Get-NetAdapterStatistics -Name 'Wi-Fi ''Test'''", script);
-        StringAssert.Contains(script, "[string]$a.DriverDate", script);
+        StringAssert.Contains(script, "Get-NetAdapter -Name '*' -IncludeHidden", script);
+        StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'Wi-Fi ''Test''',[StringComparison]::OrdinalIgnoreCase)", script);
+        StringAssert.Contains(script, "Get-NetAdapterStatistics -Name $escaped", script);
+        StringAssert.Contains(script, "[string]$a[0].DriverDate", script);
         Assert.IsFalse(script.Contains("DriverDate.ToString", StringComparison.Ordinal), script);
         StringAssert.Contains(script, "'RX_ERRORS='", script);
         StringAssert.Contains(script, "'TASK_OFFLOAD_DISABLED='", script);
@@ -44,9 +46,9 @@ public class WindowsLegacyNetworkDiagnosticsTests
         var args = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildResetAdapterAdvancedPropertiesArguments("Ethernet 2");
         var script = DecodeScript(args);
 
-        Assert.AreEqual(
-            "$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop';Reset-NetAdapterAdvancedProperty -Name 'Ethernet 2' -DisplayName '*' -Confirm:$false;'RESET=Ethernet 2'",
-            script);
+        StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'Ethernet 2',[StringComparison]::OrdinalIgnoreCase)", script);
+        StringAssert.Contains(script, "$escaped=[WildcardPattern]::Escape([string]$a[0].Name)", script);
+        StringAssert.Contains(script, "Reset-NetAdapterAdvancedProperty -Name $escaped -DisplayName '*'", script);
     }
 
     [TestMethod]
@@ -55,8 +57,21 @@ public class WindowsLegacyNetworkDiagnosticsTests
         var arguments = WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildResetAdapterAdvancedPropertiesArguments("Ether\"net");
         var script = DecodeScript(arguments);
 
-        StringAssert.Contains(script, "-Name 'Ether\"net'");
+        StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'Ether\"net',[StringComparison]::OrdinalIgnoreCase)");
+        StringAssert.Contains(script, "Reset-NetAdapterAdvancedProperty -Name $escaped");
         Assert.IsFalse(arguments.Contains("Ether\"net", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void BuildResetAdapterAdvancedPropertiesArguments_WildcardNameIsResolvedByExactEquality()
+    {
+        var script = DecodeScript(
+            WindowsLegacyNetworkDiagnosticsCommandBuilder.BuildResetAdapterAdvancedPropertiesArguments(
+                "ローカル エリア接続* 9"));
+
+        StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'ローカル エリア接続* 9',[StringComparison]::OrdinalIgnoreCase)");
+        StringAssert.Contains(script, "Reset-NetAdapterAdvancedProperty -Name $escaped");
+        Assert.IsFalse(script.Contains("Reset-NetAdapterAdvancedProperty -Name 'ローカル エリア接続* 9'", StringComparison.Ordinal));
     }
 
     [TestMethod]

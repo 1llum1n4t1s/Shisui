@@ -33,6 +33,7 @@ public class WindowsMaintenanceCommandCatalogTests
     [DataRow("netsh-winsock-autotuning-on", "netsh", "winsock set autotuning on")]
     [DataRow("netsh-udp-uro-default", "netsh", "interface udp set global uro=default")]
     [DataRow("netsh-udp-uso-default", "netsh", "interface udp set global uso=default")]
+    [DataRow("powercfg-pcie-link-state-ac-off", "powercfg", "/getactivescheme")]
     [DataRow("netsh-advfirewall-reset", "netsh", "advfirewall reset")]
     [DataRow("netsh-winsock-reset", "netsh", "winsock reset")]
     [DataRow("netsh-int-tcp-reset", "netsh", "int tcp reset")]
@@ -113,6 +114,7 @@ public class WindowsMaintenanceCommandCatalogTests
             "netsh-ipv6-delete-destinationcache",
             "netsh-ipv6-delete-neighbors",
             "netsh-winsock-autotuning-on",
+            "powercfg-pcie-link-state-ac-off",
             "netsh-udp-uro-default",
             "netsh-udp-uso-default",
         }, includedIds);

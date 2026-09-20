@@ -163,7 +163,7 @@ public class ProcessCommandExecutor : ICommandExecutor
         return commandName.ToLowerInvariant() switch
         {
             "powershell" => Path.Combine(systemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"),
-            "netsh" or "ipconfig" or "pnputil" or "nbtstat" or "route" or "netcfg" =>
+            "netsh" or "ipconfig" or "pnputil" or "nbtstat" or "route" or "netcfg" or "powercfg" =>
                 Path.Combine(systemDirectory, commandName.ToLowerInvariant() + ".exe"),
             _ => throw new InvalidOperationException($"許可されていない Windows 外部コマンドです: {fileName}"),
         };

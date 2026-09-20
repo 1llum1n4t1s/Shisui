@@ -10,9 +10,9 @@ public static class WindowsAdapterDetailsCommandBuilder
 
     public static string BuildArguments(string adapterName)
     {
-        var safeName = adapterName.Replace("'", "''");
-        var script = $"Get-NetAdapter -Name '{safeName}' -ErrorAction SilentlyContinue | " +
-                     "%{'MAC='+$_.MacAddress;'LINKSPEED='+$_.LinkSpeed;'MEDIATYPE='+$_.MediaType;'STATUS='+$_.Status}";
+        var script = "$ErrorActionPreference='Stop';" +
+                     WindowsPowerShellAdapterSelection.BuildExactLookup(adapterName) +
+                     "$a[0] | %{'MAC='+$_.MacAddress;'LINKSPEED='+$_.LinkSpeed;'MEDIATYPE='+$_.MediaType;'STATUS='+$_.Status}";
         return WindowsPowerShellArgumentEncoder.Encode(script);
     }
 }

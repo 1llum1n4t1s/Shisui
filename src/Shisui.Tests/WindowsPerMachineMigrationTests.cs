@@ -269,6 +269,23 @@ public class WindowsPerMachineMigrationTests
     }
 
     [TestMethod]
+    public void GetFinalMsiInstallPath_OpenHandle_ReturnsFullyQualifiedResolvedPath()
+    {
+        var directory = Path.Combine(testRoot, "resolved-path");
+        Directory.CreateDirectory(directory);
+        var msiPath = Path.Combine(directory, "Shisui-win.msi");
+
+        using var lockedMsi = WindowsPerMachineMigration.OpenLockedMsiDownloadTarget(msiPath);
+        lockedMsi.WriteByte(0x42);
+        lockedMsi.Flush(flushToDisk: true);
+
+        var resolvedPath = WindowsPerMachineMigration.GetFinalMsiInstallPath(lockedMsi.SafeFileHandle);
+
+        Assert.IsTrue(Path.IsPathFullyQualified(resolvedPath));
+        Assert.AreEqual(Path.GetFullPath(msiPath), resolvedPath, ignoreCase: true);
+    }
+
+    [TestMethod]
     public void TryDeleteTreeWithoutFollowingReparsePoints_LockedFile_RemovesUnlockedSiblingAndRetries()
     {
         var legacyRoot = Path.Combine(testRoot, "LocalAppData", "Shisui");

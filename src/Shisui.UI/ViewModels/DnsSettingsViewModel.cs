@@ -110,12 +110,12 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (IsCacheMaintenanceAvailable)
             {
-                description += " UDP の受信/送信オフロード (URO / USO) も PC 全体で Windows の既定値に戻します。";
+                description += " UDP の受信/送信オフロード (URO / USO) も PC 全体で Windows の既定値に戻し、現在の電源プランで PCI Express のリンク状態電源管理を電源接続時だけオフにします。バッテリー時の値は維持し、適用後に AC 値とバッテリー時の値を確認しますが、PC 全体の消費電力・発熱が増える場合があります。";
             }
 
             if (IsTcpOptimizationAvailable)
             {
-                description += " 適用後は BBR2 と受信ウィンドウ (Internet) の実効値を確認します。RACK / TLP・UDP など、それ以外の項目はコマンド受付結果のみの確認です。回線速度の向上を保証するものではありません。";
+                description += " 適用後は BBR2 と受信ウィンドウ (Internet) の実効値を確認します。RACK / TLP の変更と UDP はコマンド受付結果のみの確認です。回線速度の向上を保証するものではありません。";
             }
 
             return IsAdapterNameCleanupAvailable

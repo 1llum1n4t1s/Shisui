@@ -13,6 +13,7 @@ public static class WindowsMaintenanceCommandCatalog
 {
     private const string CategoryCache = "キャッシュ・登録";
     private const string CategoryOptimization = "送信最適化";
+    private const string CategoryPower = "電源・省電力";
     private const string CategoryUdp = "UDP オフロード";
     private const string CategoryReacquire = "IP アドレス再取得";
     private const string CategoryProxy = "プロキシ設定リセット";
@@ -51,6 +52,16 @@ public static class WindowsMaintenanceCommandCatalog
                 false,
                 true),
             "netsh", "winsock set autotuning on"),
+
+        new(new MaintenanceCommandDefinition(
+                "powercfg-pcie-link-state-ac-off",
+                CategoryPower,
+                "PCI Express のリンク状態電源管理を AC 時だけオフ",
+                "現在の電源プランで PCI Express のリンク状態電源管理を電源接続時だけオフにする。バッテリー時の値と現在のプランは維持する (PC 全体に適用され、消費電力・発熱が増える場合があります)",
+                false,
+                false,
+                true),
+            "powercfg", WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments),
 
         // 全体 reset は行わず、対象を URO/USO に限定する。片方が非対応でも他方を実行できるよう分割する。
         new(new MaintenanceCommandDefinition("netsh-udp-uro-default", CategoryUdp,

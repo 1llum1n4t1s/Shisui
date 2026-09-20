@@ -231,6 +231,9 @@ public sealed class DnsSettingsViewModelTests
         Assert.IsTrue(calls.Contains("interface udp set global uso=default"));
         Assert.AreEqual(WindowsTcpStateCommandBuilder.Arguments, calls[^1]);
         Assert.AreEqual(!failLossRecovery, viewModel.StatusText.Contains("実効 Normal を確認済み"));
+        StringAssert.Contains(viewModel.OneClickOptimizeDescription, "バッテリー時の値は維持");
+        StringAssert.Contains(viewModel.OneClickOptimizeDescription, "適用後に AC 値とバッテリー時の値を確認");
+        StringAssert.Contains(viewModel.OneClickOptimizeDescription, "消費電力・発熱が増える");
     }
 
     [TestMethod]
@@ -622,9 +625,16 @@ public sealed class DnsSettingsViewModelTests
         public Task<CommandExecutionResult> RunAsync(string fileName, string arguments, CancellationToken ct = default)
         {
             Arguments.Add(arguments);
-            var output = arguments == WindowsTcpStateCommandBuilder.Arguments
-                ? "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured"
-                : string.Empty;
+            var powerScheme = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e");
+            var output = arguments switch
+            {
+                var value when value == WindowsTcpStateCommandBuilder.Arguments =>
+                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured",
+                WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments => $"Power Scheme GUID: {powerScheme:D}",
+                var value when value.StartsWith("/query ", StringComparison.Ordinal) =>
+                    WindowsPowerPlanCommandBuilderTests.QueryOutput(powerScheme, 0, 2),
+                _ => string.Empty,
+            };
             var success = !(FailLossRecovery && arguments.Contains("template=InternetCustom rack="));
             return Task.FromResult(new CommandExecutionResult(success, $"{fileName} {arguments}", success ? 0 : 1,
                 output, success ? string.Empty : "unsupported"));

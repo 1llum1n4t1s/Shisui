@@ -15,6 +15,7 @@ public sealed class ProcessCommandExecutorTests
     [DataRow("nbtstat", "nbtstat.exe")]
     [DataRow("route", "route.exe")]
     [DataRow("netcfg", "netcfg.exe")]
+    [DataRow("powercfg", "powercfg.exe")]
     public void ResolveWindowsExecutablePath_SystemCommand_UsesSystemDirectory(
         string fileName,
         string expectedFileName)

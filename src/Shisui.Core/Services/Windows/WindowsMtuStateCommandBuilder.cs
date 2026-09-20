@@ -10,9 +10,11 @@ public static class WindowsMtuStateCommandBuilder
 
     public static string BuildArguments(string adapterName)
     {
-        var safeName = adapterName.Replace("'", "''");
-        var script = $"$i=Get-NetIPInterface -InterfaceAlias '{safeName}' -AddressFamily IPv4 -ErrorAction SilentlyContinue;" +
-                     "if($i){'MTU='+$i.NlMtu}";
+        var script = "$ErrorActionPreference='Stop';" +
+                     WindowsPowerShellAdapterSelection.BuildExactLookup(adapterName) +
+                     "$i=@(Get-NetIPInterface -InterfaceIndex ([uint32]$a[0].ifIndex) -AddressFamily IPv4 -ErrorAction Stop);" +
+                     "if($i.Count -ne 1){throw 'IPv4 interface resolution was not unique'};" +
+                     "'MTU='+$i[0].NlMtu";
         return WindowsPowerShellArgumentEncoder.Encode(script);
     }
 }

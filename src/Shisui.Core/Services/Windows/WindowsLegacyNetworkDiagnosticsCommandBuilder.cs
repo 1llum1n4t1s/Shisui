@@ -11,22 +11,24 @@ public static class WindowsLegacyNetworkDiagnosticsCommandBuilder
 
     public static string BuildAdapterSnapshotArguments(string adapterName)
     {
-        var name = QuotePowerShellLiteral(adapterName);
         var script =
             "$ErrorActionPreference='Stop';" +
-            $"$s=Get-NetAdapterStatistics -Name '{name}';" +
-            $"$a=Get-NetAdapter -Name '{name}';" +
-            "$rx=[uint64]$s.ReceivedUnicastPackets+[uint64]$s.ReceivedMulticastPackets+[uint64]$s.ReceivedBroadcastPackets;" +
-            "$tx=[uint64]$s.SentUnicastPackets+[uint64]$s.SentMulticastPackets+[uint64]$s.SentBroadcastPackets;" +
+            WindowsPowerShellAdapterSelection.BuildExactLookup(adapterName) +
+            "$escaped=[WildcardPattern]::Escape([string]$a[0].Name);" +
+            "$s=@(Get-NetAdapterStatistics -Name $escaped -ErrorAction Stop | " +
+            "Where-Object {[string]::Equals([string]$_.Name,[string]$a[0].Name,[StringComparison]::OrdinalIgnoreCase)});" +
+            "if($s.Count -ne 1){throw 'Adapter statistics resolution was not unique'};" +
+            "$rx=[uint64]$s[0].ReceivedUnicastPackets+[uint64]$s[0].ReceivedMulticastPackets+[uint64]$s[0].ReceivedBroadcastPackets;" +
+            "$tx=[uint64]$s[0].SentUnicastPackets+[uint64]$s[0].SentMulticastPackets+[uint64]$s[0].SentBroadcastPackets;" +
             "$task=(Get-ItemProperty -LiteralPath 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters' -Name DisableTaskOffload -ErrorAction SilentlyContinue).DisableTaskOffload;" +
-            "'DESCRIPTION='+$a.InterfaceDescription;" +
-            "'DRIVER_VERSION='+$a.DriverVersion;" +
-            "'DRIVER_DATE='+$(if($null -eq $a.DriverDate){''}else{[string]$a.DriverDate});" +
-            "'LINK_SPEED='+$a.LinkSpeed;" +
-            "'RX_ERRORS='+[uint64]$s.ReceivedPacketErrors;" +
-            "'TX_ERRORS='+[uint64]$s.OutboundPacketErrors;" +
-            "'RX_DISCARDS='+[uint64]$s.ReceivedDiscardedPackets;" +
-            "'TX_DISCARDS='+[uint64]$s.OutboundDiscardedPackets;" +
+            "'DESCRIPTION='+$a[0].InterfaceDescription;" +
+            "'DRIVER_VERSION='+$a[0].DriverVersion;" +
+            "'DRIVER_DATE='+$(if($null -eq $a[0].DriverDate){''}else{[string]$a[0].DriverDate});" +
+            "'LINK_SPEED='+$a[0].LinkSpeed;" +
+            "'RX_ERRORS='+[uint64]$s[0].ReceivedPacketErrors;" +
+            "'TX_ERRORS='+[uint64]$s[0].OutboundPacketErrors;" +
+            "'RX_DISCARDS='+[uint64]$s[0].ReceivedDiscardedPackets;" +
+            "'TX_DISCARDS='+[uint64]$s[0].OutboundDiscardedPackets;" +
             "'RX_PACKETS='+$rx;" +
             "'TX_PACKETS='+$tx;" +
             "'TASK_OFFLOAD_DISABLED='+$(if($null -eq $task){''}else{[int]$task})";
@@ -35,21 +37,12 @@ public static class WindowsLegacyNetworkDiagnosticsCommandBuilder
 
     public static string BuildResetAdapterAdvancedPropertiesArguments(string adapterName)
     {
-        var name = QuotePowerShellLiteral(adapterName);
         var script =
             "$ErrorActionPreference='Stop';" +
-            $"Reset-NetAdapterAdvancedProperty -Name '{name}' -DisplayName '*' -Confirm:$false;" +
-            $"'RESET={name}'";
+            WindowsPowerShellAdapterSelection.BuildExactLookup(adapterName) +
+            "$escaped=[WildcardPattern]::Escape([string]$a[0].Name);" +
+            "Reset-NetAdapterAdvancedProperty -Name $escaped -DisplayName '*' -Confirm:$false -ErrorAction Stop;" +
+            "'RESET='+[string]$a[0].Name";
         return WindowsPowerShellArgumentEncoder.Encode(script);
-    }
-
-    private static string QuotePowerShellLiteral(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException("アダプター名が必要です", nameof(value));
-        }
-
-        return value.Replace("'", "''", StringComparison.Ordinal);
     }
 }

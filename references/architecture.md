@@ -55,7 +55,9 @@ otherwise select a user-writable binary before the Windows system copy.
 
 アダプター名を含む PowerShell スクリプトは `-EncodedCommand` で渡し、接続名に含まれる生の `"` が
 外側の `-Command "..."` を終端しないようにします。スクリプト内ではシングルクォートを二重化して
-文字列リテラルとして扱い、executor の詳細ログでは Base64 ではなく復号したスクリプトを記録します。
+文字列リテラルとして扱います。NetAdapter cmdlet の `-Name` はワイルドカードとして解釈されるため、
+全件から `OrdinalIgnoreCase` で一意に完全一致させ、後続 cmdlet へ名前を渡す場合は
+`[WildcardPattern]::Escape` します。executor の詳細ログでは Base64 ではなく復号したスクリプトを記録します。
 
 On macOS, read-only adapter discovery and ping/traceroute run through `ProcessCommandExecutor` without elevation.
 Only DNS mutation and cache flush use `MacElevatedCommandExecutor`, which re-wraps the already-quoted
@@ -170,6 +172,12 @@ Winsock's independent send-buffer autotuning disabled.
 The allowlist also restores UDP URO and USO to `default` with two separate `netsh interface udp set global` calls,
 so an unsupported option cannot prevent the other from running. It deliberately does not run `udp reset` or force
 offload `enabled`; both default-restoration actions are individually available in the maintenance tab.
+The allowlist also disables PCI Express Link State Power Management for AC power in the current power plan.
+It reads the existing values before writing and verifies AC is off and the DC value is unchanged afterwards;
+a failed initial read must not cause a write. It neither switches power plans nor writes the DC value.
+This action is separately available in the maintenance tab. Its UI description explains that it affects PCI Express
+devices beyond the selected NIC and may increase power consumption and heat; streaming improvement is not guaranteed.
+The command sequence uses the documented [powercfg AC-value and activation commands](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options).
 This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys log-buffer/server-response-cache operations
 remain available in the maintenance tab but are deliberately excluded
 from one-click because they do not optimize ordinary client or game traffic. DNS cache flushing is already handled
@@ -195,7 +203,7 @@ enablement remains unchanged. The paired loss-recovery command follows Microsoft
 [netsh guidance](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface).
 The TCP tab exposes aggregate TCP reset, global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
 as separate commands; one-click must not be the only UI path to any setting mutation it performs.
-This normalization plus deliberate BBR2/loss-recovery enablement intentionally stops at documented TCP/UDP/netsh state and those three specifically named legacy
+This normalization plus deliberate BBR2/loss-recovery enablement and the narrow PCI Express AC power setting intentionally stops at documented TCP/UDP/power state and those three specifically named legacy
 per-interface values: it does not delete arbitrary registry values,
 change NIC driver advanced properties, alter BCD, or replace power plans. DoT is deliberately left untouched (see the DoT section above: DoH
 measured slightly faster and more consistent, so there's little benefit to enabling both). On Windows, one-click
@@ -205,7 +213,7 @@ This must run after every operation that uses the old connection name; if a rena
 before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
 are intentionally included and the button description warns that Windows will redetect them when reconnected. Other
 destructive maintenance actions (per-adapter MTU restoration and the 「ファイアウォール・スタックリセット」category)
-remain excluded. Since UDP defaults / BBR2 and RACK/TLP enablement / TCP global-option reset / loopback Large MTU / auto-tuning /
+remain excluded. Since PCI Express AC power management / UDP defaults / BBR2 and RACK/TLP enablement / TCP global-option reset / loopback Large MTU / auto-tuning /
 cache-maintenance commands are global, not scoped
 to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
 multi-NIC environments.
@@ -216,7 +224,7 @@ the GroupPolicy override. A mismatch, incomplete snapshot, or read failure is lo
 without losing prior command results or preventing settings persistence/adapter cleanup. Manual BBR2 enablement
 and auto-tuning changes use the same verifier. Command failures remain failures even when readback matches.
 RACK/TLP writes still report command acceptance only; only the no-change path confirms the pre-existing state.
-UDP and other settings remain command-acceptance-only. MTU is not changed by one-click.
+The PCI Express action separately verifies its AC/DC power values. UDP and other settings remain command-acceptance-only. MTU is not changed by one-click.
 
 Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
 `RefreshDohStateAsync` call (racing against this method's own `await`ed call at the end), the preset switch here

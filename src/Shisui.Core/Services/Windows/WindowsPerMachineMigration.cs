@@ -5,8 +5,10 @@ using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security;
 using System.Security.Principal;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Win32.SafeHandles;
 using Microsoft.Win32;
 using Shisui.Core.Models;
 
@@ -137,7 +139,10 @@ public static class WindowsPerMachineMigration
                 return 1;
             }
 
-            var exitCode = InstallMsi(msiPath);
+            // msiexec はパスを開き直す。検証に使ったハンドルから再解析ポイントを解決した
+            // 最終パスを取得し、ユーザー書き込み可能な祖先 junction の付け替えを回避する。
+            var verifiedMsiPath = GetFinalMsiInstallPath(lockedMsi.SafeFileHandle);
+            var exitCode = InstallMsi(verifiedMsiPath);
             if (exitCode is not 0 and not 3010)
             {
                 ShowError($"PerMachine MSIのインストールに失敗しました (終了コード: {exitCode})。");
@@ -409,6 +414,8 @@ public static class WindowsPerMachineMigration
                 return 1;
             }
 
+            var verifiedMsiPath = GetFinalMsiInstallPath(lockedMsi.SafeFileHandle);
+
             // MSIが現プロセスを終了しても、新しいProgram Files版から固定された旧ルートだけを
             // 回収できるように、管理者だけが変更できるHKLMへ保留情報を先に記録する。
             WriteProtectedPendingMigration(
@@ -416,7 +423,7 @@ public static class WindowsPerMachineMigration
                 Environment.ProcessId,
                 expectedInstalledExecutable);
 
-            var exitCode = InstallMsi(msiPath);
+            var exitCode = InstallMsi(verifiedMsiPath);
             if (exitCode is not 0 and not 3010 and not 1638)
             {
                 ClearProtectedPendingMigration();
@@ -429,7 +436,7 @@ public static class WindowsPerMachineMigration
             {
                 // 同一ProductCode/Versionの補正前MSIは通常の /i だけでは移動しない場合がある。
                 // 初回適用後に限り、公式の再インストールプロパティで全再配置・再キャッシュする。
-                exitCode = InstallMsi(msiPath, reinstallExistingProduct: true);
+                exitCode = InstallMsi(verifiedMsiPath, reinstallExistingProduct: true);
                 if (exitCode is not 0 and not 3010)
                 {
                     ShowError($"Program Filesへの再配置に失敗しました (終了コード: {exitCode})。");
@@ -519,9 +526,54 @@ public static class WindowsPerMachineMigration
         }
     }
 
-    /// <summary>検証からインストール完了まで、同一ユーザーによる書換え・削除・移動を拒否する。</summary>
+    /// <summary>検証からインストール完了まで、MSIファイル自体の書換え・削除・移動を拒否する。</summary>
     internal static FileStream OpenLockedMsiDownloadTarget(string destinationPath) =>
         new(destinationPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+
+    /// <summary>
+    /// 検証済みハンドルが指す最終パスを取得する。開いた名前ではなく正規化済みパスを使うため、
+    /// 祖先のシンボリックリンクや junction を解決した実体を msiexec へ渡せる。
+    /// </summary>
+    internal static string GetFinalMsiInstallPath(SafeFileHandle fileHandle)
+    {
+        if (fileHandle.IsInvalid || fileHandle.IsClosed)
+        {
+            throw new ArgumentException("有効なMSIファイルハンドルが必要です。", nameof(fileHandle));
+        }
+
+        var capacity = 512;
+        while (true)
+        {
+            var buffer = new StringBuilder(capacity);
+            var length = GetFinalPathNameByHandleW(fileHandle, buffer, (uint)buffer.Capacity, 0);
+            if (length == 0)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "検証済みMSIの最終パスを取得できませんでした。");
+            }
+
+            if (length < buffer.Capacity)
+            {
+                var finalPath = buffer.ToString();
+                if (finalPath.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalPath = @"\\" + finalPath[8..];
+                }
+                else if (finalPath.StartsWith(@"\\?\", StringComparison.OrdinalIgnoreCase))
+                {
+                    finalPath = finalPath[4..];
+                }
+
+                if (!Path.IsPathFullyQualified(finalPath))
+                {
+                    throw new InvalidDataException("検証済みMSIの最終パスが絶対パスではありません。");
+                }
+
+                return Path.GetFullPath(finalPath);
+            }
+
+            capacity = checked((int)length + 1);
+        }
+    }
 
     private static int InstallMsi(string msiPath, bool reinstallExistingProduct = false)
     {
@@ -987,6 +1039,14 @@ public static class WindowsPerMachineMigration
     private static string PendingFilePath => Path.Combine(AppPaths.AppDataDirectory, PendingFileName);
 
     internal sealed record PendingMigration(string LegacyRoot, int ParentProcessId, string? InstalledExecutable);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(
+        SafeFileHandle fileHandle,
+        StringBuilder filePath,
+        uint filePathLength,
+        uint flags);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
