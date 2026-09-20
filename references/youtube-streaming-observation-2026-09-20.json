@@ -1,0 +1,876 @@
+{
+  "schemaVersion": 1,
+  "videoUrl": "https://www.youtube.com/watch?v=JWtb_hNCFlQ",
+  "environment": "Windows 11 build 26300 / Codex in-app browser / RZ616 Wi-Fi, 5 GHz 802.11ax",
+  "startUtc": "2026-09-20T13:43:27.721Z",
+  "endUtc": "2026-09-20T13:58:27.732Z",
+  "elapsedSeconds": 900.011,
+  "sampleIntervalMs": 1000,
+  "sampleCount": 902,
+  "maxSampleGapMs": 1014,
+  "hiddenSamples": 0,
+  "pausedSamples": 0,
+  "dimensions": "1280x720",
+  "initial": {
+    "time": 2574.78697,
+    "bufferSeconds": 1.28003,
+    "dropped": 176,
+    "totalFrames": 1815
+  },
+  "final": {
+    "time": 3468.356804,
+    "bufferSeconds": 7.992196,
+    "dropped": 3380,
+    "totalFrames": 55429
+  },
+  "waitingEvents": [
+    {
+      "startUtc": "2026-09-20T13:43:59.972Z",
+      "endUtc": "2026-09-20T13:44:00.894Z",
+      "seconds": 0.922
+    },
+    {
+      "startUtc": "2026-09-20T13:44:17.873Z",
+      "endUtc": "2026-09-20T13:44:23.371Z",
+      "seconds": 5.498
+    }
+  ],
+  "minutes": [
+    {
+      "minute": 1,
+      "samples": 60,
+      "bufferMinSeconds": 0.04,
+      "bufferMeanSeconds": 1.611,
+      "bufferMaxSeconds": 7.67,
+      "droppedFramesDelta": 183,
+      "totalFramesDelta": 3157,
+      "notReadySamples": 6
+    },
+    {
+      "minute": 2,
+      "samples": 60,
+      "bufferMinSeconds": 6.169,
+      "bufferMeanSeconds": 7.168,
+      "bufferMaxSeconds": 7.671,
+      "droppedFramesDelta": 182,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 3,
+      "samples": 60,
+      "bufferMinSeconds": 6.486,
+      "bufferMeanSeconds": 7.527,
+      "bufferMaxSeconds": 7.769,
+      "droppedFramesDelta": 186,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 4,
+      "samples": 60,
+      "bufferMinSeconds": 5.668,
+      "bufferMeanSeconds": 7.314,
+      "bufferMaxSeconds": 7.836,
+      "droppedFramesDelta": 216,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 5,
+      "samples": 60,
+      "bufferMinSeconds": 6.202,
+      "bufferMeanSeconds": 7.211,
+      "bufferMaxSeconds": 7.671,
+      "droppedFramesDelta": 200,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 6,
+      "samples": 60,
+      "bufferMinSeconds": 7.568,
+      "bufferMeanSeconds": 7.705,
+      "bufferMaxSeconds": 8.185,
+      "droppedFramesDelta": 194,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 7,
+      "samples": 60,
+      "bufferMinSeconds": 7.67,
+      "bufferMeanSeconds": 7.745,
+      "bufferMaxSeconds": 8.04,
+      "droppedFramesDelta": 216,
+      "totalFramesDelta": 3598,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 8,
+      "samples": 60,
+      "bufferMinSeconds": 7.689,
+      "bufferMeanSeconds": 7.728,
+      "bufferMaxSeconds": 8.222,
+      "droppedFramesDelta": 234,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 9,
+      "samples": 60,
+      "bufferMinSeconds": 7.688,
+      "bufferMeanSeconds": 7.727,
+      "bufferMaxSeconds": 7.907,
+      "droppedFramesDelta": 214,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 10,
+      "samples": 60,
+      "bufferMinSeconds": 7.689,
+      "bufferMeanSeconds": 7.738,
+      "bufferMaxSeconds": 7.872,
+      "droppedFramesDelta": 235,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 11,
+      "samples": 60,
+      "bufferMinSeconds": 7.688,
+      "bufferMeanSeconds": 7.732,
+      "bufferMaxSeconds": 7.972,
+      "droppedFramesDelta": 233,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 12,
+      "samples": 60,
+      "bufferMinSeconds": 7.688,
+      "bufferMeanSeconds": 7.779,
+      "bufferMaxSeconds": 8.206,
+      "droppedFramesDelta": 225,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 13,
+      "samples": 60,
+      "bufferMinSeconds": 7.539,
+      "bufferMeanSeconds": 7.771,
+      "bufferMaxSeconds": 8.138,
+      "droppedFramesDelta": 222,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 14,
+      "samples": 60,
+      "bufferMinSeconds": 5.288,
+      "bufferMeanSeconds": 7.244,
+      "bufferMaxSeconds": 7.905,
+      "droppedFramesDelta": 226,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 15,
+      "samples": 62,
+      "bufferMinSeconds": 7.721,
+      "bufferMeanSeconds": 7.817,
+      "bufferMaxSeconds": 8.189,
+      "droppedFramesDelta": 238,
+      "totalFramesDelta": 3659,
+      "notReadySamples": 0
+    }
+  ],
+  "firstMinute5SecondSamples": [
+    {
+      "seconds": 0,
+      "bufferSeconds": 1.28,
+      "readyState": 4,
+      "mediaTime": 2574.787
+    },
+    {
+      "seconds": 5,
+      "bufferSeconds": 1.269,
+      "readyState": 4,
+      "mediaTime": 2579.798
+    },
+    {
+      "seconds": 10,
+      "bufferSeconds": 1.269,
+      "readyState": 4,
+      "mediaTime": 2584.798
+    },
+    {
+      "seconds": 15,
+      "bufferSeconds": 0.967,
+      "readyState": 4,
+      "mediaTime": 2589.799
+    },
+    {
+      "seconds": 20,
+      "bufferSeconds": 1.269,
+      "readyState": 4,
+      "mediaTime": 2594.798
+    },
+    {
+      "seconds": 25,
+      "bufferSeconds": 1.135,
+      "readyState": 4,
+      "mediaTime": 2599.798
+    },
+    {
+      "seconds": 30,
+      "bufferSeconds": 0.269,
+      "readyState": 4,
+      "mediaTime": 2604.798
+    },
+    {
+      "seconds": 35,
+      "bufferSeconds": 1.524,
+      "readyState": 4,
+      "mediaTime": 2608.875
+    },
+    {
+      "seconds": 40,
+      "bufferSeconds": 2.192,
+      "readyState": 4,
+      "mediaTime": 2613.875
+    },
+    {
+      "seconds": 45,
+      "bufferSeconds": 2.17,
+      "readyState": 4,
+      "mediaTime": 2618.875
+    },
+    {
+      "seconds": 50,
+      "bufferSeconds": 0.189,
+      "readyState": 4,
+      "mediaTime": 2623.875
+    },
+    {
+      "seconds": 55,
+      "bufferSeconds": 0.057,
+      "readyState": 2,
+      "mediaTime": 2624.007
+    }
+  ],
+  "resourceTiming": {
+    "count": 898,
+    "hosts": [
+      {
+        "host": "rr1---sn-oguesnd6.googlevideo.com",
+        "observedIp": "2404:6800:4004:39::6",
+        "protocol": "h3",
+        "count": 897,
+        "status200": 896,
+        "statusZero": 1,
+        "maxDurationMs": 2746,
+        "encodedBodyBytes": 168838963
+      },
+      {
+        "host": "rr2---sn-cpbavcx-ioqr.googlevideo.com",
+        "protocol": "h3",
+        "count": 1,
+        "status200": 0,
+        "statusZero": 1,
+        "maxDurationMs": 3032,
+        "encodedBodyBytes": 0
+      }
+    ]
+  },
+  "pingMain": [
+    {
+      "Minute": 1,
+      "At": "2026-09-20T22:44:58.8316978+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.37,
+          "Max": 10,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 2,
+          "Average": 12.79,
+          "Max": 21,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 2,
+          "Average": 12.68,
+          "Max": 21,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 2,
+      "At": "2026-09-20T22:45:59.1797822+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.77,
+          "Max": 6,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.66,
+          "Max": 21,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.52,
+          "Max": 21,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 3,
+      "At": "2026-09-20T22:46:59.5080318+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.33,
+          "Max": 5,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.3,
+          "Max": 22,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.07,
+          "Max": 22,
+          "P95": 22
+        }
+      ]
+    },
+    {
+      "Minute": 4,
+      "At": "2026-09-20T22:47:59.8672586+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.63,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.13,
+          "Max": 27,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.87,
+          "Max": 27,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 5,
+      "At": "2026-09-20T22:49:00.2037748+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.63,
+          "Max": 5,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.93,
+          "Max": 20,
+          "P95": 19
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.73,
+          "Max": 19,
+          "P95": 18
+        }
+      ]
+    },
+    {
+      "Minute": 6,
+      "At": "2026-09-20T22:50:00.5229078+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.57,
+          "Max": 5,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 14.62,
+          "Max": 22,
+          "P95": 22
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.43,
+          "Max": 23,
+          "P95": 22
+        }
+      ]
+    },
+    {
+      "Minute": 7,
+      "At": "2026-09-20T22:51:00.8808139+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.6,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.7,
+          "Max": 22,
+          "P95": 19
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.83,
+          "Max": 22,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 8,
+      "At": "2026-09-20T22:52:01.2258446+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.53,
+          "Max": 5,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.4,
+          "Max": 18,
+          "P95": 18
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.27,
+          "Max": 18,
+          "P95": 18
+        }
+      ]
+    },
+    {
+      "Minute": 9,
+      "At": "2026-09-20T22:53:01.5382452+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.63,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.17,
+          "Max": 26,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.7,
+          "Max": 26,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 10,
+      "At": "2026-09-20T22:54:01.9156905+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.87,
+          "Max": 6,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.43,
+          "Max": 20,
+          "P95": 18
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.07,
+          "Max": 18,
+          "P95": 18
+        }
+      ]
+    },
+    {
+      "Minute": 11,
+      "At": "2026-09-20T22:55:02.2289864+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.7,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.93,
+          "Max": 20,
+          "P95": 19
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.83,
+          "Max": 20,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 12,
+      "At": "2026-09-20T22:56:02.5828599+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.4,
+          "Max": 5,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.79,
+          "Max": 23,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.31,
+          "Max": 23,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 13,
+      "At": "2026-09-20T22:57:02.8525795+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.33,
+          "Max": 5,
+          "P95": 4
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.63,
+          "Max": 21,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.13,
+          "Max": 21,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 14,
+      "At": "2026-09-20T22:58:03.2017961+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.57,
+          "Max": 7,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.27,
+          "Max": 21,
+          "P95": 18
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 11.83,
+          "Max": 21,
+          "P95": 18
+        }
+      ]
+    },
+    {
+      "Minute": 15,
+      "At": "2026-09-20T22:59:03.5097452+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.17,
+          "Max": 5,
+          "P95": 4
+        },
+        {
+          "Target": "2404:6800:4004:a::2",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.1,
+          "Max": 20,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.1,
+          "Max": 19,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Start": "2026-09-20T22:43:57.1093378+09:00",
+      "End": "2026-09-20T22:59:03.8113580+09:00",
+      "ReceivedErrorsDelta": 0,
+      "SentErrorsDelta": 0,
+      "ReceivedDiscardsDelta": 0,
+      "SentDiscardsDelta": 0
+    }
+  ],
+  "pingActiveCdn": [
+    {
+      "Minute": 1,
+      "At": "2026-09-20T22:46:04.4616152+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 11.97,
+      "Max": 22
+    },
+    {
+      "Minute": 2,
+      "At": "2026-09-20T22:47:04.8161525+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 13.63,
+      "Max": 24
+    },
+    {
+      "Minute": 3,
+      "At": "2026-09-20T22:48:05.1661813+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 13,
+      "Max": 23
+    },
+    {
+      "Minute": 4,
+      "At": "2026-09-20T22:49:05.5091659+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 1,
+      "Average": 13.07,
+      "Max": 21
+    },
+    {
+      "Minute": 5,
+      "At": "2026-09-20T22:50:05.8442284+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 14.07,
+      "Max": 21
+    },
+    {
+      "Minute": 6,
+      "At": "2026-09-20T22:51:06.2443433+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 1,
+      "Average": 12.14,
+      "Max": 20
+    },
+    {
+      "Minute": 7,
+      "At": "2026-09-20T22:52:06.6014375+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 13.3,
+      "Max": 21
+    },
+    {
+      "Minute": 8,
+      "At": "2026-09-20T22:53:06.9484691+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 1,
+      "Average": 13.17,
+      "Max": 22
+    },
+    {
+      "Minute": 9,
+      "At": "2026-09-20T22:54:07.3034223+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 13.53,
+      "Max": 25
+    },
+    {
+      "Minute": 10,
+      "At": "2026-09-20T22:55:07.6551212+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 13.27,
+      "Max": 23
+    },
+    {
+      "Minute": 11,
+      "At": "2026-09-20T22:56:07.9840482+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 12.53,
+      "Max": 20
+    },
+    {
+      "Minute": 12,
+      "At": "2026-09-20T22:57:08.2947338+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 0,
+      "Average": 12.9,
+      "Max": 21
+    },
+    {
+      "Minute": 13,
+      "At": "2026-09-20T22:58:08.5581880+09:00",
+      "Target": "2404:6800:4004:39::6",
+      "Count": 30,
+      "Loss": 1,
+      "Average": 12.59,
+      "Max": 22
+    }
+  ],
+  "limitations": [
+    "再生統計は1秒サンプリングから分集計し、開始1分は5秒間隔の抜粋も保存。全1秒生サンプルはこのファイルに含めない。",
+    "waiting→playingは再生供給待ちの観測であり、ISP・CDN・ブラウザ・配信者の原因帰属を確定しない。",
+    "Resource Timing status=0はHTTPステータス0の応答を意味しない。中断・未完了・取得不可等の区別は未確定。ライブ応答所要時間は配信側の送出待ちを含み得る。",
+    "CDPネットワーク履歴には欠落がある。Resource Timingは観測期間内に完了した対象リソースのみを集計。",
+    "Pingは再生収集と開始・終了がずれる。実配信先IPの追加Pingは停止発生後に開始したため、停止時のそのIPのICMP状態は未観測。",
+    "このPCの内蔵ブラウザでの結果であり、利用者が普段視聴するブラウザと同一条件とは未確認。",
+    "OS設定・画質・再生位置は変更せず、再読み込みもしていない。"
+  ]
+}

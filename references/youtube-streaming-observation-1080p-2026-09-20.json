@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 1,
+  "videoUrl": "https://www.youtube.com/watch?v=JWtb_hNCFlQ",
+  "environment": "Windows 11 build 26300 / Codex in-app browser / RZ616 Wi-Fi, 2.4 Gbps link, IPv4/IPv6 MTU 1500",
+  "qualitySetting": "1080p60 HD (manual, verified in menu before and after observation)",
+  "codec": "vp09.00.51.08.01.01.01.01.00 (303) / mp4a.40.2 (140)",
+  "liveMode": "Manifestless, Optimized for Ultra Low Latency",
+  "startUtc": "2026-09-20T14:03:40.044Z",
+  "endUtc": "2026-09-20T14:18:40.052Z",
+  "elapsedSeconds": 900.008,
+  "sampleIntervalMs": 1000,
+  "sampleCount": 902,
+  "maxSampleGapMs": 1033,
+  "hiddenSamples": 0,
+  "pausedSamples": 0,
+  "dimensions": [
+    "1920x1080"
+  ],
+  "playbackRates": [
+    1
+  ],
+  "initial": {
+    "time": 3786.368079,
+    "bufferSeconds": 2.064921,
+    "dropped": 142,
+    "totalFrames": 1698
+  },
+  "final": {
+    "time": 4684.12042,
+    "bufferSeconds": 4.72858,
+    "dropped": 4468,
+    "totalFrames": 55564
+  },
+  "waitingEvents": [
+    {
+      "startUtc": "2026-09-20T14:06:27.964Z",
+      "endUtc": "2026-09-20T14:06:30.234Z",
+      "seconds": 2.27
+    }
+  ],
+  "minutes": [
+    {
+      "minute": 1,
+      "samples": 60,
+      "bufferMinSeconds": 1.436,
+      "bufferMeanSeconds": 2.417,
+      "bufferMaxSeconds": 2.574,
+      "droppedFramesDelta": 295,
+      "totalFramesDelta": 3540,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 2,
+      "samples": 60,
+      "bufferMinSeconds": 0.725,
+      "bufferMeanSeconds": 2.183,
+      "bufferMaxSeconds": 2.541,
+      "droppedFramesDelta": 374,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 3,
+      "samples": 60,
+      "bufferMinSeconds": 0,
+      "bufferMeanSeconds": 2.368,
+      "bufferMaxSeconds": 4.797,
+      "droppedFramesDelta": 337,
+      "totalFramesDelta": 3466,
+      "notReadySamples": 3
+    },
+    {
+      "minute": 4,
+      "samples": 60,
+      "bufferMinSeconds": 3.363,
+      "bufferMeanSeconds": 4.356,
+      "bufferMaxSeconds": 4.813,
+      "droppedFramesDelta": 243,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 5,
+      "samples": 60,
+      "bufferMinSeconds": 2.313,
+      "bufferMeanSeconds": 4.185,
+      "bufferMaxSeconds": 4.797,
+      "droppedFramesDelta": 301,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 6,
+      "samples": 60,
+      "bufferMinSeconds": 2.98,
+      "bufferMeanSeconds": 4.549,
+      "bufferMaxSeconds": 4.812,
+      "droppedFramesDelta": 275,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 7,
+      "samples": 60,
+      "bufferMinSeconds": 2.975,
+      "bufferMeanSeconds": 4.635,
+      "bufferMaxSeconds": 4.829,
+      "droppedFramesDelta": 261,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 8,
+      "samples": 60,
+      "bufferMinSeconds": 1.775,
+      "bufferMeanSeconds": 4.093,
+      "bufferMaxSeconds": 4.779,
+      "droppedFramesDelta": 254,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 9,
+      "samples": 60,
+      "bufferMinSeconds": 2.479,
+      "bufferMeanSeconds": 4.267,
+      "bufferMaxSeconds": 4.814,
+      "droppedFramesDelta": 288,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 10,
+      "samples": 60,
+      "bufferMinSeconds": 2.873,
+      "bufferMeanSeconds": 4.126,
+      "bufferMaxSeconds": 4.814,
+      "droppedFramesDelta": 284,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 11,
+      "samples": 60,
+      "bufferMinSeconds": 2.679,
+      "bufferMeanSeconds": 4.302,
+      "bufferMaxSeconds": 4.813,
+      "droppedFramesDelta": 290,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 12,
+      "samples": 60,
+      "bufferMinSeconds": 3.979,
+      "bufferMeanSeconds": 4.711,
+      "bufferMaxSeconds": 4.815,
+      "droppedFramesDelta": 281,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 13,
+      "samples": 60,
+      "bufferMinSeconds": 2.98,
+      "bufferMeanSeconds": 4.438,
+      "bufferMaxSeconds": 4.814,
+      "droppedFramesDelta": 295,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 14,
+      "samples": 60,
+      "bufferMinSeconds": 2.728,
+      "bufferMeanSeconds": 4.124,
+      "bufferMaxSeconds": 4.78,
+      "droppedFramesDelta": 273,
+      "totalFramesDelta": 3600,
+      "notReadySamples": 0
+    },
+    {
+      "minute": 15,
+      "samples": 62,
+      "bufferMinSeconds": 1.595,
+      "bufferMeanSeconds": 3.995,
+      "bufferMaxSeconds": 4.784,
+      "droppedFramesDelta": 275,
+      "totalFramesDelta": 3660,
+      "notReadySamples": 0
+    }
+  ],
+  "stallSamples": [
+    {
+      "atUtc": "2026-09-20T14:06:24.052Z",
+      "bufferSeconds": 2.523,
+      "readyState": 4,
+      "mediaTime": 3950.376
+    },
+    {
+      "atUtc": "2026-09-20T14:06:25.052Z",
+      "bufferSeconds": 2.474,
+      "readyState": 4,
+      "mediaTime": 3951.375
+    },
+    {
+      "atUtc": "2026-09-20T14:06:26.052Z",
+      "bufferSeconds": 1.725,
+      "readyState": 4,
+      "mediaTime": 3952.375
+    },
+    {
+      "atUtc": "2026-09-20T14:06:27.052Z",
+      "bufferSeconds": 0.725,
+      "readyState": 4,
+      "mediaTime": 3953.375
+    },
+    {
+      "atUtc": "2026-09-20T14:06:28.052Z",
+      "bufferSeconds": 0,
+      "readyState": 2,
+      "mediaTime": 3954.283
+    },
+    {
+      "atUtc": "2026-09-20T14:06:29.053Z",
+      "bufferSeconds": 0,
+      "readyState": 2,
+      "mediaTime": 3954.283
+    },
+    {
+      "atUtc": "2026-09-20T14:06:30.051Z",
+      "bufferSeconds": 0,
+      "readyState": 2,
+      "mediaTime": 3954.283
+    },
+    {
+      "atUtc": "2026-09-20T14:06:31.052Z",
+      "bufferSeconds": 4.747,
+      "readyState": 4,
+      "mediaTime": 3955.119
+    }
+  ],
+  "stallResource": {
+    "completedUtc": "2026-09-20T14:06:30.159Z",
+    "host": "rr5---sn-oguelnzs.googlevideo.com",
+    "durationMs": 4840,
+    "ttfbMs": 9,
+    "encodedBodyBytes": 213664,
+    "status": 200
+  },
+  "resourceTiming": {
+    "count": 926,
+    "hosts": [
+      {
+        "host": "rr5---sn-oguelnzs.googlevideo.com",
+        "observedIp": "2404:6800:4004:2b::a",
+        "protocol": "h3",
+        "count": 886,
+        "status200": 855,
+        "statusZero": 31,
+        "maxDurationMs": 4840.4,
+        "encodedBodyBytes": 192563819
+      },
+      {
+        "host": "rr2---sn-cpbavcx-ioqr.googlevideo.com",
+        "observedIp": "2001:260:500:5b::d",
+        "protocol": "h3",
+        "count": 40,
+        "status200": 39,
+        "statusZero": 1,
+        "maxDurationMs": 3132.2,
+        "encodedBodyBytes": 7803915
+      }
+    ]
+  },
+  "ping": [
+    {
+      "Minute": 1,
+      "At": "2026-09-20T23:05:29.6677747+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.27,
+          "Max": 22,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13,
+          "Max": 22,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 2,
+      "At": "2026-09-20T23:06:30.0615268+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4.17,
+          "Max": 6,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.7,
+          "Max": 24,
+          "P95": 23
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.6,
+          "Max": 24,
+          "P95": 22
+        }
+      ]
+    },
+    {
+      "Minute": 3,
+      "At": "2026-09-20T23:07:30.3807437+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.87,
+          "Max": 9,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.2,
+          "Max": 24,
+          "P95": 19
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 11.93,
+          "Max": 23,
+          "P95": 18
+        }
+      ]
+    },
+    {
+      "Minute": 4,
+      "At": "2026-09-20T23:08:30.6791296+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.87,
+          "Max": 6,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 14.69,
+          "Max": 26,
+          "P95": 25
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 14.45,
+          "Max": 25,
+          "P95": 25
+        }
+      ]
+    },
+    {
+      "Minute": 5,
+      "At": "2026-09-20T23:09:30.9626111+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.87,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.38,
+          "Max": 21,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.48,
+          "Max": 21,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 6,
+      "At": "2026-09-20T23:10:31.2624197+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4.2,
+          "Max": 8,
+          "P95": 7
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.1,
+          "Max": 20,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.77,
+          "Max": 21,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 7,
+      "At": "2026-09-20T23:11:31.5532683+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.87,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.24,
+          "Max": 24,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12.79,
+          "Max": 23,
+          "P95": 21
+        }
+      ]
+    },
+    {
+      "Minute": 8,
+      "At": "2026-09-20T23:12:31.9661966+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.97,
+          "Max": 7,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.55,
+          "Max": 23,
+          "P95": 22
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.03,
+          "Max": 22,
+          "P95": 21
+        }
+      ]
+    },
+    {
+      "Minute": 9,
+      "At": "2026-09-20T23:13:32.3242502+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4.23,
+          "Max": 7,
+          "P95": 7
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.83,
+          "Max": 25,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 12.83,
+          "Max": 24,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 10,
+      "At": "2026-09-20T23:14:32.6013404+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.97,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.76,
+          "Max": 27,
+          "P95": 22
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 13.55,
+          "Max": 27,
+          "P95": 22
+        }
+      ]
+    },
+    {
+      "Minute": 11,
+      "At": "2026-09-20T23:15:32.8807838+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.7,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.9,
+          "Max": 26,
+          "P95": 21
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.63,
+          "Max": 25,
+          "P95": 21
+        }
+      ]
+    },
+    {
+      "Minute": 12,
+      "At": "2026-09-20T23:16:33.1805916+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4.23,
+          "Max": 8,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.07,
+          "Max": 21,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.7,
+          "Max": 21,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Minute": 13,
+      "At": "2026-09-20T23:17:33.5197379+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 4.13,
+          "Max": 7,
+          "P95": 6
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12,
+          "Max": 21,
+          "P95": 19
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 1,
+          "Average": 12,
+          "Max": 21,
+          "P95": 19
+        }
+      ]
+    },
+    {
+      "Minute": 14,
+      "At": "2026-09-20T23:18:33.7838729+09:00",
+      "Results": [
+        {
+          "Target": "192.168.0.1",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 3.57,
+          "Max": 6,
+          "P95": 5
+        },
+        {
+          "Target": "2404:6800:4004:2b::a",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 14.3,
+          "Max": 23,
+          "P95": 20
+        },
+        {
+          "Target": "2001:260:500:5b::d",
+          "Count": 30,
+          "Loss": 0,
+          "Average": 13.87,
+          "Max": 23,
+          "P95": 20
+        }
+      ]
+    },
+    {
+      "Start": "2026-09-20T23:04:27.2600038+09:00",
+      "End": "2026-09-20T23:18:34.0502797+09:00",
+      "ReceivedErrorsDelta": 0,
+      "SentErrorsDelta": 0,
+      "ReceivedDiscardsDelta": 0,
+      "SentDiscardsDelta": 0
+    }
+  ],
+  "trace": {
+    "target": "2404:6800:4004:2b::a",
+    "hops": 9,
+    "destinationRttMs": [
+      16,
+      19,
+      15
+    ]
+  },
+  "limitations": [
+    "1秒サンプリングの分集計と停止前後の抜粋を保存。全1秒生サンプルは含めない。",
+    "1080pへの切替完了後に計測を開始。切替操作自体による待ちは測定対象外。",
+    "720p観測とは時刻、映像内容、CDN、開始バッファ等が異なり、画質のみの厳密なA/B比較ではない。",
+    "HTTP status=0はHTTPエラー応答のステータスコードではない。中断・未完了・取得不可等の区別は未確定。",
+    "Resource Timingは観測期間内に完了した対象通信。CDPイベント履歴には欠落があり、全通信の成功率を保証しない。",
+    "ライブの本体受信完了時間は配信側の送出待ちも含み得るため、回線速度や輻輳の証明ではない。",
+    "Pingは2秒間隔、期限900 ms。動画観測と開始・終了がずれる。ICMP無応答率をQUIC損失率と同一視しない。",
+    "Codex内蔵ブラウザでの測定であり、普段のブラウザと同一条件かは未確認。",
+    "画質はユーザー指定の1080pに変更。ネットワーク設定、再生位置、再生速度を変更せず、観測中の再読み込みも行っていない。"
+  ]
+}
