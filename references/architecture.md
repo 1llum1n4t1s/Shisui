@@ -315,8 +315,11 @@ The separate gaming card in AutoOptimization calls `WindowsGamingNetworkProfileS
 mutation gate from read through journal persistence and verification. It does not run the broad one-click reset.
 Only physical Ethernet (type 6) or Wi-Fi (type 71) is eligible. `WindowsGamingNetworkProfilePolicy` selects exact
 keywords by media/provider/PCI identity: standard `*InterruptModeration` for either media, `*EEE` only for Ethernet,
-and `LowPowerEnable` / `UAPSDSupport` only for MediaTek Wi-Fi (`MediaTek, Inc.` and PCI vendor 14C3).
-Binary 0/1 semantics for those MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
+`EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` for physical Realtek Ethernet identified by provider name,
+PCI vendor 10EC or USB vendor 0BDA, and `LowPowerEnable` / `UAPSDSupport` only for MediaTek Wi-Fi (`MediaTek, Inc.`
+and PCI vendor 14C3). Realtek-specific properties are changed only when the driver actually exposes the exact key
+with binary 0/1 values. Their binary semantics were verified against `RTL8168H.ndi.NT` in driver INF
+1168.27.50.920; the MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
 This is not a generic manufacturer-independent Wi-Fi power switch. Missing properties are reported;
 malformed values, wrong media/provider combinations and identity changes cannot authorize writes or restore.
 PowerShell emits strictly validated JSON (JsonDocument, without reflection), uses exact names after wildcard escaping,

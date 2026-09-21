@@ -26,6 +26,11 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
         StringAssert.Contains(script, "PnPDeviceId=[string]$a[0].PnPDeviceID");
         StringAssert.Contains(script, "LowPowerEnable");
         StringAssert.Contains(script, "UAPSDSupport");
+        StringAssert.Contains(script, "EnableGreenEthernet");
+        StringAssert.Contains(script, "GigaLite");
+        StringAssert.Contains(script, "PowerSavingMode");
+        StringAssert.Contains(script, "PCI\\VEN_10EC&*");
+        StringAssert.Contains(script, "USB\\VID_0BDA&*");
         Assert.DoesNotContain("Get-NetAdapterAdvancedProperty -InputObject", script);
     }
 
@@ -85,6 +90,16 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
                 WindowsGamingNetworkProfileCommandBuilder.MediaTekLowPowerKeyword,
                 "1",
                 "0")),
+            Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+                "Ethernet';throw 'owned",
+                AdapterGuid,
+                "Realtek PCIe GbE Family Controller",
+                6,
+                "Realtek",
+                "PCI\\VEN_10EC&DEV_8168&SUBSYS_012310EC&REV_15\\4&ABCDEF&0&00E5",
+                WindowsGamingNetworkProfileCommandBuilder.RealtekGreenEthernetKeyword,
+                "1",
+                "0")),
         };
         var executor = new ProcessCommandExecutor();
 
@@ -122,6 +137,11 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
             WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
                 "Wi-Fi", AdapterGuid, "RZ616", 71, "MediaTek, Inc.", "PCI\\VEN_14C3&DEV_0616", "*EEE", "1", "0"));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+                "Ethernet", AdapterGuid, "Unknown", 6, "Unknown Vendor",
+                "PCI\\VEN_9999&DEV_0001",
+                "EnableGreenEthernet", "1", "0"));
     }
 
     private static string Decode(string arguments)

@@ -65,7 +65,8 @@ PCI Express は現在の電源プランのリンク状態の電源管理だけ�
 
 ゲーム向けの追加NIC設定は通常のおまかせ設定とは独立したWindows専用操作です。
 物理Ethernetの `*InterruptModeration` / `*EEE`、物理Wi-Fiの `*InterruptModeration` を、対応値を確認して無効化します。
-さらに、ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
+さらに、プロバイダー名またはPCI/USBベンダーIDからRealtek製と確認できる物理Ethernetでは、プロパティが存在して0/1をサポートする場合に `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` を扱います。これらの0/1定義はRTL8168HのINFで確認しています。
+ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
 媒体・ベンダーごとの許可リストをquery・parser・書込み・復元で照合し、EEEをWi-Fiへ、メーカー独自項目を他社へ流用しません。
 serviceが共有ゲートを取得し、変更前の値をAppSettingsへ保存してから書き込み、設定値を再取得します。
 GUIDと説明で対象を照合し、再適用で元の値を上書きしません。復元は保存対象だけを扱い、外部変更との競合は上書きしません。

@@ -10,6 +10,9 @@ public static class WindowsGamingNetworkProfileCommandBuilder
     public const string EnergyEfficientEthernetKeyword = WindowsGamingNetworkProfilePolicy.EnergyEfficientEthernetKeyword;
     public const string MediaTekLowPowerKeyword = WindowsGamingNetworkProfilePolicy.MediaTekLowPowerKeyword;
     public const string MediaTekUapsdKeyword = WindowsGamingNetworkProfilePolicy.MediaTekUapsdKeyword;
+    public const string RealtekGreenEthernetKeyword = WindowsGamingNetworkProfilePolicy.RealtekGreenEthernetKeyword;
+    public const string RealtekGigaLiteKeyword = WindowsGamingNetworkProfilePolicy.RealtekGigaLiteKeyword;
+    public const string RealtekPowerSavingModeKeyword = WindowsGamingNetworkProfilePolicy.RealtekPowerSavingModeKeyword;
 
     public static IReadOnlyList<string> AllowedKeywords { get; } =
         WindowsGamingNetworkProfilePolicy.AllKnownKeywords;
@@ -26,7 +29,11 @@ public static class WindowsGamingNetworkProfileCommandBuilder
             "$p=@();" +
             "$allowed=@();" +
             $"if([bool]$a[0].HardwareInterface -and [int]$a[0].InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType})" +
-            $"{{$allowed=@('{InterruptModerationKeyword}','{EnergyEfficientEthernetKeyword}')}}" +
+            $"{{$allowed=@('{InterruptModerationKeyword}','{EnergyEfficientEthernetKeyword}');" +
+            $"if(([string]$a[0].DriverProvider).StartsWith('{WindowsGamingNetworkProfilePolicy.RealtekDriverProviderToken}',[StringComparison]::OrdinalIgnoreCase) -or " +
+            $"[string]$a[0].PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekPciPnpPrefix}*' -or " +
+            $"[string]$a[0].PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekUsbPnpPrefix}*')" +
+            $"{{$allowed+=@('{RealtekGreenEthernetKeyword}','{RealtekGigaLiteKeyword}','{RealtekPowerSavingModeKeyword}')}}}}" +
             $"elseif([bool]$a[0].HardwareInterface -and [int]$a[0].InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType}){{" +
             $"$allowed=@('{InterruptModerationKeyword}');" +
             $"if([string]::Equals([string]$a[0].DriverProvider,'{WindowsGamingNetworkProfilePolicy.MediaTekDriverProvider}',[StringComparison]::Ordinal) -and " +
@@ -147,6 +154,11 @@ public static class WindowsGamingNetworkProfileCommandBuilder
         $"([int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType} -or " +
         $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType})) -or " +
         $"({quotedKeyword} -ceq '{EnergyEfficientEthernetKeyword}' -and [int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType}) -or " +
+        $"(({quotedKeyword} -ceq '{RealtekGreenEthernetKeyword}' -or {quotedKeyword} -ceq '{RealtekGigaLiteKeyword}' -or {quotedKeyword} -ceq '{RealtekPowerSavingModeKeyword}') -and " +
+        $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType} -and " +
+        $"(([string]{adapterExpression}.DriverProvider).StartsWith('{WindowsGamingNetworkProfilePolicy.RealtekDriverProviderToken}',[StringComparison]::OrdinalIgnoreCase) -or " +
+        $"[string]{adapterExpression}.PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekPciPnpPrefix}*' -or " +
+        $"[string]{adapterExpression}.PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekUsbPnpPrefix}*')) -or " +
         $"(({quotedKeyword} -ceq '{MediaTekLowPowerKeyword}' -or {quotedKeyword} -ceq '{MediaTekUapsdKeyword}') -and " +
         $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType} -and " +
         $"[string]::Equals([string]{adapterExpression}.DriverProvider,'{WindowsGamingNetworkProfilePolicy.MediaTekDriverProvider}',[StringComparison]::Ordinal) -and " +

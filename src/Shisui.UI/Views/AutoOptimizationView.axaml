@@ -50,7 +50,7 @@
                                          IsVisible="{Binding IsGamingProfileAvailable}">
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="選択した物理NICで対応している項目だけ無効にします。有線は割り込み調整とEEE、Wi-Fiは標準の割り込み調整（存在する場合）と、対応するMediaTek製PCI無線NICの省電力・U-APSDが対象です。未確認のメーカー独自設定と仮想NICは変更しません。" />
+                     Text="選択した物理NICで対応している項目だけ無効にします。有線は割り込み調整とEEE、Realtek製NICは対応している場合にグリーンイーサネット・Gigabit Lite・Power Saving Modeも対象です。Wi-Fiは標準の割り込み調整（存在する場合）と、対応するMediaTek製PCI無線NICの省電力・U-APSDが対象です。存在しないメーカー独自設定と仮想NICは変更しません。" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="処理待ちや省電力による遅延を減らすための設定です。CPU負荷・消費電力・発熱が増え、バッテリー駆動時間が短くなる場合があります。電波状態やアクセスポイント次第では逆効果になり、改善は保証されません。" />
           <TextBlock Classes="caption" TextWrapping="Wrap"

@@ -265,6 +265,44 @@ public sealed class WindowsGamingNetworkProfileServiceTests
     }
 
     [TestMethod]
+    public async Task ApplyAsync_RealtekEthernet_DisablesAndJournalsVendorProperties()
+    {
+        var before = new[]
+        {
+            ("*InterruptModeration", "1"),
+            ("*EEE", "0"),
+            ("EnableGreenEthernet", "1"),
+            ("GigaLite", "1"),
+            ("PowerSavingMode", "1"),
+        };
+        var after = before.Select(property => (property.Item1, "0")).ToArray();
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState(before));
+        executor.Success("UPDATED=*InterruptModeration;VALUE=0");
+        executor.Success("UPDATED=EnableGreenEthernet;VALUE=0");
+        executor.Success("UPDATED=GigaLite;VALUE=0");
+        executor.Success("UPDATED=PowerSavingMode;VALUE=0");
+        executor.Success(RealtekEthernetState(after));
+        var settings = new FakeSettingsService();
+        var service = Create(executor, settings);
+
+        var results = await service.ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results[^1].Success);
+        Assert.AreEqual(6, executor.Calls.Count);
+        CollectionAssert.AreEquivalent(
+            new[]
+            {
+                "*InterruptModeration=1",
+                "EnableGreenEthernet=1",
+                "GigaLite=1",
+                "PowerSavingMode=1",
+            },
+            settings.Current.GamingNetworkProfileSnapshots.Single().Properties
+                .Select(property => $"{property.RegistryKeyword}={property.OriginalValue}").ToArray());
+    }
+
+    [TestMethod]
     public async Task ApplyAsync_MissingStandardPropertyIsDocumentedAsUnsupported()
     {
         var executor = new FakeExecutor();
@@ -351,6 +389,29 @@ public sealed class WindowsGamingNetworkProfileServiceTests
         Assert.IsTrue(results[^1].Success);
         Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
         StringAssert.Contains(results[^1].StandardOutput, "バッテリー駆動時間の短縮");
+    }
+
+    [TestMethod]
+    public async Task RestoreAsync_RealtekEthernet_RestoresVendorPropertiesAndRemovesJournal()
+    {
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState(("EnableGreenEthernet", "0"), ("GigaLite", "0"), ("PowerSavingMode", "0")));
+        executor.Success("UPDATED=EnableGreenEthernet;VALUE=1");
+        executor.Success("UPDATED=GigaLite;VALUE=1");
+        executor.Success("UPDATED=PowerSavingMode;VALUE=1");
+        executor.Success(RealtekEthernetState(("EnableGreenEthernet", "1"), ("GigaLite", "1"), ("PowerSavingMode", "1")));
+        var settings = SettingsWithJournal(
+            "Realtek Gaming 2.5GbE Family Controller",
+            ("EnableGreenEthernet", "1"),
+            ("GigaLite", "1"),
+            ("PowerSavingMode", "1"));
+        var service = Create(executor, settings);
+
+        var results = await service.RestoreAsync("Ethernet");
+
+        Assert.IsTrue(results[^1].Success);
+        Assert.AreEqual(5, executor.Calls.Count);
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
     }
 
     [TestMethod]
@@ -522,6 +583,13 @@ public sealed class WindowsGamingNetworkProfileServiceTests
             description: "RZ616 Wi-Fi 6E 160MHz",
             driverProvider: "MediaTek, Inc.",
             pnpDeviceId: "PCI\\VEN_14C3&DEV_0616&SUBSYS_061614C3",
+            properties: properties);
+
+    private static string RealtekEthernetState(params (string Keyword, string Value)[] properties) =>
+        WindowsGamingNetworkProfileParserTests.State(
+            description: "Realtek Gaming 2.5GbE Family Controller",
+            driverProvider: "Realtek Semiconductor Corp.",
+            pnpDeviceId: "PCI\\VEN_10EC&DEV_8125&SUBSYS_012310EC&REV_05\\4&ABCDEF&0&00E5",
             properties: properties);
 
     private static FakeSettingsService SettingsWithJournal(

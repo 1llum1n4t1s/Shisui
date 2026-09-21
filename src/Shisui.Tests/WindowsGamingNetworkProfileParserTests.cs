@@ -44,6 +44,28 @@ public sealed class WindowsGamingNetworkProfileParserTests
     }
 
     [TestMethod]
+    public void TryParse_ValidRealtekEthernet_ParsesVendorProperties()
+    {
+        var success = WindowsGamingNetworkProfileParser.TryParse(
+            State(
+                description: "Realtek Gaming 2.5GbE Family Controller",
+                driverProvider: "Realtek Semiconductor Corp.",
+                pnpDeviceId: "PCI\\VEN_10EC&DEV_8125&SUBSYS_012310EC&REV_05\\4&ABCDEF&0&00E5",
+                properties:
+                [
+                    ("EnableGreenEthernet", "1"),
+                    ("GigaLite", "1"),
+                    ("PowerSavingMode", "1"),
+                ]),
+            out var state,
+            out var error);
+
+        Assert.IsTrue(success, error);
+        Assert.IsNotNull(state);
+        Assert.HasCount(3, state.Properties);
+    }
+
+    [TestMethod]
     public void TryParse_MissingProperty_IsAcceptedAsUnsupported()
     {
         var success = WindowsGamingNetworkProfileParser.TryParse(
@@ -110,6 +132,9 @@ public sealed class WindowsGamingNetworkProfileParserTests
     [DataRow(6, "MediaTek, Inc.", "PCI\\VEN_14C3&DEV_0616", "LowPowerEnable")]
     [DataRow(71, "Intel", "PCI\\VEN_8086&DEV_1234", "LowPowerEnable")]
     [DataRow(71, "MediaTek, Inc.", "USB\\VID_14C3&PID_0616", "UAPSDSupport")]
+    [DataRow(6, "Unknown Vendor", "PCI\\VEN_9999&DEV_0001", "EnableGreenEthernet")]
+    [DataRow(6, "Unknown Vendor", "PCI\\VEN_9999&DEV_0001", "GigaLite")]
+    [DataRow(71, "Realtek", "PCI\\VEN_10EC&DEV_8168&SUBSYS_012310EC&REV_15\\4&ABCDEF&0&00E5", "PowerSavingMode")]
     public void TryParse_CrossMediaOrProviderProperty_IsRejected(
         int interfaceType,
         string driverProvider,
