@@ -4,6 +4,12 @@ Git のバージョン記録・コミット差分と既存の変更履歴をも�
 
 ## 未リリース
 
+## [1.0.24] — Git 記録日: 2026-09-22
+
+- Realtek製の物理Ethernet NICで、対応しているグリーンイーサネット・Gigabit Lite・Power Saving Modeをゲーム向け低遅延設定の対象に追加
+
+出典: [変更差分](https://github.com/1llum1n4t1s/Shisui/compare/release/1.0.23...release/1.0.24)。
+
 ## [1.0.23] — Git 記録日: 2026-09-21
 
 - おまかせ高速化設定とメンテナンス画面から、現在の電源プランのPCI Express省電力をAC接続時だけ無効化できるようにした
