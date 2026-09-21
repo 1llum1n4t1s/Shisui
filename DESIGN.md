@@ -95,6 +95,9 @@ manifest と署名済み MSI を取得します。
 - `ICommandExecutor` は配列ではなく整形済み引数文字列を受け取ります。`netsh` が生のコマンドラインを
   独自解析するため、adapter 名の `name="..."` を .NET の `ArgumentList` で再エスケープしません。
 - DNS アドレスはコマンド生成前に IPv4/IPv6 として検証し、文字列引数へ埋め込む値の引用符を拒否します。
+- PowerShell でアダプター名を扱うときは、`Get-NetAdapter -Name` のワイルドカード解釈へ直接渡さず、
+  全アダプターから大文字小文字を区別しない完全一致で一意に解決します。後続 cmdlet の `-Name` へ渡す場合も
+  ワイルドカードをエスケープし、意図しない複数アダプターの読み取り・変更を防ぎます。
 - Windows の現在値はローカライズされた `netsh` 表示を解析せず、PowerShell で固定した `KEY=VALUE`
   または XML を解析します。標準出力は raw byte を同時に読み、厳密 UTF-8、次に OEM code page の順で復号します。
   例外として RACK/TLP の変更不要判定だけは、PowerShell に値がないため確認済みの日英ラベルを限定解析します。
