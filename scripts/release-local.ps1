@@ -1,4 +1,4 @@
-# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
+﻿# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
 #
 # SimplySign (Certum クラウド署名) は Desktop 接続 + スマホトークンが必要で
 # GitHub Actions からは署名できないため、リリースは本スクリプトでローカル実行する。
@@ -25,9 +25,9 @@ Set-StrictMode -Version Latest
 # リリースの再現性と set-msi-program-files-location.ps1 の前提 (1.2.0 の MSI レイアウト) を保つため、
 # vpk はリポジトリ内で明示的に固定する (Lumin4ti と同方式)。
 # 更新時は公式 NuGet の安定版を確認し、-SkipUpload で署名成果物を検証してから変更する。
-$VpkVersion = '1.2.0'
+$VpkVersion = '1.2.161'
 Write-Host "vpk 固定バージョン: $VpkVersion"
-$WranglerVersion = '4.136.1'        # サプライチェーン対策でバージョン固定
+$WranglerVersion = '4.144.0'        # サプライチェーン対策でバージョン固定
 $Bucket = 'shisui-updates'
 $BaseUrl = 'https://shisui.kagayoi.com'
 $AccountId = '10901bfadbf1005164774a7350082985'
@@ -133,6 +133,7 @@ foreach ($runtime in $Runtimes) {
     Invoke-Native "vpk pack ($runtime)" {
         vpk pack `
             --packId Shisui `
+            --runtime $runtime `
             --packVersion $version `
             --packTitle 'Shisui' `
             --packAuthors 'Kagayoi' `

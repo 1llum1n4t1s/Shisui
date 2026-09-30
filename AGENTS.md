@@ -155,7 +155,7 @@ need separate Apple notarization and is not set up).
   exists, the trusted PerMachine startup reconstructs the missing cleanup marker for the exact
   `%LocalAppData%\Shisui` root and performs the same cleanup/retry flow. User settings/logs stay in
   `%APPDATA%\Shisui` and survive the migration.
-  Velopack 1.2.0 currently emits a PerMachine MSI whose `INSTALLFOLDER` is directly under `TARGETDIR`, which Windows
+  Velopack 1.2.0 emitted a PerMachine MSI whose `INSTALLFOLDER` is directly under `TARGETDIR`, which Windows
   resolves as `C:\Shisui` despite the documented Program Files behavior. `release-local.ps1` therefore runs
   `set-msi-program-files-location.ps1` after `vpk pack`, rewrites the MSI Directory table to
   `ProgramFiles64Folder\Shisui`, and re-signs the modified MSI before signature verification/upload. The in-app
@@ -176,7 +176,7 @@ need separate Apple notarization and is not set up).
   dialog is skipped — that is expected. Shisui is Native AOT; app-owned JSON serialization uses
   `ShisuiJsonContext`, and update/package changes must pass the win-x64 publish in `release-local.ps1 -SkipUpload`.
   Velopack is referenced directly (not via the dialog package's transitive ref) since `Program.cs`/`UpdateService`
-  use it. The Velopack package and `vpk` CLI both pin 1.2.0; `VelopackUpdateDialog.Avalonia` is pinned separately.
+  use it. The Velopack package and `vpk` CLI both pin 1.2.161; `VelopackUpdateDialog.Avalonia` is pinned separately.
   The `vpk` CLI in `release-local.ps1` is **not resolved-latest**: `set-msi-program-files-location.ps1` rewrites
   the MSI Directory table against 1.2.0's layout, so a silently newer vpk could break the rewrite — bump the
   `Velopack` package and `$VpkVersion` together, verifying with `-SkipUpload` first. The dialog package can be
