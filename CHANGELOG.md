@@ -12,7 +12,7 @@ Git のバージョン記録・コミット差分と既存の変更履歴をも�
 - 各画面の設定説明を簡潔にし、起動時の不要な設定保存と古い TCP 取得結果による表示の上書きを解消した
 - 中止済みコマンドの起動を防止し、電源設定の復旧処理が待ち続けないようにした
 
-出典: [変更差分](https://github.com/1llum1n4t1s/Shisui/compare/release/1.0.24...release/1.0.25)。
+出典: [変更差分](https://github.com/1llum1n4t1s/Shisui/compare/1f22e9e29112c4fb609c05d27c281f8e6b1e7784...a6d0779b25cbd4587ce6527fc96af2230411fce0)。
 
 ## [1.0.24] — Git 記録日: 2026-09-22
 
