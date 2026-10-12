@@ -38,6 +38,38 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 昇格後プロセスを妨げる状態を避けます。macOS はアプリ全体を昇格せず、DNS 変更とキャッシュ消去だけを
 `osascript` 経由で管理者実行します。
 
+Release 版は UI 作成前にプロセス AppUserModelID を `velopack.Shisui` に設定し、
+インストール済みショートカットと一致させます。Debug 版はこれを省略し、
+Windows が開発版のタスクバーアイコンを製品ショートカットから解決することを避けます。
+ネットワーク変更はシステム全体に及ぶため、実行時昇格は Debug 版でも行います。
+
+### インストール移行の信頼境界
+
+`WindowsPerMachineMigration` は旧 `%LocalAppData%\Shisui` 版を昇格する前に署名済み MSI へ移行します。
+キャンセル時は終了し、ユーザー書込み可能な旧バイナリを管理者実行し続けません。
+`ExecutableTrustVerifier` は System32 の WinVerifyTrust を使い、期待する publisher CN とチェーン全体の
+失効状態を検証します。ダウンロードした MSI は Online、ローカル実行ファイルは CacheOnly を使い、
+証明書は別のファイル読込みではなく検証済み trust chain から取得します。
+MSI の同一ハンドルを署名検証から `msiexec` 終了まで保持する条件は「重要な不変条件」に示します。
+
+信頼済み PerMachine 版は旧 `Update.exe` を実行せず、再解析ポイントを辿らない限定的な清掃を行います。
+HKLM の安定実行ファイル登録、`.msi-installed`、現在の実行場所と署名 publisher が一致する場合だけ
+旧ルートを扱います。MSI を直接入れた場合も、旧ルートに `Update.exe` や `packages` だけが残る場合も
+同じ判定を使います。ロックされた項目以外の清掃を進め、pending marker と HKCU RunOnce で残りを再試行します。
+旧実行ファイル・パッケージ・HKCU アンインストール登録・個人用ショートカットを整理し、
+`%APPDATA%\Shisui` の設定とログは保持します。
+管理者指定の独自インストール先は HKLM 登録・marker・署名の一致で受け入れ、勝手に移動しません。
+
+誤配置修復は確認済みの `C:\Shisui` と `Program Files\ゆろち\Shisui` だけを対象にし、
+同意後に固定配信元の署名済み MSI で `Program Files\Shisui` へ移します。
+MSI 実行前に正確な旧ルートを管理者書込み限定の HKLM marker へ記録し、RunOnce で清掃を引き継ぎます。
+同じ ProductCode の保守が何も変更しなければ `REINSTALL=ALL REINSTALLMODE=vamus` で再実行します。
+
+旧 `StartMenu\ゆろち\Shisui.lnk` は更新フックでルートへ移し、通常起動でも再試行します。
+既存ルートのショートカットは上書きせず、旧フォルダーは空のときだけ取り除きます。
+移動と旧 PerUser 清掃は Programs フォルダーへ再帰的な `SHChangeNotify(SHCNE_UPDATEDIR)` を送り、
+Windows Start の重複キャッシュを更新します。
+
 ### ネットワーク操作
 
 1. ViewModel が入力と選択状態を固定し、ViewModel または複合操作を担う service が変更操作の共有
@@ -86,10 +118,29 @@ p95は成功応答のnearest-rank、ジッターは連続成功間のRTT差の�
 `ShisuiJsonContext` のソース生成メタデータだけを使います。更新 URL と channel は `[JsonIgnore]` の
 読み取り専用値であり、利用者の `settings.json` から外部ホストへ差し替えられません。
 
-Windows リリースはローカルで win-x64 Native AOT publish、Velopack PerMachine MSI 生成、
-`ProgramFiles64Folder\Shisui` への配置修正、Authenticode 署名、R2 公開を行います。
-更新クライアントと移行処理は、固定された R2 カスタムドメイン `https://shisui.kagayoi.com` から
-manifest と署名済み MSI を取得します。
+`UpdateService` は固定配信元の `SimpleWebSource` と `UpdateManager` を構築し、
+インストール版でだけ manager を返します。確認・ダウンロード・適用 UI は
+`VelopackUpdateDialog.Avalonia` が担当し、`VersionViewModel` が owner と表示タイミングを管理します。
+日本語の `ShisuiUpdateStrings` とアクセント `#0A84FF` を使い、
+スキップ対象は `AppSettings.IgnoreUpdateTag` に保存します。手動確認は最新でも結果を表示します。
+起動時確認は `CheckForUpdatesOnStartup` に従い、MainWindow が確定するよう
+`Dispatcher.UIThread.Post(Background)` で遅延させます。開発・未インストール版では確認をスキップします。
+
+Windows リリースはローカルで win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
+生成、`ProgramFiles64Folder\Shisui` への Directory 表正規化、Authenticode 再署名・検証を行います。
+この正規化は旧 Velopack の `TARGETDIR\INSTALLFOLDER` 配置問題を防ぎ、移行時の
+`VELOPACK_INSTALLDIR` 指定も同じ配置を補強します。更新と CLI の固定バージョンを揃え、
+MSI レイアウトの変化を署名済み配布経路で検証する理由です。
+
+配信元は R2 バケット `shisui-updates` の `https://shisui.kagayoi.com` です。
+channel は `win`、manifest は `releases.win.json`、移行用の固定ファイルは `Shisui-win.msi` です。
+GitHub Releases は配信に使いません。
+公開は配信中 metadata の退避、版付き nupkg、固定名バイナリ、更新 metadata の順です。
+Cloudflare cache purge 後に manifest 一致と固定 MSI の配信サイズを確認し、
+metadata 公開後の失敗では退避 metadata を復元して再 purge します。
+世代整理は manifest が参照する全オブジェクトと最新2版の版付き配布物を保持します。
+PerUser Setup.exe は公開対象から除外し、過去の配信物とキャッシュは MSI の伝播成功後にだけ整理します。
+署名認証と実行コマンドは [AGENTS.md](AGENTS.md#auto-update--release) を参照してください。
 
 ## 重要な不変条件
 
