@@ -26,6 +26,13 @@ pwsh scripts/release-local.ps1 -SkipUpload
 
 No RID-locked `packages.lock.json` is used, so there is no `--no-restore` dance for local builds. The release
 script (`scripts/release-local.ps1`) does its own RID-locked self-contained publish; it does not touch a lockfile.
+Release output defaults to a unique user-Temp `Codex\Shisui\release-<id>` directory, with signed packages
+under `packages` and intermediate build output under `build`. To select it explicitly, use `-WorkDirectory`
+with a path below user-Temp `Codex\Shisui`; the script rejects repository/Codex-home paths, reparse points,
+and path components named `artifacts`. Reusing an existing work directory requires the external
+`~/.codex/scripts/CodexCleanup.psm1` helper. The script retains local output after completion; inspect and
+clean it through the applicable cleanup procedure once it is no longer needed. `-UseEnvironmentalAotTools`
+passes `IlcUseEnvironmentalTools=true` to publish only when using an already configured native toolchain.
 Native AOT is enabled repository-wide through `Directory.Build.props`. When adding serialized application models,
 register them in `ShisuiJsonContext`; reflection-based JSON paths can fail only at publish/runtime even when a normal
 build succeeds. Use `pwsh scripts/release-local.ps1 -SkipUpload` to verify the actual win-x64 AOT distribution path.

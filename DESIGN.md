@@ -15,7 +15,7 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 
 | コンポーネント | 責務 | 境界 |
 | --- | --- | --- |
-| `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは `*Service` と executor に閉じ込める |
+| `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは service、executor、ネイティブ API 実装に閉じ込める |
 | `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
 | `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
 | `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、R2 公開・検証・世代整理 | ローカル署名環境と明示的なリリース操作を前提にする |
@@ -74,8 +74,9 @@ Windows Start の重複キャッシュを更新します。
 
 1. ViewModel が入力と選択状態を固定し、ViewModel または複合操作を担う service が変更操作の共有
    `INetworkMutationGate` リースを取得します。
-2. OS 非依存インターフェースの service が、純粋な builder/catalog でコマンドを生成します。
+2. Core のインターフェースを実装する service が、純粋な builder/catalog でコマンドを生成します。
 3. executor が外部プロセスを実行し、service または純粋な parser が結果をモデルへ変換します。
+   Winsock 登録の検査と WinHTTP キャッシュ操作は、専用の API 抽象を介して Windows ネイティブ API を呼びます。
 4. executor が実行時点の開始・終了、所要時間、終了コード、標準出力・標準エラーをファイルへ記録します。
    ViewModel は従来の簡潔な画面ログを維持し、通知を実行IDで関連付けます。適用後確認などの合成結果は
    成功・失敗を問わず両方の出力をファイルへ記録します。
@@ -84,10 +85,9 @@ Windows Start の重複キャッシュを更新します。
 ViewModel 横断で直列化します。読み取り専用の状態取得と診断はゲートを占有しません。
 「おまかせ高速化設定」は同じリース内で条件付き Winsock リセットと WinHTTP 自動プロキシキャッシュ消去を先に行い、選択 NIC の DHCP 解放・再取得、DNS、許可リスト化されたキャッシュ処理と UDP オフロード既定化・PCI Express 省電力の AC 時無効化、TCP 既定化と BBR2・RACK/TLP・RSS 有効化、低遅延を優先する RSC 無効化、選択物理 NIC のゲーム向け設定、
 切断済みデバイス整理を順番に実行し、接続名を参照する処理が終わった後にだけ名前整理を行います。
-ゲーム向け NIC 設定では対応する標準プロパティの RSS・LSOv2 IPv4/IPv6 を 1、IP IPv4・TCP/UDP IPv4/IPv6 のチェックサムオフロードを 3（送受信有効）にします。
-元値と目標値の対応を確認し、変更前の値を保存してから書き込みます。従来の割り込み調整・省電力の目標値 0 と、項目別の復元競合判定は維持します。
 Wi-Fi の電源設定は現在のプランの AC 値だけを最大パフォーマンスへ変更し、DC 値を読み戻して保持を確認します。
-変更前の AC 値は再適用でも上書きせず、メンテナンスの復元操作で戻せます。未確認の設定や変更中のプラン切替は成功として扱いません。
+変更前の AC 値は電源プラン GUID ごとに AppSettings の `WifiPowerPlanSnapshots` へ保存し、再適用でも上書きせず、メンテナンスの復元操作で戻せます。
+復元時に現在値が適用値・元値のどちらでもない場合は外部変更を保護します。未確認の設定や変更中のプラン切替は成功として扱いません。
 Winsock SPI で非表示・単独 LSP を含む登録を列挙し、64 ビット OS では 32 ビット側も確認します。
 両カタログを完全に確認して全件が基底プロバイダーの場合だけリセットします。LSP があれば保護して省略し、確認不能は失敗として残します。
 手動メンテナンスの Winsock リセットは従来どおりです。条件付き修復は送信自動調整・TCP/NIC 設定より先に実行します。
@@ -113,6 +113,8 @@ PCI Express は現在の電源プランのリンク状態の電源管理だけ�
 ### ゲーム向け NIC 設定
 
 Windows専用のゲーム向けNIC設定は「おまかせ高速化設定」に含めます。個別適用と保存した元の値への復元も引き続き利用できます。
+物理 Ethernet/Wi-Fi の対応する標準プロパティの RSS・LSOv2 IPv4/IPv6 を 1、IP IPv4・TCP/UDP IPv4/IPv6 のチェックサムオフロードを 3（送受信有効）にします。
+二値項目は 0/1 の両方、チェックサム項目は元値と目標値がドライバーの対応値に含まれることを確認します。受信処理や CPU 負荷への効果と、ゲーム・WAN の遅延改善は区別します。
 物理Ethernetの `*InterruptModeration` / `*EEE`、物理Wi-Fiの `*InterruptModeration` を、対応値を確認して無効化します。
 さらに、プロバイダー名またはPCI/USBベンダーIDからRealtek製と確認できる物理Ethernetでは、プロパティが存在して0/1をサポートする場合に `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` を扱います。これらの0/1定義はRTL8168HのINFで確認しています。
 ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
@@ -173,7 +175,7 @@ PerUser Setup.exe は公開対象から除外し、過去の配信物とキャ�
   未知の言語・不完全な出力を有効と推測せず、設定コマンドの失敗を成功へ置き換えません。
 - Windows の外部コマンドは既知のシステムコマンドだけを絶対パスへ解決し、未知の相対実行ファイルを拒否します。
 - executor のキャンセル時と開始後の例外時は子プロセスツリー全体を終了させ、変更コマンドをバックグラウンドへ残しません。
-- builder、catalog、parser は OS を呼ばない純粋処理として維持します。OS アクセスは service と executor の責務です。
+- builder、catalog、parser は OS を呼ばない純粋処理です。OS アクセスは service、executor、専用のネイティブ API 実装の責務です。
 - `INetworkMutationGate` は非再入です。複合操作は外側で一度だけ取得し、内側から再取得しません。
 - 公式 DNS プリセットの IP、DoH template、DoT host は一体の契約です。特に Cloudflare のフィルタ段階ごとの
   hostname を標準 hostname へ置き換えません。NextDNS とカスタム設定には固定の暗号化 DNS endpoint を与えません。
