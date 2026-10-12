@@ -15,7 +15,9 @@
 [CmdletBinding()]
 param(
     [switch]$SkipUpload,
-    [string[]]$Runtimes = @('win-x64')
+    [string[]]$Runtimes = @('win-x64'),
+    [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) "Codex\Shisui\release-$([Guid]::NewGuid().ToString('N'))"),
+    [switch]$UseEnvironmentalAotTools
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,9 +51,29 @@ $RuntimeMatrix = @{
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
-$WorkDir = Join-Path $RepoRoot 'local-release'
-$ArtifactsDir = Join-Path $WorkDir 'artifacts'
+$TemporaryRoot = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'Codex\Shisui'))
+$WorkDir = [IO.Path]::GetFullPath($WorkDirectory)
+if (-not $WorkDir.StartsWith($TemporaryRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw '作業ディレクトリはユーザー Temp の Codex\Shisui 配下に指定してください。'
+}
+$forbiddenRoots = @($RepoRoot, (Join-Path $env:USERPROFILE '.codex'))
+if ($env:CODEX_HOME) { $forbiddenRoots += [IO.Path]::GetFullPath($env:CODEX_HOME) }
+foreach ($root in $forbiddenRoots) {
+    if ($WorkDir.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'リポジトリまたは Codex ユーザーディレクトリを作業場所にはできません。'
+    }
+}
+for ($cursor = $WorkDir; $cursor; $cursor = Split-Path -Parent $cursor) {
+    if ((Split-Path -Leaf $cursor) -ieq 'artifacts' -or
+        ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint))) {
+        throw '禁止された名前または再解析ポイントを含む作業ディレクトリです。'
+    }
+}
+$ArtifactsDir = Join-Path $WorkDir 'packages'
+$BuildOutputDir = Join-Path $WorkDir 'build'
 $RollbackDir = Join-Path $WorkDir 'rollback-previous'
+$taskKey = [IO.Path]::GetRelativePath($TemporaryRoot, $WorkDir).Split([IO.Path]::DirectorySeparatorChar)[0]
+$CleanupLedgerDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Codex\TaskArtifacts\Shisui\$taskKey\cleanup"
 
 function Invoke-Native {
     param([string]$Description, [scriptblock]$Block)
@@ -101,8 +123,19 @@ if (-not $SkipUpload) {
     $env:CLOUDFLARE_ACCOUNT_ID = $AccountId
 }
 
-if (Test-Path $WorkDir) { Remove-Item $WorkDir -Recurse -Force }
+if (Test-Path -LiteralPath $WorkDir) {
+    Import-Module (Join-Path $env:USERPROFILE '.codex/scripts/CodexCleanup.psm1') -ErrorAction Stop
+    Remove-CodexItem -LiteralPath $WorkDir -AllowedRoot $TemporaryRoot -LedgerRoot $CleanupLedgerDir
+}
 New-Item -ItemType Directory -Path $ArtifactsDir -Force | Out-Null
+$toolTemp = Join-Path $WorkDir 'tool-temp'
+New-Item -ItemType Directory -Path $toolTemp -Force | Out-Null
+$env:TEMP = $toolTemp
+$env:TMP = $toolTemp
+$env:NPM_CONFIG_CACHE = Join-Path $WorkDir 'npm-cache'
+$env:WRANGLER_LOG_PATH = Join-Path $WorkDir 'wrangler-logs'
+$env:WRANGLER_SEND_METRICS = 'false'
+[string[]]$aotToolArgs = if ($UseEnvironmentalAotTools) { @('-p:IlcUseEnvironmentalTools=true') } else { @() }
 
 # ---- 1. ビルド + 署名付きパッケージング (RID ごと) ----
 foreach ($runtime in $Runtimes) {
@@ -115,13 +148,15 @@ foreach ($runtime in $Runtimes) {
     Write-Host "== restore: $runtime ==" -ForegroundColor Cyan
     Invoke-Native "dotnet restore ($runtime)" {
         dotnet restore src/Shisui.UI/Shisui.UI.csproj -r $runtime `
-            -p:SelfContained=true -p:OS=Windows_NT
+            -p:SelfContained=true -p:OS=Windows_NT -p:Configuration=Release `
+            -p:UseArtifactsOutput=true "-p:ArtifactsPath=$BuildOutputDir"
     }
 
     Write-Host "== publish: $runtime ==" -ForegroundColor Cyan
     Invoke-Native "dotnet publish ($runtime)" {
         dotnet publish src/Shisui.UI/Shisui.UI.csproj -c Release -r $runtime `
-            --self-contained true --no-restore -p:OS=Windows_NT -o $publishDir
+            --self-contained true --no-restore -p:OS=Windows_NT -o $publishDir `
+            -p:UseArtifactsOutput=true "-p:ArtifactsPath=$BuildOutputDir" @aotToolArgs
     }
 
     if (-not (Test-Path (Join-Path $publishDir 'Shisui.UI.exe'))) {
@@ -177,6 +212,7 @@ if ($SkipUpload) {
 }
 
 # ---- 1.5 現行配信メタデータの退避 ----
+Set-Location $WorkDir
 # 新しい版を公開した直後に検証が失敗した場合、固定URLのメタデータだけを直前版へ戻せるようにする。
 # 直前 manifest が参照する nupkg は後段の cleanup でも保持する。
 New-Item -ItemType Directory -Path $RollbackDir -Force | Out-Null
