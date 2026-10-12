@@ -10,7 +10,7 @@
     <StackPanel Margin="8,0">
       <TextBlock Classes="h1" Text="自動最適化" />
       <TextBlock Classes="caption" TextWrapping="Wrap" Margin="4,0,4,12"
-                 Text="推奨状態へ整えるクイック最適化と、使い込んだPCに残ったネットワーク設定の診断をここで実行できます。クイック最適化後はPCを再起動してください。" />
+                 Text="低遅延設定の一括適用と、通信設定の診断を行います。適用後は PC を再起動してください。" />
 
       <primitives:HeaderedContentControl Header="クイック最適化">
         <StackPanel Spacing="10">
@@ -36,7 +36,7 @@
 
           <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10">
             <StackPanel Spacing="8">
-              <TextBlock Text="通信設定と切断済み登録をまとめて整えます" FontWeight="SemiBold" TextWrapping="Wrap" />
+              <TextBlock Text="低遅延向けのNIC・通信設定をまとめて適用します" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding DnsSettings.OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
               <Button Content="おまかせ高速化設定" Command="{Binding RunQuickOptimizationCommand}"
                       Classes="accent" IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
@@ -46,15 +46,15 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
-      <primitives:HeaderedContentControl Header="ゲーム優先・有線／Wi-Fiの低遅延設定"
+      <primitives:HeaderedContentControl Header="ゲーム向けNIC設定の個別適用・復元"
                                          IsVisible="{Binding IsGamingProfileAvailable}">
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="選択した物理NICで対応している項目だけ無効にします。有線は割り込み調整とEEE、Realtek製NICは対応している場合にグリーンイーサネット・Gigabit Lite・Power Saving Modeも対象です。Wi-Fiは標準の割り込み調整（存在する場合）と、対応するMediaTek製PCI無線NICの省電力・U-APSDが対象です。存在しないメーカー独自設定と仮想NICは変更しません。" />
+                     Text="対応する物理 NIC の割り込み調整・省電力を無効、RSS・LSO・チェックサムオフロードを有効にします。対象項目は NIC により異なります。" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="処理待ちや省電力による遅延を減らすための設定です。CPU負荷・消費電力・発熱が増え、バッテリー駆動時間が短くなる場合があります。電波状態やアクセスポイント次第では逆効果になり、改善は保証されません。" />
+                     Text="CPU 負荷・消費電力・発熱が増え、バッテリー駆動時間が短くなる場合があります。" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="元の値は適用前に保存します。接続を切断しないようNICの再起動は行わず、反映にはPCを再起動してください。表示する確認結果は保存値で、稼働中の反映やゲームの改善を保証するものではありません。RSS・オフロード・リンク速度・バッファー・周波数帯・チャンネル幅・ローミングは変更しません。" />
+                     Text="変更前の値を保存します。反映には PC の再起動が必要です。復元できるのは NIC 設定だけです。" />
           <WrapPanel Orientation="Horizontal">
             <Button Content="ゲーム向け設定を保存" Command="{Binding ApplyGamingProfileCommand}"
                     Classes="accent" IsEnabled="{Binding !IsOperationRunning}" Margin="0,0,8,6" />
@@ -63,7 +63,7 @@
           </WrapPanel>
           <TextBlock Text="{Binding GamingProfileStatusText}" Classes="caption" TextWrapping="Wrap" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="比較方法: 変更前と再起動後に「ネットワーク診断」で同じ相手へ100回ずつ測定し、損失率・p95・ジッターを比較してください。アイドル時と普段のゲーム・通信負荷時を分け、悪化したら元の値へ戻して再起動します。ICMPはゲーム通信そのものではなく、ルーターや回線側の混雑をこの設定だけで解消することはできません。" />
+                     Text="変更前と再起動後に、同じ相手・負荷で100回ずつ測定し、損失・p95・ジッターを比較します。悪化したら復元して再起動してください。ICMP 計測はゲーム通信の実測ではありません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -71,7 +71,7 @@
                                          IsVisible="{Binding IsLegacyDiagnosticsAvailable}">
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="選択中NICのエラー・破棄パケット、ドライバー日付、問題デバイス、切断済みNIC、古い送信・オフロード設定を読み取り専用で確認します。診断だけでは設定を変更しません。" />
+                     Text="選択 NIC のエラー・ドライバー・問題デバイス・古い設定を調べます。設定は変更しません。" />
           <Button Content="診断する" Command="{Binding RunLegacyNetworkDiagnosticsCommand}"
                   IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
           <TextBlock Text="{Binding LegacyDiagnosticsStatusText}" Classes="caption" TextWrapping="Wrap" />
@@ -99,7 +99,7 @@
             <StackPanel Spacing="6">
               <TextBlock Text="修復先" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="切断済みデバイスは「DNS設定」の「接続名の連番を整理」、Winsockカタログの破損が疑われる場合は「メンテナンス」タブから修復できます。IPスタックやネットワークコンポーネントの全初期化は、ほかの手段で直らない場合だけ使用してください。" />
+                         Text="切断済み登録は「DNS設定」で整理し、Winsock は「メンテナンス」で修復できます。IP・ネットワーク全体の初期化は最終手段です。" />
               <Button Content="選択中NICの詳細設定を工場出荷値へ戻す"
                       Command="{Binding ResetSelectedNicAdvancedPropertiesCommand}"
                       Classes="danger" IsVisible="{Binding CanResetSelectedNic}"

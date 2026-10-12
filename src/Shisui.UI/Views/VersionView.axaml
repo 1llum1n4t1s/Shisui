@@ -20,7 +20,7 @@
                 <TextBlock Text="Shisui" FontSize="20" FontWeight="Bold" />
                 <TextBlock Text="止水" FontSize="16" VerticalAlignment="Center" Foreground="{DynamicResource Brush.FG2}" />
               </StackPanel>
-              <TextBlock Text="ネットワークを凪いだ状態へ整えるツール" Classes="caption" />
+              <TextBlock Text="ネットワーク設定ツール" Classes="caption" />
               <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
                 <TextBlock Text="バージョン:" Classes="caption" />
                 <TextBlock Text="{Binding VersionText}" Classes="caption" />

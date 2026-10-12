@@ -13,7 +13,7 @@
       <primitives:HeaderedContentControl Header="対象ホスト">
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="IP アドレスまたはホスト名を指定して、簡易疎通テスト (ping) やトレースルートを行えます。" />
+                     Text="IP アドレスまたはホスト名を指定します。" />
           <TextBlock Text="よく使う対象" FontWeight="SemiBold" />
           <ComboBox ItemsSource="{Binding TargetPresets}"
                     SelectedItem="{Binding SelectedTargetPreset}"
@@ -46,7 +46,7 @@
           </Grid>
           <TextBlock Text="{Binding StatusText}" Classes="caption" TextWrapping="Wrap" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="ゲーム向け比較は同じ相手・同じ負荷で100回を目安に複数回実施してください。通信経路はOSが選ぶため、自動最適化タブのNIC選択とは連動しません。損失にはICMPの応答制限も含まれ、ゲームのパケットロスとは限りません。" />
+                     Text="同じ相手・負荷で、100回を目安に複数回比較してください。経路はOSが選び、最適化のNIC選択とは連動しません。ゲーム通信の実測ではなく、ICMPの応答制限も損失に含みます。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -54,7 +54,7 @@
         <StackPanel Spacing="8">
           <TextBlock Text="{Binding PingResultText}" TextWrapping="Wrap" FontFamily="Consolas,Menlo,monospace" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Windowsではp95（成功応答の95パーセンタイル）とジッター（連続した成功応答間のRTT差の絶対値の平均）を表示します。失敗をまたぐ差は含めません。取得なしは0ではありません。結果はファイルログにも保存します。" />
+                     Text="Windowsのp95は成功応答の95パーセンタイル、ジッターは連続した成功応答のRTT差（絶対値）の平均です。「取得なし」は0ではありません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 

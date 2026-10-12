@@ -9,7 +9,7 @@
     <StackPanel Margin="8,0,8,12">
       <TextBlock Classes="h1" Text="メンテナンス" />
       <TextBlock Classes="caption" TextWrapping="Wrap" Margin="4,0,0,12"
-                 Text="赤いボタンのコマンドは既存の設定を初期化するなど影響が大きいものです。" />
+                 Text="赤いボタンは設定の初期化や通信断を伴います。" />
 
       <ItemsControl ItemsSource="{Binding Categories}">
         <ItemsControl.ItemTemplate>

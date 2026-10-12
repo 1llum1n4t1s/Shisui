@@ -103,14 +103,14 @@
               <CheckBox Content="DNS over TLS (DoT) を有効にする" IsChecked="{Binding UseDot}" IsEnabled="{Binding !IsBusy}" VerticalAlignment="Center" />
             </StackPanel>
             <TextBlock Classes="caption" TextWrapping="Wrap"
-                       Text="※ Windows に DoT の登録状況を読み取る手段が無いため、このチェックボックスは実際の OS 状態を反映しません (適用のたびに有効化/無効化コマンドを実行するだけで、プリセットを切り替えるたびや次回起動時には未チェックに戻ります)。" />
+                       Text="DoT の登録状態は表示できません。このチェックは適用時の変更指示で、プリセット切替・次回起動でオフに戻ります。" />
           </StackPanel>
 
           <TextBlock IsVisible="{Binding ShowDohDotInteractionNote}" Classes="caption" TextWrapping="Wrap" Margin="0,4,0,0"
-                     Text="ℹ 両方チェックしても構いません。同じ IP アドレスに対する DoH と DoT の登録は互いに上書きせず共存し、Windows はどちらか一方だけを優先するのではなく両方を実際に使用します (実機のパケットキャプチャで確認済み)。ただし暗号化そのものの効果は片方だけで十分得られるため、両方有効にする実利は大きくありません。" />
+                     Text="DoH と DoT は併用できます。通常は DoH だけで十分です。" />
 
           <TextBlock IsVisible="{Binding ShowDohDotInteractionNote}" Classes="caption" TextWrapping="Wrap" Margin="0,2,0,0"
-                     Text="ℹ 速度について: 「DoT の方が仕組み上軽量で速い」とよく言われますが、実機での応答時間計測 (平文DNS / DoH / DoT を切り替えて比較) では逆に DoH の方がわずかに速く、ばらつきも小さい結果になりました。DoH は接続を張ったまま使い回すのに対し DoT は数秒おきに接続を張り直す挙動のためと見られます。オンライン対戦ゲーム等でレイテンシのブレを避けたい場合、暗号化を使うなら DoT より DoH を選ぶことを推奨します。ただし差は数 ms 程度で、そもそも DNS の名前解決は対戦中の通信そのものには関与しないため、体感できるほどの影響は通常ありません。" />
+                     Text="DNS の暗号化は名前解決を保護する機能で、ゲーム通信の遅延を直接減らす設定ではありません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 
@@ -126,7 +126,7 @@
       <primitives:HeaderedContentControl Header="接続名の連番を整理" IsVisible="{Binding IsAdapterNameCleanupAvailable}">
         <StackPanel Spacing="10">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="PnP 上で現在接続されていないネットワークデバイスの登録をすべて削除します。セーフモード等でアダプタ一覧が空でも削除を実行でき、通常起動時にアダプタを選択している場合は「イーサネット 2」等の末尾の連番も外します。無効化しただけの現役デバイスは削除しません。取り外し中の USB LAN やドック内蔵 NIC も削除対象となり、再接続時にドライバーの再検出が行われます。連番なしの名前を別の現役アダプタが使っている場合、その名前は変更しません。" />
+                     Text="切断済み NIC の登録を全削除し、選択した接続名の連番を外します。取り外し中の USB LAN・ドックも対象です。無効化した現役 NIC は残し、再接続した機器は再検出されます。一覧が空でも実行できます。" />
           <Button Content="切断済み登録を全削除（選択時は連番も解消）"
                   Command="{Binding CleanupAdapterNameCommand}"
                   IsEnabled="{Binding !IsBusy}"

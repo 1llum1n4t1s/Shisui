@@ -71,6 +71,7 @@ public class ProcessCommandExecutor : ICommandExecutor
         using var stderrBuffer = new MemoryStream();
         try
         {
+            ct.ThrowIfCancellationRequested();
             process.Start();
             trace.Started(process);
 

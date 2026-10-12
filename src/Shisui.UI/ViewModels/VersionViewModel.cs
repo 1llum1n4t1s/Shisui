@@ -48,7 +48,7 @@ public partial class VersionViewModel : ObservableObject
         _updateService = updateService;
         _settingsService = settingsService;
         VersionText = updateService.CurrentVersion;
-        CheckForUpdatesOnStartup = settingsService.Current.CheckForUpdatesOnStartup;
+        checkForUpdatesOnStartup = settingsService.Current.CheckForUpdatesOnStartup;
         IgnoredUpdateTag = settingsService.Current.IgnoreUpdateTag ?? string.Empty;
     }
 
@@ -110,7 +110,7 @@ public partial class VersionViewModel : ObservableObject
         {
             if (manually)
             {
-                UpdateStatusText = "開発ビルドのため更新確認はスキップされます (インストール版でのみ動作)";
+                UpdateStatusText = "開発ビルドでは更新を確認できません。インストール版をご利用ください";
             }
 
             return;

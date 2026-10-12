@@ -41,6 +41,7 @@ public sealed class MacElevatedCommandExecutor : ICommandExecutor
             process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
             process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
 
+            ct.ThrowIfCancellationRequested();
             process.Start();
             trace.Started(process);
             process.BeginOutputReadLine();

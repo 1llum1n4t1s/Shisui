@@ -13,7 +13,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset CloudflareStandard = new(
         "cloudflare-standard",
         "Cloudflare (標準)",
-        "フィルタリングなし。最速志向のパブリック DNS",
+        "フィルターなし",
         new DnsServerSet("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"),
         DohTemplate: "https://cloudflare-dns.com/dns-query",
         DotHost: "cloudflare-dns.com");
@@ -21,7 +21,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset CloudflareMalwareBlock = new(
         "cloudflare-malware",
         "Cloudflare (マルウェアブロック)",
-        "既知のマルウェア配布サイトへの通信をブロック",
+        "マルウェア配布サイトをブロック",
         new DnsServerSet("1.1.1.2", "1.0.0.2", "2606:4700:4700::1112", "2606:4700:4700::1002"),
         DohTemplate: "https://security.cloudflare-dns.com/dns-query",
         DotHost: "security.cloudflare-dns.com");
@@ -29,7 +29,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset CloudflareMalwareAdultBlock = new(
         "cloudflare-malware-adult",
         "Cloudflare (マルウェア + アダルトブロック)",
-        "マルウェアに加えてアダルトコンテンツもブロック",
+        "マルウェア・アダルトサイトをブロック",
         new DnsServerSet("1.1.1.3", "1.0.0.3", "2606:4700:4700::1113", "2606:4700:4700::1003"),
         DohTemplate: "https://family.cloudflare-dns.com/dns-query",
         DotHost: "family.cloudflare-dns.com");
@@ -49,7 +49,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset Quad9 = new(
         "quad9",
         "Quad9",
-        "マルウェア・フィッシングサイトをブロック。DNSSEC 検証も既定で有効",
+        "マルウェア・フィッシングをブロック。DNSSEC 対応",
         new DnsServerSet("9.9.9.9", "149.112.112.112", "2620:fe::fe", "2620:fe::9"),
         DohTemplate: "https://dns.quad9.net/dns-query",
         DotHost: "dns.quad9.net");
@@ -64,7 +64,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset NextDns = new(
         "nextdns",
         "NextDNS (Linked IP)",
-        "カスタマイズ可能なフィルタリング DNS。要 NextDNS 側で現在の IP をアカウントにリンクする設定 (未リンクの場合は既定の無フィルタ状態で動作)",
+        "NextDNS 側で現在の IP を設定にリンクしてください。未リンクではフィルターなし",
         new DnsServerSet("45.90.28.0", "45.90.30.0", "2a07:a8c0::", "2a07:a8c1::"));
 
     /// <summary>
@@ -74,7 +74,7 @@ public static class DnsPresetCatalog
     public static readonly DnsProviderPreset Custom = new(
         "custom",
         "カスタム",
-        "IPv4 / IPv6 のアドレスを自由に指定 (ここに挙げていない DNS も設定可能)",
+        "任意の IPv4 / IPv6 DNS を指定",
         DnsServerSet.Empty);
 
     public static IReadOnlyList<DnsProviderPreset> BuiltIn { get; } =

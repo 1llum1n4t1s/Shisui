@@ -17,6 +17,7 @@ public partial class TcpTuningViewModel(
     INetworkMutationGate networkMutationGate) : ObservableObject
 {
     private int _mtuStateRequestVersion;
+    private int _tcpStateRequestVersion;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
@@ -283,9 +284,15 @@ public partial class TcpTuningViewModel(
 
     private async Task LoadStateAsync()
     {
+        var requestVersion = Interlocked.Increment(ref _tcpStateRequestVersion);
         try
         {
             var snapshot = await tcpTuningService.GetCurrentStateAsync();
+            if (requestVersion != Volatile.Read(ref _tcpStateRequestVersion))
+            {
+                return;
+            }
+
             Bbr2StateText = FormatBbr2(snapshot.Bbr2);
             RscStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.Rsc));
             EcnStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.EcnCapability));
@@ -300,6 +307,11 @@ public partial class TcpTuningViewModel(
         }
         catch
         {
+            if (requestVersion != Volatile.Read(ref _tcpStateRequestVersion))
+            {
+                return;
+            }
+
             // 状態取得の失敗は致命的ではない (設定操作自体はできる) ので握りつぶし、不明表示にする。
             Bbr2StateText = RscStateText = EcnStateText = TimestampsStateText = RssStateText = FastOpenStateText = AutoTuningStateText = "⚪ 不明";
         }

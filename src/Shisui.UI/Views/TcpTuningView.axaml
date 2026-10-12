@@ -21,9 +21,9 @@
             </StackPanel>
           </Border>
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="「BBR2 を有効化」は、5 つのテンプレート (Internet / InternetCustom / Datacenter / DatacenterCustom / Compat) の輻輳制御を BBR2 に切り替え、あわせて IPv4 / IPv6 のループバック Large MTU を無効化します。「既定値に戻す」は輻輳制御を既定に戻し、ループバック Large MTU を有効化します。" />
+                     Text="PC 全体の TCP 輻輳制御を BBR2 にし、IPv4 / IPv6 のループバック Large MTU を無効化します。既定値に戻すと、Large MTU は有効になります。" />
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="※ 上のバッジは輻輳制御アルゴリズム (＝BBR2 本体) の状態です。ループバック Large MTU の現在値は Windows の照会 API に公開されておらず取得できないため、バッジには含めていません (設定操作は上のボタンで行われます)。" />
+                     Text="表示は輻輳制御の状態のみです。ループバック Large MTU の現在値は取得できません。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Content="BBR2 を有効化" Command="{Binding EnableBbr2Command}" IsEnabled="{Binding !IsOperationRunning}" />
             <Button Content="既定値に戻す" Command="{Binding RevertBbr2Command}" IsEnabled="{Binding !IsOperationRunning}" />
@@ -34,7 +34,7 @@
       <primitives:HeaderedContentControl Header="TCP 損失回復 (RACK / TLP)">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Internet / InternetCustom / Datacenter / DatacenterCustom の RACK と Tail Loss Probe を確認し、両方が既に有効なら変更せず維持します。それ以外は有効化を試み、対応していない環境では失敗理由を記録します。おまかせ高速化設定でも実行します。Compat の損失回復設定は変更しません。" />
+                     Text="TCP のパケット損失からの回復を早めます。有効な設定は維持し、Compat は変更しません。" />
           <Button Content="RACK / TLP を有効化" Command="{Binding EnableLossRecoveryCommand}" IsEnabled="{Binding !IsOperationRunning}" />
         </StackPanel>
       </primitives:HeaderedContentControl>
@@ -42,13 +42,13 @@
       <primitives:HeaderedContentControl Header="高速化ツール設定の復元">
         <StackPanel Spacing="12">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="このカードでは、「おまかせ高速化設定」のうち TCP の既定化処理を個別に実行できます。おまかせ高速化設定は既定化後に BBR2 と RACK / TLP を有効化します。Windows の既定構成へ戻す場合は、BBR2 の「既定値に戻す」とこのカードの各処理を実行し、受信ウィンドウ自動調整で Normal を選んで「設定」を押してください。" />
+                     Text="Windows の既定構成へ戻すには、BBR2 と下の各設定を戻し、受信ウィンドウ自動調整を Normal に設定してください。" />
 
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP スタック全体" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="netsh int tcp reset を実行し、ユーザーや高速化ツールが構成した TCP パラメーターをまとめて Windows の既定値へ戻します。" />
+                         Text="PC 全体のカスタム TCP 設定を削除し、Windows の既定値へ戻します。" />
             </StackPanel>
             <Button Grid.Column="1" Content="全体を既定値に戻す" Command="{Binding ResetAllTcpSettingsCommand}"
                     IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
@@ -58,7 +58,7 @@
             <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP グローバル詳細設定" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="RSS、RSC、ECN、Timestamps、Initial RTO、Fast Open、HyStart、PRR など、よく変更される詳細項目を個別コマンドで既定値へ戻します。" />
+                         Text="RSS、RSC、ECN など、PC 全体の TCP 詳細設定を既定値へ戻します。" />
             </StackPanel>
             <Button Grid.Column="1" Content="詳細設定を既定値に戻す" Command="{Binding RevertGlobalOptionsCommand}"
                     IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
@@ -68,7 +68,7 @@
             <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP ACK / Nagle 関連設定" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="各インターフェースの TcpAckFrequency、TCPNoDelay、TcpDelAckTicks の明示値だけを削除し、Windows の既定動作へ戻します。反映には PC の再起動が必要です。" />
+                         Text="全アダプタの ACK 間隔・Nagle のカスタム設定を削除します。反映には PC の再起動が必要です。" />
             </StackPanel>
             <Button Grid.Column="1" Content="ACK 設定を既定値に戻す" Command="{Binding RevertLegacyTcpRegistryTweaksCommand}"
                     IsEnabled="{Binding !IsOperationRunning}" VerticalAlignment="Center" />
@@ -85,7 +85,7 @@
             </StackPanel>
           </Border>
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="TCP 受信ウィンドウのサイズを回線状況に応じて自動調整する度合いです。通常は既定 (Normal) のままで問題ありません。回線の輻輳が疑われる環境向けに制限を強める設定 (Restricted / HighlyRestricted) や、無効化 (Disabled) も選べます。" />
+                     Text="受信バッファーを回線状況に合わせて調整します。通常は Normal。制限・無効化すると受信速度が下がる場合があります。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <ComboBox ItemsSource="{Binding AutoTuningLevels}" SelectedItem="{Binding SelectedAutoTuningLevel}" Width="180" />
             <Button Content="設定" Command="{Binding SetAutoTuningLevelCommand}" IsEnabled="{Binding !IsOperationRunning}" />
@@ -97,7 +97,7 @@
       <primitives:HeaderedContentControl Header="MTU 設定の復元">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="高速化ツールなどで変更された、指定アダプタの IPv4/IPv6 MTU (最大転送単位) を標準値の 1500 に戻します。" />
+                     Text="選択したアダプタの IPv4 / IPv6 MTU を 1500 に戻します。" />
           <Grid ColumnDefinitions="*,Auto">
             <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
                       IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Stretch">
@@ -118,12 +118,12 @@
       <primitives:HeaderedContentControl Header="TCP グローバル詳細設定">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="Windows の TCP スタックのグローバル設定です。通常は既定のままで問題ありませんが、回線や環境に合わせて個別に切り替えられます。" />
+                     Text="PC 全体に適用されます。通常は既定値を使ってください。" />
           <Grid ColumnDefinitions="*,140,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="RSC (受信セグメント結合)" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="受信した小さな TCP セグメントを NIC 側でまとめてから OS に渡し、CPU 負荷を下げます。高速回線向け。パケットキャプチャや一部の仮想環境で問題が出る場合は無効化します。" />
+                         Text="受信パケットをまとめて CPU 負荷を下げます。パケットキャプチャや仮想環境で問題が出る場合は無効化します。" />
             </StackPanel>
             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RscStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="0" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rsc:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
@@ -132,7 +132,7 @@
             <StackPanel Grid.Row="1" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="ECN Capability (明示的輻輳通知)" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="ルーターがパケットを破棄する前に「混雑」を通知でき、実際のロスが起きる前に送信速度を抑えられます。ECN を正しく扱わない古い機器と相性問題が出る場合は無効化します。" />
+                         Text="混雑通知に応じて送信速度を抑え、パケット損失を減らします。古い機器と相性問題が出る場合は無効化します。" />
             </StackPanel>
             <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding EcnStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="1" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="EcnCapability:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
@@ -141,7 +141,7 @@
             <StackPanel Grid.Row="2" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP Timestamps" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="パケットに送信時刻を付けて往復遅延 (RTT) を正確に測定し、高速回線での安定性を高めます。古いロードバランサーやファイアウォールと相性問題が出る場合は無効化します。" />
+                         Text="送信時刻を付けて往復遅延を測定します。古い通信機器と相性問題が出る場合は無効化します。" />
             </StackPanel>
             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimestampsStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="2" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Timestamps:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
@@ -150,7 +150,7 @@
             <StackPanel Grid.Row="3" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="RSS (受信側スケーリング)" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="受信トラフィックの処理を複数の CPU コアに分散し、高速回線で単一コアがボトルネックになるのを防ぎます。マルチコア環境向け。" />
+                         Text="受信処理を複数の CPU コアに分散し、1 コアへの負荷集中を防ぎます。" />
             </StackPanel>
             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RssStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="3" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="Rss:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
@@ -159,7 +159,7 @@
             <StackPanel Grid.Row="4" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP Fast Open" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="接続確立の待ち時間 (約 1 往復分) を省いて、繰り返し接続するサーバーへのアクセスを高速化します。現在値は Windows の照会 API に非公開のため状態バッジは「取得非対応」ですが、設定は可能です。" />
+                         Text="再接続時の待ち時間を短縮します。現在値は取得できませんが、設定は可能です。" />
             </StackPanel>
             <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FastOpenStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />
@@ -172,7 +172,7 @@
       <primitives:HeaderedContentControl Header="生の netsh 出力 (参考)">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="上のバッジ表示は PowerShell から取得したロケール非依存の状態です。より詳しい生の出力を見たい場合はこちら。" />
+                     Text="TCP 設定の詳細をコマンド出力で確認できます。" />
           <Button Content="表示 (netsh int tcp show global)" Command="{Binding ShowGlobalStatusCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
           <TextBox Text="{Binding GlobalStatusOutput}" IsReadOnly="True" FontFamily="Consolas,Menlo,monospace" AcceptsReturn="True" Height="160" TextWrapping="NoWrap" />
         </StackPanel>

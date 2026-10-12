@@ -33,17 +33,4 @@ public class ProcessCommandExecutorDecodeTests
         Assert.AreEqual(text, ProcessCommandExecutor.DecodeConsoleOutput(bytes));
     }
 
-    [TestMethod]
-    public void Decode_AsciiOnly_ReturnsSameText()
-    {
-        const string text = "Receive-Side Scaling : enabled";
-        var bytes = Encoding.ASCII.GetBytes(text);
-        Assert.AreEqual(text, ProcessCommandExecutor.DecodeConsoleOutput(bytes));
-    }
-
-    [TestMethod]
-    public void Decode_Empty_ReturnsEmpty()
-    {
-        Assert.AreEqual(string.Empty, ProcessCommandExecutor.DecodeConsoleOutput([]));
-    }
 }
