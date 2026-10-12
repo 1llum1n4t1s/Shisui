@@ -73,11 +73,12 @@ public static class WindowsGamingNetworkProfileParser
                 }
 
                 if (!TryGetStringArray(item, "RegistryValues", out var currentValues) || currentValues.Count != 1 ||
-                    currentValues[0] is not ("0" or "1") ||
+                    !WindowsGamingNetworkProfilePolicy.IsKnownValue(keyword, currentValues[0]) ||
                     !TryGetStringArray(item, "ValidRegistryValues", out var validValues) ||
                     validValues.Count != validValues.Distinct(StringComparer.Ordinal).Count() ||
-                    !validValues.Contains("0", StringComparer.Ordinal) ||
-                    !validValues.Contains("1", StringComparer.Ordinal))
+                    WindowsGamingNetworkProfilePolicy.GetRequiredSupportedValues(
+                        keyword, currentValues[0], WindowsGamingNetworkProfilePolicy.GetTargetValue(keyword))
+                        .Any(value => !validValues.Contains(value, StringComparer.Ordinal)))
                 {
                     error = $"{keyword} の現在値または対応値が不正です。";
                     return false;

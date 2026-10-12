@@ -9,6 +9,8 @@ namespace Shisui.UI.ViewModels;
 
 public partial class DnsSettingsViewModel : ObservableObject
 {
+    private const string RouteClearCommandId = "route-clear";
+
     private readonly INetworkAdapterService _adapterService;
     private readonly IDnsConfigurationService _dnsService;
     private readonly IDnsCacheService _cacheService;
@@ -20,6 +22,10 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IDotConfigurationService? _dotService;
     private readonly ITcpTuningService? _tcpTuningService;
     private readonly INetworkMaintenanceService? _maintenanceService;
+    private readonly IDhcpLeaseService? _dhcpLeaseService;
+    private readonly IGamingNetworkProfileService? _gamingNetworkProfileService;
+    private readonly IWinsockResetService? _winsockResetService;
+    private readonly IWinHttpCacheService? _winHttpCacheService;
     private int _adapterDetailsRequestVersion;
     private int _dohStateRequestVersion;
     private int _busyOperationCount;
@@ -99,28 +105,55 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>「おまかせ高速化設定」で NetBIOS 名前・ARP・経路キャッシュもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsCacheMaintenanceAvailable => _maintenanceService is not null;
 
+    private bool IsRouteCleanupAvailable => _maintenanceService?.GetAvailableCommands()
+        .Any(command => command.Id == RouteClearCommandId && command.IncludeInOneClickOptimization) == true;
+
     /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
     public string OneClickOptimizeDescription
     {
         get
         {
             var description = IsTcpOptimizationAvailable
-                ? "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS・NetBIOS 名前・ARP/経路キャッシュをクリアします。あわせて Winsock の送信自動調整を有効化し、他の高速化ツールによる変更を含む TCP 設定と TCP ACK 関連レジストリ値を Windows の既定状態に戻したうえで BBR2 を有効化し、ループバック Large MTU を無効化して、受信ウィンドウ自動調整を既定 (Normal) に戻します。Compat を除く 4 テンプレートで損失回復 (RACK / TLP) も有効化します (これらは選択中のアダプタに限らず PC 全体に適用されます。完了後に PC を再起動してください)。"
-                : "DNS を Cloudflare に切り替えて暗号化 (DoH) を有効にし、DNS キャッシュをクリアします。";
-
+                ? "DNS を Cloudflare に変更し、DoH と通信キャッシュの消去を適用します。PC 全体の TCP 設定を既定に戻し、BBR2・RACK/TLP・RSS を有効、RSC を無効にします。"
+                : "DNS を Cloudflare に変更し、DNS キャッシュを消去します。DoH が使える場合は有効にします。";
+            if (_winsockResetService is not null)
+            {
+                description += " LSP 登録がないことを確認できた場合だけ、Winsock を初期化します。";
+            }
+            if (_winHttpCacheService is not null)
+            {
+                description += " WinHTTP の自動検出キャッシュも消去します。プロキシ設定は変更しません。";
+            }
+            if (_dhcpLeaseService is not null)
+            {
+                description += " 選択 NIC の DHCP アドレスも再取得します。固定 IP は変更せず、一時的に通信が切れます。";
+            }
             if (IsCacheMaintenanceAvailable)
             {
-                description += " UDP の受信/送信オフロード (URO / USO) も PC 全体で Windows の既定値に戻し、現在の電源プランで PCI Express のリンク状態電源管理を電源接続時だけオフにします。バッテリー時の値は維持し、適用後に AC 値とバッテリー時の値を確認しますが、PC 全体の消費電力・発熱が増える場合があります。";
+                description += " UDP 設定を既定に戻し、AC 時は PCI Express 省電力をオフ、Wi-Fi を最大パフォーマンスにします。バッテリー時の値は維持します。";
             }
-
-            if (IsTcpOptimizationAvailable)
+            if (_gamingNetworkProfileService is not null)
             {
-                description += " 適用後は BBR2 と受信ウィンドウ (Internet) の実効値を確認します。RACK / TLP の変更と UDP はコマンド受付結果のみの確認です。回線速度の向上を保証するものではありません。";
+                description += " 対応する物理 NIC の割り込み調整・省電力を無効、RSS・LSO・チェックサムオフロードを有効にします。NIC の元の値は保存し、個別に復元できます。";
             }
-
-            return IsAdapterNameCleanupAvailable
-                ? $"{description} さらに、切断済みのネットワークデバイス登録をすべて削除し、可能なら選択中の接続名の連番も外します。取り外し中の USB LAN やドック内蔵 NIC も削除対象となり、再接続時にドライバーが再検出されます。"
-                : description;
+            if (IsAdapterNameCleanupAvailable)
+            {
+                description += " 切断済み NIC の登録を全削除し、接続名の連番を整理します。取り外し中の USB LAN・ドックも対象で、再接続時に再検出されます。";
+            }
+            if (IsRouteCleanupAvailable)
+            {
+                description += " 最後に PC 全体の経路を消去します。再起動まで通信できない場合があります。";
+            }
+            if (IsTcpOptimizationAvailable || IsCacheMaintenanceAvailable || _gamingNetworkProfileService is not null)
+            {
+                description += " CPU 負荷・消費電力・発熱が増える場合があります。";
+            }
+            if (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null || IsRouteCleanupAvailable
+                || _winsockResetService is not null)
+            {
+                description += " 完了後に PC を再起動してください。設定値の確認は遅延改善の測定を含みません。";
+            }
+            return description;
         }
     }
 
@@ -135,7 +168,11 @@ public partial class DnsSettingsViewModel : ObservableObject
         IDotConfigurationService? dotService = null,
         ITcpTuningService? tcpTuningService = null,
         INetworkMaintenanceService? maintenanceService = null,
-        INetworkAdapterNameService? adapterNameService = null)
+        INetworkAdapterNameService? adapterNameService = null,
+        IDhcpLeaseService? dhcpLeaseService = null,
+        IGamingNetworkProfileService? gamingNetworkProfileService = null,
+        IWinsockResetService? winsockResetService = null,
+        IWinHttpCacheService? winHttpCacheService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -148,6 +185,10 @@ public partial class DnsSettingsViewModel : ObservableObject
         _dotService = dotService;
         _tcpTuningService = tcpTuningService;
         _maintenanceService = maintenanceService;
+        _dhcpLeaseService = dhcpLeaseService;
+        _gamingNetworkProfileService = gamingNetworkProfileService;
+        _winsockResetService = winsockResetService;
+        _winHttpCacheService = winHttpCacheService;
 
         // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
         // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
@@ -383,7 +424,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
     /// (Windows では) NetBIOS 名前/ARP・経路キャッシュの追加クリア・TCP 詳細設定の既定化・
-    /// BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化・切断済みアダプタ登録の全削除を
+    /// BBR2 輻輳制御の有効化・受信ウィンドウ自動調整の既定化・ゲーム向け NIC 設定・切断済みアダプタ登録の全削除を
     /// まとめて行うワンクリック機能。
     /// </summary>
     internal async Task RunOneClickOptimizationAsync()
@@ -397,6 +438,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         using var diagnosticOperation = LoggerBootstrap.BeginOperation("おまかせ高速化設定", SelectedAdapter.Id);
         var results = new List<CommandExecutionResult>();
         var resultsReported = false;
+        var routeCleanupAttempted = false;
+        var winsockRepairRequested = false;
         BeginBusyOperation();
         try
         {
@@ -430,6 +473,40 @@ public partial class DnsSettingsViewModel : ObservableObject
             var preset = DnsPresetCatalog.CloudflareStandard;
             var servers = preset.Servers;
             NetworkAdapterNameCleanupResult? adapterNameCleanupResult = null;
+            MaintenanceCommandDefinition? routeClearCommand = null;
+
+            // 先に条件付き修復を済ませ、Winsock 自動調整や希望の TCP/NIC 設定を後から適用する。
+            if (_winsockResetService is not null)
+            {
+                winsockRepairRequested = true;
+                try
+                {
+                    results.Add(await _winsockResetService.ResetIfNoLayeredProvidersAsync());
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new(false, "Winsock の条件付き修復", -1, string.Empty, ex.Message));
+                    LoggerBootstrap.Log.Error("おまかせ高速化設定の Winsock 修復に失敗しました", ex);
+                }
+            }
+            if (_winHttpCacheService is not null)
+            {
+                try
+                {
+                    results.Add(await _winHttpCacheService.ClearAutoProxyCacheAsync());
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new(false, "WinHTTP 自動検出キャッシュの消去", -1, string.Empty, ex.Message));
+                    LoggerBootstrap.Log.Error("おまかせ高速化設定の WinHTTP キャッシュ消去に失敗しました", ex);
+                }
+            }
+
+            if (_dhcpLeaseService is not null)
+            {
+                // DHCP 再取得後に希望の DNS を適用する。解放・再取得は選択した NIC だけを対象にする。
+                results.AddRange(await _dhcpLeaseService.ReacquireAsync(adapter.Id));
+            }
 
             results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
 
@@ -443,15 +520,21 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (_maintenanceService is not null)
             {
-                // カタログでワンクリック対象と明示された安全なメンテナンスだけを実行する。許可リスト方式にすることで、
+                // カタログでワンクリック対象と明示されたメンテナンスだけを実行する。許可リスト方式にすることで、
                 // 手動メンテナンス用コマンドを今後同じカテゴリへ追加しても、意図せず初心者向けボタンへ混入しない。
-                // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。DNS/NetBIOS 再登録と HTTP.sys の
-                // ログ/サーバー応答キャッシュはゲーム用途の高速化にならないため対象外。送信自動調整は受信側の
+                // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。DNS/NetBIOS 再登録は名前登録を
+                // 利用する環境に依存し、HTTP.sys のログ/応答キャッシュはサーバー用のため対象外。送信自動調整は受信側の
                 // Auto-Tuning とは別系統なので、古い高速化ツールで無効化された状態をここで明示的に有効へ戻す。
                 var oneClickMaintenanceCommands = _maintenanceService.GetAvailableCommands()
                     .Where(c => c.IncludeInOneClickOptimization);
                 foreach (var command in oneClickMaintenanceCommands)
                 {
+                    if (command.Id == RouteClearCommandId)
+                    {
+                        // PC 全体の通信が切れる経路消去は、ほかの設定と接続名整理を終えた最後に実行する。
+                        routeClearCommand = command;
+                        continue;
+                    }
                     results.Add(await _maintenanceService.RunAsync(command.Id));
                 }
             }
@@ -465,6 +548,9 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
                 results.AddRange(await _tcpTuningService.EnableBbr2Async());
                 results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
+                // おまかせは低遅延を優先する。RSS で受信処理を分散し、RSC による受信の集約は無効にする。
+                results.Add(await _tcpTuningService.SetTcpGlobalOptionAsync(TcpGlobalOption.Rss, true));
+                results.Add(await _tcpTuningService.SetTcpGlobalOptionAsync(TcpGlobalOption.Rsc, false));
                 results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
                 results.AddRange(await _tcpTuningService.EnableLossRecoveryAsync());
@@ -476,6 +562,8 @@ public partial class DnsSettingsViewModel : ObservableObject
                     var snapshot = await _tcpTuningService.GetCurrentStateAsync();
                     results.Add(TcpSettingsVerifier.VerifyBbr2Enabled(snapshot));
                     results.Add(TcpSettingsVerifier.VerifyAutoTuning(snapshot, AutoTuningLevel.Normal));
+                    results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Rss, true));
+                    results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Rsc, false));
                 }
                 catch (Exception ex)
                 {
@@ -484,9 +572,30 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            if (_gamingNetworkProfileService is not null)
+            {
+                // 一括処理が保持する同じリースで適用し、ゲートの二重取得と改名前の接続名の取り違えを防ぐ。
+                try
+                {
+                    var gamingResults = await _gamingNetworkProfileService.ApplyWithinMutationLeaseAsync(adapter.Id);
+                    results.AddRange(gamingResults);
+                    if (gamingResults.Count == 0)
+                    {
+                        results.Add(new(false, "ゲーム向け NIC 設定: 結果確認", -1, string.Empty,
+                            "ゲーム向け NIC 設定の変更結果を取得できませんでした。"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new(false, "ゲーム向け NIC 設定: 適用失敗", -1, string.Empty,
+                        $"ゲーム向け NIC 設定を完了できませんでした: {ex.Message}"));
+                    LoggerBootstrap.Log.Error("おまかせ高速化設定の NIC 設定に失敗しました", ex);
+                }
+            }
+
             if (_adapterNameService is not null)
             {
-                // Windows では adapter.Id が接続名そのものなので、名前を使う DNS/TCP 処理をすべて終えてから
+                // Windows では adapter.Id が接続名そのものなので、名前を使う DNS/TCP/NIC 処理をすべて終えてから
                 // 切断済み登録を削除し、必要なら選択中アダプタの末尾連番を外す。
                 try
                 {
@@ -504,6 +613,20 @@ public partial class DnsSettingsViewModel : ObservableObject
                     results.Add(new CommandExecutionResult(false, "接続名の整理", -1, string.Empty, ex.Message));
                     AdapterNameStatusText = $"接続名の整理に失敗しました: {ex.Message}";
                     LoggerBootstrap.Log.Error("おまかせ高速化設定の接続名整理に失敗しました", ex);
+                }
+            }
+
+            if (routeClearCommand is not null)
+            {
+                routeCleanupAttempted = true;
+                try
+                {
+                    results.Add(await _maintenanceService!.RunAsync(routeClearCommand.Id));
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new(false, "route /f", -1, string.Empty, ex.Message));
+                    LoggerBootstrap.Log.Error("おまかせ高速化設定の経路消去に失敗しました", ex);
                 }
             }
 
@@ -526,11 +649,25 @@ public partial class DnsSettingsViewModel : ObservableObject
             await LoadAdaptersCoreAsync();
             await RefreshDohStateAsync(servers);
 
-            StatusText = allSucceeded
-                ? IsTcpOptimizationAvailable
-                    ? "設定コマンドを実行しました。BBR2 と受信ウィンドウ (Internet) の実効 Normal を確認済みです。RACK / TLP・UDP などの実状態は未検証です。TCP ACK 設定の反映には PC を再起動してください"
-                    : "おまかせ高速化設定を適用しました"
-                : "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
+            if (allSucceeded)
+            {
+                StatusText = IsTcpOptimizationAvailable
+                    ? "設定コマンドを実行しました。BBR2・RSS 有効 / RSC 無効のグローバル状態と受信ウィンドウ (Internet) の実効 Normal を確認済みです。RACK / TLP・UDP などの実状態は未検証です。"
+                    : "おまかせ高速化設定を適用しました";
+                if (_gamingNetworkProfileService is not null)
+                {
+                    StatusText += " ゲーム向け NIC 設定の保存値も確認済みです。";
+                }
+            }
+            else
+            {
+                StatusText = "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
+            }
+            if (routeCleanupAttempted || winsockRepairRequested
+                || (allSucceeded && (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null)))
+            {
+                StatusText += " 設定の反映には PC を再起動してください";
+            }
         }
         catch (Exception ex)
         {
@@ -543,6 +680,10 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
+            if (routeCleanupAttempted || winsockRepairRequested)
+            {
+                StatusText += " PC を再起動してください";
+            }
             LoggerBootstrap.Log.Error("おまかせ高速化設定に失敗しました", ex);
         }
         finally

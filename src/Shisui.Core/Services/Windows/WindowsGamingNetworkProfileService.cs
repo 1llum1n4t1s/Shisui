@@ -13,13 +13,19 @@ public sealed class WindowsGamingNetworkProfileService(
     ISettingsService settingsService,
     INetworkMutationGate mutationGate) : IGamingNetworkProfileService
 {
-    private const string TargetValue = "0";
-
     public async Task<IReadOnlyList<CommandExecutionResult>> ApplyAsync(
         string adapterName,
         CancellationToken ct = default)
     {
         using var lease = await mutationGate.EnterAsync(ct);
+        return await ApplyWithinMutationLeaseAsync(adapterName, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CommandExecutionResult>> ApplyWithinMutationLeaseAsync(
+        string adapterName,
+        CancellationToken ct = default)
+    {
         var results = new List<CommandExecutionResult>();
         var current = await QueryAsync(adapterName, "ゲーム向け NIC 設定: 適用前確認", results, ct);
         if (current is null)
@@ -44,7 +50,7 @@ public sealed class WindowsGamingNetworkProfileService(
             .Except(current.Properties.Select(property => property.RegistryKeyword), StringComparer.Ordinal)
             .ToArray();
         var changes = current.Properties
-            .Where(property => property.CurrentValue != TargetValue)
+            .Where(property => property.CurrentValue != WindowsGamingNetworkProfilePolicy.GetTargetValue(property.RegistryKeyword))
             .ToArray();
 
         if (current.Properties.Count == 0)
@@ -81,7 +87,7 @@ public sealed class WindowsGamingNetworkProfileService(
         {
             results.Add(Success(
                 "ゲーム向け NIC 設定: 変更不要",
-                BuildCompletionMessage("対象プロパティは既に 0 です。設定値を確認済みです。", current, missing)));
+                BuildCompletionMessage("対象プロパティは既に適用値です。設定値を確認済みです。", current, missing)));
             return results;
         }
 
@@ -136,7 +142,7 @@ public sealed class WindowsGamingNetworkProfileService(
                     current.PnpDeviceId,
                     change.RegistryKeyword,
                     change.CurrentValue,
-                    TargetValue),
+                    WindowsGamingNetworkProfilePolicy.GetTargetValue(change.RegistryKeyword)),
                 ct);
             results.Add(write);
             if (!write.Success)
@@ -151,17 +157,18 @@ public sealed class WindowsGamingNetworkProfileService(
         var verified = await QueryAsync(current.AdapterName, "ゲーム向け NIC 設定: 適用後確認", results, ct);
         if (!HasSameIdentity(current, verified) ||
             current.Properties.Any(expected =>
-                verified!.Properties.SingleOrDefault(property => property.RegistryKeyword == expected.RegistryKeyword)?.CurrentValue != TargetValue))
+                verified!.Properties.SingleOrDefault(property => property.RegistryKeyword == expected.RegistryKeyword)?.CurrentValue !=
+                WindowsGamingNetworkProfilePolicy.GetTargetValue(expected.RegistryKeyword)))
         {
             results.Add(Failure(
                 "ゲーム向け NIC 設定: 適用後確認",
-                "適用値 0 を読み戻し確認できませんでした。復元情報は保持しています。"));
+                "対象プロパティの適用値を読み戻し確認できませんでした。復元情報は保持しています。"));
             return results;
         }
 
         results.Add(Success(
             "ゲーム向け NIC 設定: 適用完了",
-            BuildCompletionMessage("保存済みの復元情報と適用値 0 を読み戻し確認済みです。", current, missing)));
+            BuildCompletionMessage("保存済みの復元情報と各プロパティの適用値を読み戻し確認済みです。", current, missing)));
         return results;
     }
 
@@ -229,11 +236,12 @@ public sealed class WindowsGamingNetworkProfileService(
                 continue;
             }
 
-            if (property.CurrentValue != TargetValue)
+            var targetValue = WindowsGamingNetworkProfilePolicy.GetTargetValue(snapshot.RegistryKeyword);
+            if (property.CurrentValue != targetValue)
             {
                 results.Add(Failure(
                     "ゲーム向け NIC 設定: 復元競合",
-                    $"{snapshot.RegistryKeyword} は Shisui の適用値 0 と保存値 {snapshot.OriginalValue} のどちらでもありません。外部変更を上書きしません。"));
+                    $"{snapshot.RegistryKeyword} は Shisui の適用値 {targetValue} と保存値 {snapshot.OriginalValue} のどちらでもありません。外部変更を上書きしません。"));
                 return results;
             }
 
@@ -384,7 +392,7 @@ public sealed class WindowsGamingNetworkProfileService(
                     current.PnpDeviceId,
                     property.RegistryKeyword) ||
                 !seen.Add(property.RegistryKeyword) ||
-                property.OriginalValue is not ("0" or "1"))
+                !WindowsGamingNetworkProfilePolicy.IsKnownValue(property.RegistryKeyword, property.OriginalValue))
             {
                 error = "保存済みの復元プロパティが対象外・重複・不正値を含みます。変更していません。";
                 return false;

@@ -20,6 +20,7 @@ public static class WindowsGamingNetworkProfileCommandBuilder
     public static string BuildQueryArguments(string adapterName)
     {
         var name = QuotePowerShellLiteral(adapterName, nameof(adapterName));
+        var standardOffloads = BuildKeywordArray(WindowsGamingNetworkProfilePolicy.StandardOffloadKeywords);
         var script =
             "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';" +
             "$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);" +
@@ -29,13 +30,13 @@ public static class WindowsGamingNetworkProfileCommandBuilder
             "$p=@();" +
             "$allowed=@();" +
             $"if([bool]$a[0].HardwareInterface -and [int]$a[0].InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType})" +
-            $"{{$allowed=@('{InterruptModerationKeyword}','{EnergyEfficientEthernetKeyword}');" +
+            $"{{$allowed={standardOffloads}+@('{InterruptModerationKeyword}','{EnergyEfficientEthernetKeyword}');" +
             $"if(([string]$a[0].DriverProvider).StartsWith('{WindowsGamingNetworkProfilePolicy.RealtekDriverProviderToken}',[StringComparison]::OrdinalIgnoreCase) -or " +
             $"[string]$a[0].PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekPciPnpPrefix}*' -or " +
             $"[string]$a[0].PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.RealtekUsbPnpPrefix}*')" +
             $"{{$allowed+=@('{RealtekGreenEthernetKeyword}','{RealtekGigaLiteKeyword}','{RealtekPowerSavingModeKeyword}')}}}}" +
             $"elseif([bool]$a[0].HardwareInterface -and [int]$a[0].InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType}){{" +
-            $"$allowed=@('{InterruptModerationKeyword}');" +
+            $"$allowed={standardOffloads}+@('{InterruptModerationKeyword}');" +
             $"if([string]::Equals([string]$a[0].DriverProvider,'{WindowsGamingNetworkProfilePolicy.MediaTekDriverProvider}',[StringComparison]::Ordinal) -and " +
             $"[string]$a[0].PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.MediaTekPnpPrefix}*')" +
             $"{{$allowed+=@('{MediaTekLowPowerKeyword}','{MediaTekUapsdKeyword}')}}}};" +
@@ -86,8 +87,17 @@ public static class WindowsGamingNetworkProfileCommandBuilder
             throw new ArgumentOutOfRangeException(nameof(registryKeyword), registryKeyword, "変更対象外の NIC プロパティです");
         }
 
-        ValidateBinaryValue(expectedCurrentValue, nameof(expectedCurrentValue));
-        ValidateBinaryValue(targetValue, nameof(targetValue));
+        if (expectedAdapterGuid == Guid.Empty)
+        {
+            throw new ArgumentException("NIC GUID が空です", nameof(expectedAdapterGuid));
+        }
+
+        ValidateKnownValue(registryKeyword, expectedCurrentValue, nameof(expectedCurrentValue));
+        ValidateKnownValue(registryKeyword, targetValue, nameof(targetValue));
+        var requiredValues = WindowsGamingNetworkProfilePolicy.GetRequiredSupportedValues(
+            registryKeyword, expectedCurrentValue, targetValue);
+        var supportedValueChecks = string.Join(" -or ", requiredValues.Select(value =>
+            $"-not ($valid -ccontains {QuotePowerShellLiteral(value, nameof(requiredValues))})"));
 
         var name = QuotePowerShellLiteral(adapterName, nameof(adapterName));
         var guid = QuotePowerShellLiteral(expectedAdapterGuid.ToString("D"), nameof(expectedAdapterGuid));
@@ -125,7 +135,8 @@ public static class WindowsGamingNetworkProfileCommandBuilder
             "$current=@($p[0].RegistryValue | ForEach-Object {[string]$_});" +
             $"if($current.Count -ne 1 -or $current[0] -cne {expected}){{throw 'Advanced property value changed'}};" +
             "$valid=@($p[0].ValidRegistryValues | ForEach-Object {[string]$_});" +
-            "if(-not ($valid -ccontains '0') -or -not ($valid -ccontains '1')){throw 'Advanced property values are unsupported'};" +
+            "if(@($valid | Select-Object -Unique).Count -ne $valid.Count){throw 'Advanced property values are duplicated'};" +
+            $"if({supportedValueChecks}){{throw 'Advanced property values are unsupported'}};" +
             $"Set-NetAdapterAdvancedProperty -InputObject $p[0] -RegistryValue {target} -NoRestart -Confirm:$false -ErrorAction Stop;" +
             $"'UPDATED='+{keyword}+';VALUE='+{target}";
         return BuildEncodedArguments(script);
@@ -141,15 +152,21 @@ public static class WindowsGamingNetworkProfileCommandBuilder
         return $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 
-    private static void ValidateBinaryValue(string value, string parameterName)
+    private static void ValidateKnownValue(string registryKeyword, string value, string parameterName)
     {
-        if (value is not ("0" or "1"))
+        if (!WindowsGamingNetworkProfilePolicy.IsKnownValue(registryKeyword, value))
         {
-            throw new ArgumentOutOfRangeException(parameterName, value, "NIC プロパティ値は 0 または 1 に限定されます");
+            throw new ArgumentOutOfRangeException(parameterName, value, "NIC プロパティの既知の列挙値だけが対象です");
         }
     }
 
+    private static string BuildKeywordArray(IEnumerable<string> keywords) =>
+        $"@({string.Join(",", keywords.Select(keyword => QuotePowerShellLiteral(keyword, nameof(keywords))))})";
+
     private static string BuildPowerShellPolicyExpression(string adapterExpression, string quotedKeyword) =>
+        $"({BuildKeywordArray(WindowsGamingNetworkProfilePolicy.StandardOffloadKeywords)} -ccontains {quotedKeyword} -and " +
+        $"([int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType} -or " +
+        $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType})) -or " +
         $"({quotedKeyword} -ceq '{InterruptModerationKeyword}' -and " +
         $"([int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.EthernetInterfaceType} -or " +
         $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType})) -or " +

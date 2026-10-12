@@ -9,4 +9,6 @@ namespace Shisui.Core.Serialization;
 [JsonSerializable(typeof(GamingNetworkProfileSnapshot))]
 [JsonSerializable(typeof(GamingNetworkPropertySnapshot))]
 [JsonSerializable(typeof(List<GamingNetworkProfileSnapshot>))]
+[JsonSerializable(typeof(WifiPowerPlanSnapshot))]
+[JsonSerializable(typeof(List<WifiPowerPlanSnapshot>))]
 internal sealed partial class ShisuiJsonContext : JsonSerializerContext;

@@ -99,7 +99,7 @@ public class WindowsMaintenanceCommandCatalogTests
     }
 
     [TestMethod]
-    public void OneClickOptimization_IncludesOnlySafeAllowlistedMaintenance()
+    public void OneClickOptimization_IncludesAllowlistedMaintenance()
     {
         var includedIds = WindowsMaintenanceCommandCatalog.All
             .Where(c => c.Definition.IncludeInOneClickOptimization)
@@ -115,8 +115,10 @@ public class WindowsMaintenanceCommandCatalogTests
             "netsh-ipv6-delete-neighbors",
             "netsh-winsock-autotuning-on",
             "powercfg-pcie-link-state-ac-off",
+            "powercfg-wifi-ac-max-performance",
             "netsh-udp-uro-default",
             "netsh-udp-uso-default",
+            "route-clear",
         }, includedIds);
 
         CollectionAssert.DoesNotContain(includedIds, "nbtstat-reregister");

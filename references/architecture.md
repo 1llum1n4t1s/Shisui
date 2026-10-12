@@ -161,7 +161,27 @@ in the XML doc on `IDotConfigurationService`.
 The 「自動最適化」 tab's 「クイック最適化」 card exposes the DNS tab's shared adapter selection and a
 「おまかせ高速化設定」 button for users who don't want to understand each individual toggle. The tab-level
 `AutoOptimizationViewModel` command delegates the mutation to `DnsSettingsViewModel.RunOneClickOptimizationAsync`
-and then refreshes the manual TCP tab's state badges. On click it: switches the selected preset to
+and then refreshes the manual TCP tab's state badges. Under the existing shared mutation lease, optional Windows
+`IWinsockResetService` first checks the native Winsock SPI catalog, including hidden and standalone LSPs;
+on a 64-bit OS it also checks the 32-bit catalog with `WSCEnumProtocols32`. Only complete, nonempty catalogs
+whose protocol chains are all base providers (`ChainLen=1`) permit `netsh winsock reset`. Layered providers
+cause an explicit protective skip; unreadable or malformed catalogs fail without resetting. A 32-bit process
+on a 64-bit OS cannot prove absence and refuses to reset. Every invocation checks afresh and logs the decision.
+The manual maintenance command remains unchanged. Next, optional `IWinHttpCacheService` uses an owned NO_PROXY
+session and `WinHttpResetAutoProxy` with cache-only flags `0x2000C` (OUT_OF_PROC, SWPAD_ALL, SCRIPT_CACHE).
+No proxy-setting setter is called. Calls within 30 seconds of a previous attempt are skipped: prior acceptance
+is an explicit success-without-call, while prior failure remains incomplete. Zero means API acceptance,
+not measured cache removal. Both repairs precede DHCP, Winsock send-buffer autotuning and TCP/NIC tuning;
+their failure is retained while later repairs still run. Neither service reacquires the shared mutation gate.
+Before DNS changes, optional Windows `IDhcpLeaseService`
+releases and renews DHCP IPv4 on the selected NIC only. IPv6 requires a usable Preferred address with
+PrefixOrigin=Dhcp; fixed IP and SLAAC-only IPv6 are skipped. Unknown DHCP state is not modified and is reported
+as a failed verification rather than a successful exclusion. Name, GUID and InterfaceIndex
+must agree before each operation and after query. Release has a 15-second timeout; renew always runs with a
+fresh independent 60-second token, even after release failure/cancellation. Bounded readback checks a usable
+DHCP address and restoration of any previously present default gateway; failure remains visible in results.
+Adapter names that could expand to multiple adapters or alter quoting are rejected. macOS omits the service.
+The remaining sequence switches the selected preset to
 Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — when
 `INetworkMaintenanceService` is available (Windows; injected as `INetworkMaintenanceService? = null` the same
 way the other Windows-only services are, so macOS silently skips this step) — also runs only maintenance commands
@@ -169,10 +189,16 @@ whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true:
 all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
 the IPv6 neighbor-discovery cache flush, and `netsh winsock set autotuning on` so old tweak tools cannot leave
 Winsock's independent send-buffer autotuning disabled.
+The allowlist includes `route-clear` (`route /f`), but the ordinary maintenance loop defers it until the final mutation described below.
 The allowlist also restores UDP URO and USO to `default` with two separate `netsh interface udp set global` calls,
 so an unsupported option cannot prevent the other from running. It deliberately does not run `udp reset` or force
 offload `enabled`; both default-restoration actions are individually available in the maintenance tab.
 The allowlist also disables PCI Express Link State Power Management for AC power in the current power plan.
+It additionally requests maximum Wi-Fi performance on AC power in that same active plan, preserving DC.
+Wi-Fi changes require a persisted original AC value before writing; reapplication retains that original.
+A manual-only maintenance action restores the current plan's original AC value, refuses external-value
+conflicts and removes its record only after readback and successful settings save. Plan changes, failed reads,
+or incomplete verification cannot silently succeed. This does not force driver power policy or switch plans.
 It reads the existing values before writing and verifies AC is off and the DC value is unchanged afterwards;
 a failed initial read must not cause a write. It neither switches power plans nor writes the DC value.
 This action is separately available in the maintenance tab. Its UI description explains that it affects PCI Express
@@ -180,12 +206,19 @@ devices beyond the selected NIC and may increase power consumption and heat; str
 The command sequence uses the documented [powercfg AC-value and activation commands](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options).
 This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys log-buffer/server-response-cache operations
 remain available in the maintenance tab but are deliberately excluded
-from one-click because they do not optimize ordinary client or game traffic. DNS cache flushing is already handled
+from one-click because their applicability depends on name-registration or HTTP-server use; one-click also
+switches to public DNS. They are evaluated separately from latency tuning. DNS cache flushing is already handled
 once through `IDnsCacheService`. Finally
 — only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — restores all five TCP
 templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
 enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
 initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
+then explicitly enables global RSS and disables global RSC to prioritize low latency over receive throughput. ECN retains the Windows default; the manual reset operation still
+restores all options to their defaults without these one-click overrides. These global states do not prove
+individual NIC capabilities or latency improvement. Disabling RSC can increase CPU usage and reduce receive throughput.
+Microsoft's [RSC guidance](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)
+allows disabling it for low-latency workloads that benefit; that Server guidance does not establish a measured improvement
+for every Windows 11 game. The one-click policy prioritizes latency, and includes the selected NIC gaming profile before device/name cleanup. Individual NIC apply/restore operations remain available. It
 removes only the per-interface legacy tweak values `TcpAckFrequency`, `TCPNoDelay`, and `TcpDelAckTicks` from
 `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` so Windows falls back to its defaults,
 disables IPv4/IPv6 loopback Large MTU as part of the BBR2 configuration, and resets receive-window auto-tuning to Normal. The registry command emits
@@ -203,23 +236,25 @@ enablement remains unchanged. The paired loss-recovery command follows Microsoft
 [netsh guidance](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface).
 The TCP tab exposes aggregate TCP reset, global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
 as separate commands; one-click must not be the only UI path to any setting mutation it performs.
-This normalization plus deliberate BBR2/loss-recovery enablement and the narrow PCI Express AC power setting intentionally stops at documented TCP/UDP/power state and those three specifically named legacy
-per-interface values: it does not delete arbitrary registry values,
-change NIC driver advanced properties, alter BCD, or replace power plans. DoT is deliberately left untouched (see the DoT section above: DoH
+The TCP/UDP/power normalization phase, including BBR2/loss-recovery enablement and the narrow PCI Express AC power setting, is limited to documented TCP/UDP/power state and those three specifically named legacy
+per-interface values. It does not delete arbitrary registry values,
+alter BCD, or replace power plans. Selected NIC advanced properties are changed only through the gaming profile allowlist below. DoT is deliberately left untouched (see the DoT section above: DoH
 measured slightly faster and more consistent, so there's little benefit to enabling both). On Windows, one-click
-finishes by calling `INetworkAdapterNameService.CleanupAsync` with the selected connection name: it removes every
+calls `INetworkAdapterNameService.CleanupAsync` after the NIC profile with the selected connection name: it removes every
 disconnected PnP network-device registration and, when possible, strips the selected live adapter's numeric suffix.
 This must run after every operation that uses the old connection name; if a rename succeeds, the new name is persisted
 before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
-are intentionally included and the button description warns that Windows will redetect them when reconnected. Other
-destructive maintenance actions (per-adapter MTU restoration and the 「ファイアウォール・スタックリセット」category)
+are intentionally included and the button description warns that Windows will redetect them when reconnected.
+After DHCP, DNS, TCP, NIC settings and device/name cleanup, one-click runs the deferred `route-clear` once as its final mutation while retaining the same shared lease.
+This clears the PC-wide route table and interrupts connectivity; users are told to restart afterwards. Command failure or an exception is logged and makes the overall operation fail.
+Other destructive maintenance actions (per-adapter MTU restoration and the remaining commands in the 「ファイアウォール・スタックリセット」category)
 remain excluded. Since PCI Express AC power management / UDP defaults / BBR2 and RACK/TLP enablement / TCP global-option reset / loopback Large MTU / auto-tuning /
-cache-maintenance commands are global, not scoped
-to the selected adapter (unlike the DNS change), the button's description text calls this out explicitly for
+cache-maintenance commands / route-table clearing are global, not scoped
+to the selected adapter (unlike the DNS and gaming NIC changes), the button's description text calls this out explicitly for
 multi-NIC environments.
 
 Before reporting completion, one-click reads a fresh TCP snapshot inside the same mutation lease.
-`TcpSettingsVerifier` checks BBR2 across all five templates and the effective Internet auto-tuning level, including
+`TcpSettingsVerifier` checks BBR2 across all five templates, global RSS enabled/RSC disabled state and the effective Internet auto-tuning level, including
 the GroupPolicy override. A mismatch, incomplete snapshot, or read failure is logged as a failed verification,
 without losing prior command results or preventing settings persistence/adapter cleanup. Manual BBR2 enablement
 and auto-tuning changes use the same verifier. Command failures remain failures even when readback matches.
@@ -311,9 +346,14 @@ Summaries are timestamped in the UI and file log. macOS does not fabricate unava
 
 ### Gaming NIC profile (`IGamingNetworkProfileService`, Windows)
 
-The separate gaming card in AutoOptimization calls `WindowsGamingNetworkProfileService`, which owns the shared
-mutation gate from read through journal persistence and verification. It does not run the broad one-click reset.
-Only physical Ethernet (type 6) or Wi-Fi (type 71) is eligible. `WindowsGamingNetworkProfilePolicy` selects exact
+Both one-click and the individual gaming card in AutoOptimization use `WindowsGamingNetworkProfileService`. Individual apply/restore owns the shared
+mutation gate from read through journal persistence and verification; individual operations do not run the broad one-click reset. One-click calls `ApplyWithinMutationLeaseAsync` after TCP readback and before name cleanup while retaining its existing lease, so the service does not reacquire the non-reentrant gate. The caller must hold the same shared lease through the entire operation. Empty results or exceptions become explicit one-click failures, and ordinary failed NIC results remain failures.
+Only physical Ethernet (type 6) or Wi-Fi (type 71) is eligible. Standard driver-exposed `*RSS`, `*LsoV2IPv4`,
+and `*LsoV2IPv6` target 1; IPv4 IP checksum and IPv4/IPv6 TCP/UDP checksum offload target 3 (Tx and Rx enabled).
+Targets and documented value domains are keyword-specific and shared by parsing, command validation,
+journal validation, apply/restore conflict checks and readback. Missing properties are not synthesized;
+driver support for the original and target values must be verified. Existing binary power-property journals remain compatible.
+`WindowsGamingNetworkProfilePolicy` selects exact
 keywords by media/provider/PCI identity: standard `*InterruptModeration` for either media, `*EEE` only for Ethernet,
 `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` for physical Realtek Ethernet identified by provider name,
 PCI vendor 10EC or USB vendor 0BDA, and `LowPowerEnable` / `UAPSDSupport` only for MediaTek Wi-Fi (`MediaTek, Inc.`
@@ -330,11 +370,14 @@ Restoration touches only the journal's allowlisted entries and refuses external-
 changes retain restoration information. A journal is removed only after successful readback and settings save.
 Readback confirms saved configuration only. UI requires a PC restart after apply/restore and never claims a
 performance improvement. Wi-Fi power savings are exchanged for potential latency reduction, not a guaranteed win;
-battery usage and heat may increase. The operation leaves virtual NICs, RSS, offloads, speed/duplex, buffers,
+battery usage and heat may increase. The operation leaves virtual NICs, offloads beyond the exact allowlist, speed/duplex, buffers,
 band preference, channel width and roaming settings alone.
 
 Rationale: [Microsoft low-latency NIC guidance](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics)
-describes interrupt moderation's CPU/latency tradeoff; [Intel EEE documentation](https://edc.intel.com/content/www/us/en/design/products/ethernet/adapters-and-devices-user-guide/other-power-options/)
+recommends enabling static offloads and RSS for multiple receive streams. These address host packet-processing
+cost and do not establish a game or WAN latency improvement. Global RSS configuration and saved NIC values
+are verified separately; neither proves post-reboot driver behavior or bypasses a global DisableTaskOffload setting.
+The same guidance describes interrupt moderation's CPU/latency tradeoff; [Intel EEE documentation](https://edc.intel.com/content/www/us/en/design/products/ethernet/adapters-and-devices-user-guide/other-power-options/)
 describes the low-power transition latency. Neither supports a universal WAN latency or packet-loss improvement.
 [Microsoft Wi-Fi power management](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/wi-fi-power-management-for-modern-standby-platforms)
 describes wireless power/latency tradeoffs; exact MediaTek registry values come from the installed driver INF,

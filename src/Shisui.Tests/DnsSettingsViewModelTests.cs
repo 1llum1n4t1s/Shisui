@@ -71,6 +71,9 @@ public sealed class DnsSettingsViewModelTests
 
     private sealed class FakeGamingProfileService : IGamingNetworkProfileService
     {
+        public Task<IReadOnlyList<CommandExecutionResult>> ApplyWithinMutationLeaseAsync(string adapterName, CancellationToken ct = default)
+            => ApplyAsync(adapterName, ct);
+
         public string? AppliedAdapter { get; private set; }
         public string? RestoredAdapter { get; private set; }
         public bool Throw { get; init; }
@@ -155,10 +158,10 @@ public sealed class DnsSettingsViewModelTests
         await optimizationViewModel.RunQuickOptimizationCommand.ExecuteAsync(null);
 
         CollectionAssert.AreEqual(
-            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
+            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "EnableRss", "DisableRsc", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
             tcpTuningService.Calls);
-        StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "BBR2 を有効化");
-        StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "ループバック Large MTU を無効化");
+        StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "BBR2");
+        StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "PC 全体の TCP 設定を既定に戻し");
         StringAssert.Contains(dnsViewModel.StatusText, "実効 Normal を確認済み");
         StringAssert.Contains(dnsViewModel.StatusText, "実状態は未検証");
     }
@@ -216,10 +219,11 @@ public sealed class DnsSettingsViewModelTests
     {
         // 実サービス/ビルダー/パーサーを通し、外部プロセス実行だけを差し替える。
         var executor = new RecordingExecutor { FailLossRecovery = failLossRecovery };
+        var settings = new FakeSettingsService();
         using var gate = new NetworkMutationGate();
-        var viewModel = CreateViewModel(new FakeDnsConfigurationService(), gate,
+        var viewModel = CreateViewModel(new FakeDnsConfigurationService(), gate, settings,
             tcpTuningService: new WindowsTcpTuningService(executor),
-            maintenanceService: new WindowsNetworkMaintenanceService(executor));
+            maintenanceService: new WindowsNetworkMaintenanceService(executor, settings));
 
         await new AutoOptimizationViewModel(viewModel, gate).RunQuickOptimizationCommand.ExecuteAsync(null);
 
@@ -229,10 +233,10 @@ public sealed class DnsSettingsViewModelTests
         Assert.AreEqual(4, calls.Count(value => value.Contains("rack=enabled taillossprobe=enabled")));
         Assert.IsTrue(calls.Contains("interface udp set global uro=default"));
         Assert.IsTrue(calls.Contains("interface udp set global uso=default"));
-        Assert.AreEqual(WindowsTcpStateCommandBuilder.Arguments, calls[^1]);
+        Assert.AreEqual(WindowsTcpStateCommandBuilder.Arguments, calls[^2]);
         Assert.AreEqual(!failLossRecovery, viewModel.StatusText.Contains("実効 Normal を確認済み"));
         StringAssert.Contains(viewModel.OneClickOptimizeDescription, "バッテリー時の値は維持");
-        StringAssert.Contains(viewModel.OneClickOptimizeDescription, "適用後に AC 値とバッテリー時の値を確認");
+        StringAssert.Contains(viewModel.OneClickOptimizeDescription, "AC 時は PCI Express 省電力をオフ");
         StringAssert.Contains(viewModel.OneClickOptimizeDescription, "消費電力・発熱が増える");
     }
 
@@ -553,7 +557,11 @@ public sealed class DnsSettingsViewModelTests
     {
         public List<string> Calls { get; } = [];
         public TcpSettingsSnapshot State { get; init; } = new(Bbr2Status.Enabled,
-            new Dictionary<TcpGlobalOption, string>(), "Normal", AutoTuningLevelEffective: "Local");
+            new Dictionary<TcpGlobalOption, string>
+            {
+                [TcpGlobalOption.Rss] = "Enabled",
+                [TcpGlobalOption.Rsc] = "Disabled",
+            }, "Normal", AutoTuningLevelEffective: "Local");
         public bool ThrowOnRead { get; init; }
 
         public override Task<TcpSettingsSnapshot> GetCurrentStateAsync(CancellationToken ct = default)
@@ -585,6 +593,13 @@ public sealed class DnsSettingsViewModelTests
         {
             Calls.Add("RevertGlobalOptions");
             return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([Success()]);
+        }
+
+        public override Task<CommandExecutionResult> SetTcpGlobalOptionAsync(
+            TcpGlobalOption option, bool enabled, CancellationToken ct = default)
+        {
+            Calls.Add($"{(enabled ? "Enable" : "Disable")}{option}");
+            return Task.FromResult(Success());
         }
 
         public override Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default)
@@ -629,8 +644,12 @@ public sealed class DnsSettingsViewModelTests
             var output = arguments switch
             {
                 var value when value == WindowsTcpStateCommandBuilder.Arguments =>
-                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured",
+                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled",
                 WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments => $"Power Scheme GUID: {powerScheme:D}",
+                var value when value.Contains(WindowsPowerPlanCommandBuilder.WirelessPowerSavingModeGuid, StringComparison.Ordinal) =>
+                    WindowsPowerPlanCommandBuilderTests.QueryOutput(powerScheme, 0, 2)
+                        .Replace(WindowsPowerPlanCommandBuilder.PciExpressSubgroupGuid, WindowsPowerPlanCommandBuilder.WirelessAdapterSubgroupGuid, StringComparison.Ordinal)
+                        .Replace(WindowsPowerPlanCommandBuilder.LinkStatePowerManagementGuid, WindowsPowerPlanCommandBuilder.WirelessPowerSavingModeGuid, StringComparison.Ordinal),
                 var value when value.StartsWith("/query ", StringComparison.Ordinal) =>
                     WindowsPowerPlanCommandBuilderTests.QueryOutput(powerScheme, 0, 2),
                 _ => string.Empty,

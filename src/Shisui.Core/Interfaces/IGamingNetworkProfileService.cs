@@ -9,6 +9,14 @@ public interface IGamingNetworkProfileService
         string adapterName,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// 呼び出し元が同じ共有ゲートの lease を取得・保持済みのときだけ使用する。
+    /// lease の取得と解放は呼び出し元の責務とする。
+    /// </summary>
+    Task<IReadOnlyList<CommandExecutionResult>> ApplyWithinMutationLeaseAsync(
+        string adapterName,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<CommandExecutionResult>> RestoreAsync(
         string adapterName,
         CancellationToken ct = default);

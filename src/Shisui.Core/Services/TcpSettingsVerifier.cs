@@ -6,6 +6,19 @@ namespace Shisui.Core.Services;
 /// <summary>設定コマンドの終了結果とは別に、読み戻せた TCP の実状態を検証する純粋関数。</summary>
 public static class TcpSettingsVerifier
 {
+    /// <summary>グローバルオプションを期待する有効・無効状態と比較し、取得不能も失敗として扱う。</summary>
+    public static CommandExecutionResult VerifyGlobalOption(TcpSettingsSnapshot snapshot, TcpGlobalOption option, bool enabled)
+    {
+        var actual = snapshot.GetOptionValue(option);
+        var expected = enabled ? "Enabled" : "Disabled";
+        var name = option.ToString().ToUpperInvariant();
+        var success = string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
+        return new(success, $"{name} 適用後確認", success ? 0 : -1, $"{name}={actual}, Expected={expected}",
+            success ? string.Empty : string.IsNullOrWhiteSpace(actual)
+                ? $"{name} の状態を確認できませんでした。"
+                : $"{name} が期待する {expected} ではありません。OS・NIC の対応とポリシー設定を確認してください。");
+    }
+
     public static CommandExecutionResult VerifyBbr2Enabled(TcpSettingsSnapshot snapshot)
     {
         var success = snapshot.Bbr2 == Bbr2Status.Enabled;

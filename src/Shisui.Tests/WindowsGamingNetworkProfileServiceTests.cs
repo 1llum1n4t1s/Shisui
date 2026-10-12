@@ -43,7 +43,7 @@ public sealed class WindowsGamingNetworkProfileServiceTests
         Assert.AreEqual(5, executor.Calls.Count);
         Assert.AreEqual(1, settings.SaveCount);
         Assert.AreEqual("1", journal.Properties.Single(property => property.RegistryKeyword == "*EEE").OriginalValue);
-        StringAssert.Contains(second[^1].StandardOutput, "既に 0");
+        StringAssert.Contains(second[^1].StandardOutput, "既に適用値");
         Assert.AreEqual(2, gate.EnterCount);
     }
 

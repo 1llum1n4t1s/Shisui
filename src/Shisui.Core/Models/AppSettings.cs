@@ -32,6 +32,9 @@ public sealed class AppSettings
     /// </summary>
     public List<GamingNetworkProfileSnapshot> GamingNetworkProfileSnapshots { get; set; } = [];
 
+    /// <summary>電源プランごとの Wi-Fi AC 設定の元の値。再適用で上書きしない。</summary>
+    public List<WifiPowerPlanSnapshot> WifiPowerPlanSnapshots { get; set; } = [];
+
     /// <summary>
     /// Velopack 自動更新の配信元。Cloudflare R2 (カスタムドメイン) をハードコード固定する。
     /// <see cref="JsonIgnore"/> なので settings.json から書き換え不可 (悪意ある第三者ホストへの誘導を防ぐ)。

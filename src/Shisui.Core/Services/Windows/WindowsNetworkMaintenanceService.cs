@@ -5,9 +5,10 @@ using Shisui.Core.Models;
 namespace Shisui.Core.Services.Windows;
 
 [SupportedOSPlatform("windows")]
-public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor) : INetworkMaintenanceService
+public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor, ISettingsService? settingsService = null) : INetworkMaintenanceService
 {
     private const string PcieLinkStateCommandId = "powercfg-pcie-link-state-ac-off";
+    private static readonly TimeSpan RollbackTimeout = TimeSpan.FromSeconds(30);
 
     public IReadOnlyList<MaintenanceCommandDefinition> GetAvailableCommands() =>
         WindowsMaintenanceCommandCatalog.All.Select(c => c.Definition).ToList();
@@ -21,6 +22,14 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor) 
         if (command is null)
         {
             return CommandExecutionResult.Skipped($"未知のコマンド ID: {commandId}");
+        }
+
+        if (commandId is "powercfg-wifi-ac-max-performance" or "powercfg-wifi-ac-restore")
+        {
+            return settingsService is null
+                ? CommandExecutionResult.Skipped("Wi-Fi の復元情報を保存する設定サービスが利用できないため、設定を変更しませんでした。")
+                : await new WindowsWifiPowerPlanService(executor, settingsService).RunAsync(
+                    restore: commandId == "powercfg-wifi-ac-restore", ct);
         }
 
         return commandId == PcieLinkStateCommandId
@@ -137,23 +146,33 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor) 
 
     private async Task<bool> RollBackAcValueAsync(Guid schemeGuid, uint acBefore)
     {
-        var restoreResult = await RunPowerCfgAsync(
-            WindowsPowerPlanCommandBuilder.SetAcLinkStateArguments(schemeGuid, acBefore), CancellationToken.None);
-        if (!restoreResult.Success)
+        try
         {
+            // 元のキャンセルから独立して復旧を試し、全コマンドを合わせた待機時間を制限する。
+            using var deadline = new CancellationTokenSource(RollbackTimeout);
+            var restoreResult = await RunPowerCfgAsync(
+                WindowsPowerPlanCommandBuilder.SetAcLinkStateArguments(schemeGuid, acBefore), deadline.Token);
+            if (!restoreResult.Success)
+            {
+                return false;
+            }
+
+            var activeResult = await RunPowerCfgAsync(WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments, deadline.Token);
+            if (!activeResult.Success
+                || !WindowsPowerPlanCommandBuilder.TryParseActiveScheme(activeResult.StandardOutput, out var activeGuid))
+            {
+                return false;
+            }
+
+            return activeGuid != schemeGuid
+                || (await RunPowerCfgAsync(
+                    WindowsPowerPlanCommandBuilder.ActivateSchemeArguments(schemeGuid), deadline.Token)).Success;
+        }
+        catch
+        {
+            // 復旧の失敗・期限切れで、呼び出し元の失敗やキャンセルを隠さない。
             return false;
         }
-
-        var activeResult = await RunPowerCfgAsync(WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments, CancellationToken.None);
-        if (!activeResult.Success
-            || !WindowsPowerPlanCommandBuilder.TryParseActiveScheme(activeResult.StandardOutput, out var activeGuid))
-        {
-            return false;
-        }
-
-        return activeGuid != schemeGuid
-            || (await RunPowerCfgAsync(
-                WindowsPowerPlanCommandBuilder.ActivateSchemeArguments(schemeGuid), CancellationToken.None)).Success;
     }
 
     private static CommandExecutionResult VerificationFailure(string message, string output) =>

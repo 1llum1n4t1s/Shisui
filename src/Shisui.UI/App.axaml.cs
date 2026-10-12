@@ -60,6 +60,11 @@ public partial class App : Application
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
+            services.AddSingleton<IWinsockCatalogInspector, Core.Services.Windows.WindowsWinsockCatalogInspector>();
+            services.AddSingleton<IWinsockResetService, Core.Services.Windows.WindowsWinsockResetService>();
+            services.AddSingleton<IWinHttpAutoProxyApi, Core.Services.Windows.WindowsWinHttpAutoProxyApi>();
+            services.AddSingleton<IWinHttpCacheService, Core.Services.Windows.WindowsWinHttpCacheService>();
+            services.AddSingleton<IDhcpLeaseService, Core.Services.Windows.WindowsDhcpLeaseService>();
             services.AddSingleton<IGhostAdapterService, Core.Services.Windows.WindowsGhostAdapterService>();
             services.AddSingleton<INetworkAdapterNameService, Core.Services.Windows.WindowsNetworkAdapterNameService>();
             services.AddSingleton<ILegacyNetworkDiagnosticsService, Core.Services.Windows.WindowsLegacyNetworkDiagnosticsService>();
