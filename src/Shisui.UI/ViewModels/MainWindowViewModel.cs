@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Shisui.Core.Models;
 using Shisui.Core.Services;
 
@@ -29,6 +31,19 @@ public partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<CommandLogEntry> LogEntries { get; } = [];
 
+    /// <summary>各画面の処理中は、ログを含むウィンドウ全体の操作を止める。</summary>
+    public bool IsProcessing =>
+        DnsSettings.IsBusy || DnsSettings.IsPinging || DnsSettings.IsAdapterNameBusy ||
+        AutoOptimization.IsOperationRunning || AutoOptimization.RunQuickOptimizationCommand.IsRunning ||
+        NetworkDiagnostics.IsBusy ||
+        TcpTuning is { IsBusy: true } || TcpTuning is { IsMtuBusy: true } ||
+        Maintenance?.Categories.Any(group => group.IsRunningAll || group.Items.Any(item => item.IsRunning)) == true ||
+        Version.IsChecking || Version.IsSavingSettings || Version.ClearIgnoredUpdateTagCommand.IsRunning;
+
+    public string ProcessingText => string.IsNullOrWhiteSpace(DnsSettings.OneClickProgressText)
+        ? "処理が終わるまでお待ちください"
+        : DnsSettings.OneClickProgressText;
+
     public MainWindowViewModel(
         DnsSettingsViewModel dnsSettings,
         NetworkDiagnosticsViewModel networkDiagnostics,
@@ -38,7 +53,6 @@ public partial class MainWindowViewModel : ObservableObject
         MaintenanceViewModel? maintenance = null)
     {
         Version = version;
-        Version.Initialize();
 
         // TcpTuning / Maintenance は Windows でしか DI 登録されない (macOS では netsh 系機能が存在しないため)。
         // 既定値 null を与えておくことで、Microsoft.Extensions.DependencyInjection は
@@ -49,10 +63,19 @@ public partial class MainWindowViewModel : ObservableObject
         TcpTuning = tcpTuning;
         Maintenance = maintenance;
 
+        DnsSettings.PropertyChanged += OnOperationStateChanged;
+        AutoOptimization.PropertyChanged += OnOperationStateChanged;
+        AutoOptimization.RunQuickOptimizationCommand.PropertyChanged += OnOperationStateChanged;
+        NetworkDiagnostics.PropertyChanged += OnOperationStateChanged;
+        Version.PropertyChanged += OnOperationStateChanged;
+        Version.ClearIgnoredUpdateTagCommand.PropertyChanged += OnOperationStateChanged;
+        Version.Initialize();
+
         DnsSettings.CommandExecuted += OnCommandExecuted;
         AutoOptimization.CommandExecuted += OnCommandExecuted;
         if (TcpTuning is not null)
         {
+            TcpTuning.PropertyChanged += OnOperationStateChanged;
             TcpTuning.CommandExecuted += OnCommandExecuted;
             TcpTuning.Initialize(); // 起動時に現在の BBR2 / TCP 設定状態を読み込む
         }
@@ -60,6 +83,33 @@ public partial class MainWindowViewModel : ObservableObject
         if (Maintenance is not null)
         {
             Maintenance.CommandExecuted += OnCommandExecuted;
+            foreach (var group in Maintenance.Categories)
+            {
+                group.PropertyChanged += OnOperationStateChanged;
+                foreach (var item in group.Items)
+                {
+                    item.PropertyChanged += OnOperationStateChanged;
+                }
+            }
+        }
+    }
+
+    private void OnOperationStateChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 既存の finally による実行フラグ解除と、コマンドの完了通知へ追従する。
+        if (e.PropertyName is null or nameof(DnsSettingsViewModel.IsBusy) or
+            nameof(DnsSettingsViewModel.IsPinging) or nameof(DnsSettingsViewModel.IsAdapterNameBusy) or
+            nameof(AutoOptimizationViewModel.IsOperationRunning) or nameof(TcpTuningViewModel.IsMtuBusy) or
+            nameof(MaintenanceCategoryGroup.IsRunningAll) or
+            nameof(VersionViewModel.IsChecking) or nameof(VersionViewModel.IsSavingSettings) or
+            nameof(IAsyncRelayCommand.IsRunning))
+        {
+            OnPropertyChanged(nameof(IsProcessing));
+        }
+
+        if (e.PropertyName is null or nameof(DnsSettingsViewModel.OneClickProgressText))
+        {
+            OnPropertyChanged(nameof(ProcessingText));
         }
     }
 

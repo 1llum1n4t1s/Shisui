@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Shisui.Core.Models;
 
@@ -24,7 +25,8 @@ public static class MacTraceRouteParser
             var hopNumber = int.Parse(match.Groups[1].Value);
             var hasAddress = match.Groups[2].Success;
             var address = hasAddress ? match.Groups[2].Value : null;
-            double? rtt = hasAddress && double.TryParse(match.Groups[3].Value, out var value) ? value : null;
+            double? rtt = hasAddress && double.TryParse(
+                match.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : null;
 
             hops.Add(new TraceRouteHop(hopNumber, address, rtt));
         }

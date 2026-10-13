@@ -10,4 +10,5 @@ public sealed record NetworkAdapterInfo(
     string? Description,
     bool IsUp,
     IReadOnlyList<string> CurrentIPv4Dns,
-    IReadOnlyList<string> CurrentIPv6Dns);
+    IReadOnlyList<string> CurrentIPv6Dns,
+    bool DnsReadFailed = false);

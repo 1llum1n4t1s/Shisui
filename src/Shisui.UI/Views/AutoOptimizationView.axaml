@@ -10,7 +10,7 @@
     <StackPanel Margin="8,0">
       <TextBlock Classes="h1" Text="自動最適化" />
       <TextBlock Classes="caption" TextWrapping="Wrap" Margin="4,0,4,12"
-                 Text="低遅延設定の一括適用と、通信設定の診断を行います。適用後は PC を再起動してください。" />
+                 Text="適用後は PC を再起動してください。" />
 
       <primitives:HeaderedContentControl Header="クイック最適化">
         <StackPanel Spacing="10">
@@ -36,34 +36,13 @@
 
           <Border Background="{DynamicResource Brush.ContainerAlt}" CornerRadius="8" Padding="12,10">
             <StackPanel Spacing="8">
-              <TextBlock Text="低遅延向けのNIC・通信設定をまとめて適用します" FontWeight="SemiBold" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding DnsSettings.OneClickOptimizeDescription}" Classes="caption" TextWrapping="Wrap" />
               <Button Content="おまかせ高速化設定" Command="{Binding RunQuickOptimizationCommand}"
                       Classes="accent" IsEnabled="{Binding !IsOperationRunning}" HorizontalAlignment="Left" />
+              <TextBlock Text="{Binding DnsSettings.OneClickOptimizeDescription}" Classes="caption"
+                         TextWrapping="Wrap" LineHeight="20" />
             </StackPanel>
           </Border>
           <TextBlock Text="{Binding DnsSettings.StatusText}" Classes="caption" TextWrapping="Wrap" />
-        </StackPanel>
-      </primitives:HeaderedContentControl>
-
-      <primitives:HeaderedContentControl Header="ゲーム向けNIC設定の個別適用・復元"
-                                         IsVisible="{Binding IsGamingProfileAvailable}">
-        <StackPanel Spacing="10">
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="対応する物理 NIC の割り込み調整・省電力を無効、RSS・LSO・チェックサムオフロードを有効にします。対象項目は NIC により異なります。" />
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="CPU 負荷・消費電力・発熱が増え、バッテリー駆動時間が短くなる場合があります。" />
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="変更前の値を保存します。反映には PC の再起動が必要です。復元できるのは NIC 設定だけです。" />
-          <WrapPanel Orientation="Horizontal">
-            <Button Content="ゲーム向け設定を保存" Command="{Binding ApplyGamingProfileCommand}"
-                    Classes="accent" IsEnabled="{Binding !IsOperationRunning}" Margin="0,0,8,6" />
-            <Button Content="保存した変更前の値へ戻す" Command="{Binding RestoreGamingProfileCommand}"
-                    IsEnabled="{Binding !IsOperationRunning}" Margin="0,0,0,6" />
-          </WrapPanel>
-          <TextBlock Text="{Binding GamingProfileStatusText}" Classes="caption" TextWrapping="Wrap" />
-          <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="変更前と再起動後に、同じ相手・負荷で100回ずつ測定し、損失・p95・ジッターを比較します。悪化したら復元して再起動してください。ICMP 計測はゲーム通信の実測ではありません。" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Shisui.Core.Models;
 
@@ -22,7 +23,8 @@ public static class MacPingResultParser
         var received = transmittedMatch.Success ? int.Parse(transmittedMatch.Groups[2].Value) : 0;
 
         var roundTripMatch = RoundTripPattern.Match(stdout);
-        double? average = roundTripMatch.Success && double.TryParse(roundTripMatch.Groups[1].Value, out var avg)
+        double? average = roundTripMatch.Success && double.TryParse(
+            roundTripMatch.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var avg)
             ? avg
             : null;
 

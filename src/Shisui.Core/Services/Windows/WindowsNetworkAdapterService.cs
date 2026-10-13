@@ -40,6 +40,7 @@ public sealed class WindowsNetworkAdapterService(ICommandExecutor executor) : IN
     {
         List<string> ipv4Dns = [];
         List<string> ipv6Dns = [];
+        var dnsReadFailed = false;
 
         try
         {
@@ -49,9 +50,11 @@ public sealed class WindowsNetworkAdapterService(ICommandExecutor executor) : IN
             ipv6Dns = dnsAddresses.Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6)
                 .Select(a => a.ToString()).ToList();
         }
-        catch (NetworkInformationException)
+        catch (NetworkInformationException ex)
         {
-            // アダプタによっては IPProperties の取得に失敗することがある (仮想アダプタ等) → DNS 情報なしで続行
+            // 一覧は返しつつ、未設定とは区別して読み取り障害を記録する。
+            dnsReadFailed = true;
+            LoggerBootstrap.Log.Error($"DNS 情報を取得できませんでした。adapter={ni.Name} error={ex}");
         }
 
         // netsh の name= が期待する接続名 (ncpa.cpl に表示される名前) は NetworkInterface.Name と一致する。
@@ -61,6 +64,7 @@ public sealed class WindowsNetworkAdapterService(ICommandExecutor executor) : IN
             Description: ni.Description,
             IsUp: ni.OperationalStatus == OperationalStatus.Up,
             CurrentIPv4Dns: ipv4Dns,
-            CurrentIPv6Dns: ipv6Dns);
+            CurrentIPv6Dns: ipv6Dns,
+            DnsReadFailed: dnsReadFailed);
     }
 }

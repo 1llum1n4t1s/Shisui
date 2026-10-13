@@ -33,21 +33,23 @@
           </Grid>
 
           <StackPanel IsVisible="{Binding SelectedAdapter, Converter={x:Static acv:ObjectConverters.IsNotNull}}" Spacing="2">
-            <StackPanel Orientation="Horizontal" Spacing="4">
+            <TextBlock Text="現在の DNS 情報を取得できませんでした。一覧を更新して再確認してください。" Classes="caption"
+                       IsVisible="{Binding IsCurrentDnsReadFailed}" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding !IsCurrentDnsReadFailed}">
               <TextBlock Text="現在の IPv4 DNS:" Classes="caption" />
-              <TextBlock Text="{Binding SelectedAdapter.CurrentIPv4Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
+              <TextBlock Text="{Binding CurrentIpv4Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding !IsCurrentDnsReadFailed}">
               <TextBlock Text="現在の IPv6 DNS:" Classes="caption" />
-              <TextBlock Text="{Binding SelectedAdapter.CurrentIPv6Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
+              <TextBlock Text="{Binding CurrentIpv6Dns, Converter={x:Static conv:JoinStringsConverter.Instance}}" Classes="caption" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <TextBlock Text="MAC アドレス:" Classes="caption" />
-              <TextBlock Text="{Binding AdapterDetails.MacAddress, TargetNullValue='取得できません'}" Classes="caption" />
+              <TextBlock Text="{Binding CurrentMacAddress}" Classes="caption" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="4">
               <TextBlock Text="リンク速度:" Classes="caption" />
-              <TextBlock Text="{Binding AdapterDetails.LinkSpeedText, TargetNullValue='取得できません'}" Classes="caption" />
+              <TextBlock Text="{Binding CurrentLinkSpeedText}" Classes="caption" />
             </StackPanel>
           </StackPanel>
 

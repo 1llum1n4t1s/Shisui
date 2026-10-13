@@ -180,8 +180,7 @@ public sealed class WindowsLegacyNetworkDiagnosticsService(
             findings.Add(new(
                 "問題状態のネットワークデバイスがあります",
                 $"Windowsが問題を報告しているネットワークデバイスが {problemDeviceCount} 件あります。デバイスマネージャーとドライバーを確認してください",
-                true,
-                LegacyNetworkRepairPath.NicAdvancedPropertiesReset));
+                true));
         }
         else if (!string.IsNullOrWhiteSpace(problemDevicesError))
         {

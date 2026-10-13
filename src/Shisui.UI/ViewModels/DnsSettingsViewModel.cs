@@ -41,10 +41,25 @@ public partial class DnsSettingsViewModel : ObservableObject
     public IReadOnlyList<DnsProviderPreset> Presets => DnsPresetCatalog.BuiltIn;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCurrentDnsReadFailed))]
+    [NotifyPropertyChangedFor(nameof(CurrentIpv4Dns))]
+    [NotifyPropertyChangedFor(nameof(CurrentIpv6Dns))]
     private NetworkAdapterInfo? selectedAdapter;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CurrentMacAddress))]
+    [NotifyPropertyChangedFor(nameof(CurrentLinkSpeedText))]
     private NetworkAdapterDetails? adapterDetails;
+
+    public bool IsCurrentDnsReadFailed => SelectedAdapter?.DnsReadFailed ?? false;
+
+    public IReadOnlyList<string> CurrentIpv4Dns => SelectedAdapter?.CurrentIPv4Dns ?? [];
+
+    public IReadOnlyList<string> CurrentIpv6Dns => SelectedAdapter?.CurrentIPv6Dns ?? [];
+
+    public string CurrentMacAddress => AdapterDetails?.MacAddress ?? "取得できません";
+
+    public string CurrentLinkSpeedText => AdapterDetails?.LinkSpeedText ?? "取得できません";
 
     [ObservableProperty]
     private DnsProviderPreset selectedPreset = DnsPresetCatalog.CloudflareStandard;
@@ -66,6 +81,9 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string statusText = string.Empty;
+
+    [ObservableProperty]
+    private string oneClickProgressText = string.Empty;
 
     [ObservableProperty]
     private bool isAdapterNameBusy;
@@ -108,52 +126,46 @@ public partial class DnsSettingsViewModel : ObservableObject
     private bool IsRouteCleanupAvailable => _maintenanceService?.GetAvailableCommands()
         .Any(command => command.Id == RouteClearCommandId && command.IncludeInOneClickOptimization) == true;
 
-    /// <summary>「おまかせ高速化設定」ボタンの説明文。実際に何が行われるかを事前に把握できるようにする。</summary>
+    /// <summary>一括適用する設定を、項目と変更内容だけで示す。</summary>
     public string OneClickOptimizeDescription
     {
         get
         {
-            var description = IsTcpOptimizationAvailable
-                ? "DNS を Cloudflare に変更し、DoH と通信キャッシュの消去を適用します。PC 全体の TCP 設定を既定に戻し、BBR2・RACK/TLP・RSS を有効、RSC を無効にします。"
-                : "DNS を Cloudflare に変更し、DNS キャッシュを消去します。DoH が使える場合は有効にします。";
-            if (_winsockResetService is not null)
+            var items = new List<string> { "DNS：Cloudflare", "DNS キャッシュ：削除" };
+            if (IsWindows && _dohService is not null)
+                items.Add("DoH：ON");
+            if (_tcpTuningService is not null)
             {
-                description += " LSP 登録がないことを確認できた場合だけ、Winsock を初期化します。";
-            }
-            if (_winHttpCacheService is not null)
-            {
-                description += " WinHTTP の自動検出キャッシュも消去します。プロキシ設定は変更しません。";
-            }
-            if (_dhcpLeaseService is not null)
-            {
-                description += " 選択 NIC の DHCP アドレスも再取得します。固定 IP は変更せず、一時的に通信が切れます。";
-            }
-            if (IsCacheMaintenanceAvailable)
-            {
-                description += " UDP 設定を既定に戻し、AC 時は PCI Express 省電力をオフ、Wi-Fi を最大パフォーマンスにします。バッテリー時の値は維持します。";
+                items.Add("TCP 設定・旧レジストリ調整：既定化");
+                items.Add("輻輳制御：BBR2 / 受信ウィンドウ：Normal");
+                items.Add("TCP RACK・TLP・RSS：ON / RSC：OFF");
             }
             if (_gamingNetworkProfileService is not null)
             {
-                description += " 対応する物理 NIC の割り込み調整・省電力を無効、RSS・LSO・チェックサムオフロードを有効にします。NIC の元の値は保存し、個別に復元できます。";
+                items.Add("NIC 割り込み調整・省電力：OFF（対応項目）");
+                items.Add("NIC RSS・LSO・チェックサム：ON（対応項目）");
+                items.Add("Realtek PCIe Flow Control・Advanced EEE：OFF（対応項目）");
+                items.Add("NIC URO：OFF（対応項目）");
             }
-            if (IsAdapterNameCleanupAvailable)
+            if (_maintenanceService is not null)
             {
-                description += " 切断済み NIC の登録を全削除し、接続名の連番を整理します。取り外し中の USB LAN・ドックも対象で、再接続時に再検出されます。";
+                items.Add("NetBIOS・ARP・経路・IPv6 近隣キャッシュ：削除");
+                items.Add("Winsock 送信バッファ自動調整：ON");
+                items.Add("UDP URO・USO（OS）：既定化");
+                items.Add("PCI Express 省電力：OFF（電源接続時）");
+                items.Add("Wi-Fi 電源：最大パフォーマンス（電源接続時）");
             }
+            if (_dhcpLeaseService is not null)
+                items.Add("DHCP アドレス：再取得");
+            if (_winsockResetService is not null)
+                items.Add("Winsock：初期化（カスタム LSP がない場合）");
+            if (_winHttpCacheService is not null)
+                items.Add("WinHTTP 自動検出キャッシュ：削除");
+            if (_adapterNameService is not null)
+                items.Add("切断済み NIC 登録：削除 / 接続名：連番整理");
             if (IsRouteCleanupAvailable)
-            {
-                description += " 最後に PC 全体の経路を消去します。再起動まで通信できない場合があります。";
-            }
-            if (IsTcpOptimizationAvailable || IsCacheMaintenanceAvailable || _gamingNetworkProfileService is not null)
-            {
-                description += " CPU 負荷・消費電力・発熱が増える場合があります。";
-            }
-            if (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null || IsRouteCleanupAvailable
-                || _winsockResetService is not null)
-            {
-                description += " 完了後に PC を再起動してください。設定値の確認は遅延改善の測定を含みません。";
-            }
-            return description;
+                items.Add("ルーティングテーブル：削除");
+            return string.Join(Environment.NewLine, items.Select(item => "• " + item));
         }
     }
 
@@ -402,7 +414,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 _settingsService.Current.CustomIpv6Secondary = customIpv6Secondary;
             }
 
-            await _settingsService.SaveAsync();
+            var settingsSaved = await TrySaveSelectionAsync();
 
             await LoadAdaptersCoreAsync();
             if (SelectedPreset.Id == preset.Id)
@@ -413,6 +425,15 @@ public partial class DnsSettingsViewModel : ObservableObject
             StatusText = results.All(r => r.Success)
                 ? $"{adapter.DisplayName} に DNS を適用しました"
                 : "一部のコマンドが失敗しました。ログを確認してください";
+            if (!settingsSaved)
+            {
+                StatusText += " アプリの設定を保存できませんでした。ログを確認してください";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = "DNS の適用または現在値の確認に失敗しました。ログを確認してください";
+            LoggerBootstrap.Log.Error("DNS の適用または現在値の確認に失敗しました", ex);
         }
         finally
         {
@@ -440,6 +461,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         var resultsReported = false;
         var routeCleanupAttempted = false;
         var winsockRepairRequested = false;
+        OneClickProgressText = "適用の準備をしています";
         BeginBusyOperation();
         try
         {
@@ -478,6 +500,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             // 先に条件付き修復を済ませ、Winsock 自動調整や希望の TCP/NIC 設定を後から適用する。
             if (_winsockResetService is not null)
             {
+                OneClickProgressText = "Winsock を確認・修復しています";
                 winsockRepairRequested = true;
                 try
                 {
@@ -493,6 +516,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 try
                 {
+                    OneClickProgressText = "WinHTTP キャッシュを削除しています";
                     results.Add(await _winHttpCacheService.ClearAutoProxyCacheAsync());
                 }
                 catch (Exception ex)
@@ -505,9 +529,11 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (_dhcpLeaseService is not null)
             {
                 // DHCP 再取得後に希望の DNS を適用する。解放・再取得は選択した NIC だけを対象にする。
+                OneClickProgressText = "IP アドレスを再取得しています";
                 results.AddRange(await _dhcpLeaseService.ReacquireAsync(adapter.Id));
             }
 
+            OneClickProgressText = "DNS・DoH を設定しています";
             results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
 
             if (IsDohAvailable)
@@ -516,6 +542,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 UseDoh = true;
             }
 
+            OneClickProgressText = "通信キャッシュを削除しています";
             results.Add(await _cacheService.FlushAsync());
 
             if (_maintenanceService is not null)
@@ -535,6 +562,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                         routeClearCommand = command;
                         continue;
                     }
+                    OneClickProgressText = command.Label + "…";
                     results.Add(await _maintenanceService.RunAsync(command.Id));
                 }
             }
@@ -545,6 +573,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // フィルターを含むユーザー構成を削除する。その後の個別コマンドは、全体リセットが一部失敗した
                 // 環境でのフォールバックと、実行ログ上で各項目の成否を確認できるようにするため意図的に重ねる。
                 // 全体リセット後に BBR2 を設定することで、既定化の対象に巻き込まれず最終状態を BBR2 にする。
+                OneClickProgressText = "TCP の低遅延設定を適用しています";
                 results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
                 results.AddRange(await _tcpTuningService.EnableBbr2Async());
                 results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
@@ -559,6 +588,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // 読み取り失敗は結果へ残し、完了した設定の保存と接続名整理は継続する。
                 try
                 {
+                    OneClickProgressText = "TCP 設定を確認しています";
                     var snapshot = await _tcpTuningService.GetCurrentStateAsync();
                     results.Add(TcpSettingsVerifier.VerifyBbr2Enabled(snapshot));
                     results.Add(TcpSettingsVerifier.VerifyAutoTuning(snapshot, AutoTuningLevel.Normal));
@@ -577,6 +607,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // 一括処理が保持する同じリースで適用し、ゲートの二重取得と改名前の接続名の取り違えを防ぐ。
                 try
                 {
+                    OneClickProgressText = "NIC の低遅延設定を適用しています";
                     var gamingResults = await _gamingNetworkProfileService.ApplyWithinMutationLeaseAsync(adapter.Id);
                     results.AddRange(gamingResults);
                     if (gamingResults.Count == 0)
@@ -599,6 +630,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // 切断済み登録を削除し、必要なら選択中アダプタの末尾連番を外す。
                 try
                 {
+                    OneClickProgressText = "切断済み NIC 登録・接続名を整理しています";
                     adapterNameCleanupResult = await _adapterNameService.CleanupAsync(adapter.DisplayName);
                     results.AddRange(adapterNameCleanupResult.CommandResults);
                     AdapterNameStatusText = FormatAdapterNameCleanupStatus(adapterNameCleanupResult);
@@ -618,6 +650,7 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (routeClearCommand is not null)
             {
+                OneClickProgressText = "ルーティングテーブルを削除しています";
                 routeCleanupAttempted = true;
                 try
                 {
@@ -641,7 +674,8 @@ public partial class DnsSettingsViewModel : ObservableObject
                 ? adapterNameCleanupResult.TargetName
                 : adapter.Id;
             _settingsService.Current.LastSelectedPresetId = preset.Id;
-            await _settingsService.SaveAsync();
+            OneClickProgressText = "結果を保存・確認しています";
+            var settingsSaved = await TrySaveSelectionAsync();
 
             var allSucceeded = results.All(r => r.Success)
                                && (adapterNameCleanupResult?.Success ?? true);
@@ -668,6 +702,10 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText += " 設定の反映には PC を再起動してください";
             }
+            if (!settingsSaved)
+            {
+                StatusText += " アプリの設定を保存できませんでした。ログを確認してください";
+            }
         }
         catch (Exception ex)
         {
@@ -688,7 +726,22 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
         finally
         {
+            OneClickProgressText = string.Empty;
             EndBusyOperation();
+        }
+    }
+
+    private async Task<bool> TrySaveSelectionAsync()
+    {
+        try
+        {
+            await _settingsService.SaveAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggerBootstrap.Log.Error("DNS 選択設定を保存できませんでした", ex);
+            return false;
         }
     }
 

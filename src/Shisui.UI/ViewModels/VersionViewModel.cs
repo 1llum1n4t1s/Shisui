@@ -23,6 +23,10 @@ public partial class VersionViewModel : ObservableObject
     private readonly UpdateService _updateService;
     private readonly ISettingsService _settingsService;
     private bool _updateDialogOpen;
+    private bool _restoringSettings;
+
+    [ObservableProperty]
+    private bool isSavingSettings;
 
     [ObservableProperty]
     private string versionText = "…";
@@ -66,8 +70,51 @@ public partial class VersionViewModel : ObservableObject
 
     partial void OnCheckForUpdatesOnStartupChanged(bool value)
     {
+        if (!_restoringSettings)
+        {
+            _ = SaveCheckForUpdatesOnStartupAsync(value);
+        }
+    }
+
+    private async Task SaveCheckForUpdatesOnStartupAsync(bool value)
+    {
+        var previous = _settingsService.Current.CheckForUpdatesOnStartup;
+        if (IsSavingSettings)
+        {
+            RestoreCheckForUpdatesOnStartup(previous);
+            return;
+        }
+
+        IsSavingSettings = true;
         _settingsService.Current.CheckForUpdatesOnStartup = value;
-        _ = _settingsService.SaveAsync();
+        try
+        {
+            await _settingsService.SaveAsync();
+            UpdateStatusText = "起動時の更新確認設定を保存しました";
+        }
+        catch (Exception ex)
+        {
+            _settingsService.Current.CheckForUpdatesOnStartup = previous;
+            RestoreCheckForUpdatesOnStartup(previous);
+            ReportSettingsSaveFailure(ex);
+        }
+        finally
+        {
+            IsSavingSettings = false;
+        }
+    }
+
+    private void RestoreCheckForUpdatesOnStartup(bool value)
+    {
+        _restoringSettings = true;
+        try
+        {
+            CheckForUpdatesOnStartup = value;
+        }
+        finally
+        {
+            _restoringSettings = false;
+        }
     }
 
     [RelayCommand]
@@ -81,9 +128,41 @@ public partial class VersionViewModel : ObservableObject
             return;
         }
 
-        _settingsService.Current.IgnoreUpdateTag = null;
-        IgnoredUpdateTag = string.Empty;
-        await _settingsService.SaveAsync();
+        await SaveIgnoredUpdateTagAsync(null);
+    }
+
+    private async Task SaveIgnoredUpdateTagAsync(string? tag)
+    {
+        if (IsSavingSettings)
+        {
+            UpdateStatusText = "設定を保存中です。完了後にもう一度操作してください";
+            return;
+        }
+
+        var previous = _settingsService.Current.IgnoreUpdateTag;
+        IsSavingSettings = true;
+        _settingsService.Current.IgnoreUpdateTag = tag;
+        try
+        {
+            await _settingsService.SaveAsync();
+            IgnoredUpdateTag = tag ?? string.Empty;
+            UpdateStatusText = "更新のスキップ設定を保存しました";
+        }
+        catch (Exception ex)
+        {
+            _settingsService.Current.IgnoreUpdateTag = previous;
+            ReportSettingsSaveFailure(ex);
+        }
+        finally
+        {
+            IsSavingSettings = false;
+        }
+    }
+
+    private void ReportSettingsSaveFailure(Exception ex)
+    {
+        UpdateStatusText = "アプリの設定を保存できませんでした。変更を戻しました。ログを確認してください";
+        LoggerBootstrap.Log.Error("更新設定を保存できませんでした", ex);
     }
 
     /// <summary>
@@ -127,12 +206,8 @@ public partial class VersionViewModel : ObservableObject
                 IgnoredTagName = _settingsService.Current.IgnoreUpdateTag,
                 AccentBrush = new SolidColorBrush(Color.Parse("#0A84FF")),
             };
-            options.VersionIgnored += tag => Dispatcher.UIThread.Post(() =>
-            {
-                _settingsService.Current.IgnoreUpdateTag = tag;
-                IgnoredUpdateTag = tag ?? string.Empty;
-                _ = _settingsService.SaveAsync();
-            });
+            options.VersionIgnored += tag => Dispatcher.UIThread.Post(
+                () => _ = SaveIgnoredUpdateTagAsync(tag));
             options.ErrorOccurred += ex =>
                 LoggerBootstrap.Log.Error($"Velopack 更新失敗: {ex.GetType().Name}", ex);
 
