@@ -307,7 +307,8 @@ least 100 and at least 0.1% of observed packets, avoiding noisy single discards.
 is a check recommendation, not proof that the driver is wrong.
 
 Findings guide the user to the DNS-tab connection-name cleanup action and maintenance-tab Winsock reset. NIC advanced
-property reset is offered only when the report recommends it and targets only the currently selected adapter via
+property reset is offered only for the selected adapter's packet-error or discard-rate warning. The global problem-device
+count only guides the user to Device Manager and driver checks. Reset targets only the currently selected adapter via
 `Reset-NetAdapterAdvancedProperty -DisplayName '*'`; it is destructive, restarts the adapter, and is never part of
 one-click optimization. IP-stack reset and `netcfg -d` remain last-resort maintenance actions and are not run by
 the diagnostic flow.
@@ -346,8 +347,7 @@ Summaries are timestamped in the UI and file log. macOS does not fabricate unava
 
 ### Gaming NIC profile (`IGamingNetworkProfileService`, Windows)
 
-Both one-click and the individual gaming card in AutoOptimization use `WindowsGamingNetworkProfileService`. Individual apply/restore owns the shared
-mutation gate from read through journal persistence and verification; individual operations do not run the broad one-click reset. One-click calls `ApplyWithinMutationLeaseAsync` after TCP readback and before name cleanup while retaining its existing lease, so the service does not reacquire the non-reentrant gate. The caller must hold the same shared lease through the entire operation. Empty results or exceptions become explicit one-click failures, and ordinary failed NIC results remain failures.
+AutoOptimization exposes the gaming NIC profile only through one-click; there is no individual apply/restore card. `WindowsGamingNetworkProfileService` retains its journal and standalone apply/restore APIs, which own the shared mutation gate from read through persistence and verification. One-click calls `ApplyWithinMutationLeaseAsync` after TCP readback and before name cleanup while retaining its existing lease, so the service does not reacquire the non-reentrant gate. The caller must hold the same shared lease through the entire operation. Empty results or exceptions become explicit one-click failures, and ordinary failed NIC results remain failures.
 Only physical Ethernet (type 6) or Wi-Fi (type 71) is eligible. Standard driver-exposed `*RSS`, `*LsoV2IPv4`,
 and `*LsoV2IPv6` target 1; IPv4 IP checksum and IPv4/IPv6 TCP/UDP checksum offload target 3 (Tx and Rx enabled).
 Targets and documented value domains are keyword-specific and shared by parsing, command validation,
@@ -357,11 +357,19 @@ driver support for the original and target values must be verified. Existing bin
 keywords by media/provider/PCI identity: standard `*InterruptModeration` for either media, `*EEE` only for Ethernet,
 `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` for physical Realtek Ethernet identified by provider name,
 PCI vendor 10EC or USB vendor 0BDA, and `LowPowerEnable` / `UAPSDSupport` only for MediaTek Wi-Fi (`MediaTek, Inc.`
-and PCI vendor 14C3). Realtek-specific properties are changed only when the driver actually exposes the exact key
+and PCI vendor 14C3). These Realtek power properties are changed only when the driver actually exposes the exact key
 with binary 0/1 values. Their binary semantics were verified against `RTL8168H.ndi.NT` in driver INF
 1168.27.50.920; the MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
 This is not a generic manufacturer-independent Wi-Fi power switch. Missing properties are reported;
 malformed values, wrong media/provider combinations and identity changes cannot authorize writes or restore.
+The additional `*FlowControl` and `AdvancedEEE` targets are 0 and require physical Ethernet with a
+`PCI\VEN_10EC&` device identity; provider-name-only and USB matches do not authorize these two changes.
+Flow Control uses its documented 0/1/2/3 domain and requires driver support for the original value and 0;
+Advanced EEE requires both binary values. Installed RTL8125BG INF 1125.027.50.0919 exposes Flow Control 0/3
+and Advanced EEE 0/1. Standard `*UdpRsc` targets 0 on physical Ethernet or Wi-Fi only when the driver exposes
+the exact property and both 0/1 values. [URO](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/udp-rsc-offload)
+is separate from TCP RSC and the OS-level UDP URO/USO defaults. Missing keywords are never created.
+Query, apply and restore use the same generated media/vendor policy expression.
 PowerShell emits strictly validated JSON (JsonDocument, without reflection), uses exact names after wildcard escaping,
 and sets the selected property CIM object with `-NoRestart`. GUID, interface description and the property's
 InstanceID are rechecked before each write. Persistent journal models use the source-generated JSON context.
@@ -417,7 +425,7 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
 
 ### UI Framework
 
-- **Avalonia 12.0.5** with Fluent theme, matching RealTimeTranslator's version.
+- **Avalonia** with Fluent theme. Authoritative package versions are in `src/Shisui.UI/Shisui.UI.csproj`.
 - MVVM via CommunityToolkit.Mvvm 8.4.2. Compiled bindings (`AvaloniaUseCompiledBindingsByDefault=true`) — every
   `.axaml` needs `x:DataType`; binding-path typos become build errors.
 - **Design system is a copy of `C:\Users\IMT\dev\Lhamiel`'s "macOS Tahoe" look**: `Resources/Themes.axaml` holds
@@ -426,7 +434,7 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   glass panel), the `HeaderedContentControl` glass-card template used for every settings section, and unified
   corner radii. The window uses `TransparencyLevelHint="AcrylicBlur"` + `ExperimentalAcrylicBorder`. When adding UI,
   reuse `HeaderedContentControl` for cards and the `h1`/`caption` TextBlock classes rather than inventing styles.
-- Main view: `MainWindow` (880×620, min 760×500) is a sidebar `TabControl` — DNS 設定 / 自動最適化 /
+- Main view: `MainWindow` (880×620, min 760×500) is a sidebar `TabControl` — 自動最適化 (initially selected) / DNS 設定 /
   ネットワーク診断 / BBR2・TCP 調整 / メンテナンス (the TCP and maintenance tabs use
   `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent
   実行ログ card fed by each tab ViewModel's `CommandExecuted` event, one `UserControl` per tab. Sidebar tab icons
@@ -435,6 +443,8 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   coordinates to XAML, preview the shape first (write it as standalone SVG, publish via the `Artifact` tool,
   screenshot it) — a first-draft wrench icon for メンテナンス read as a magnifying glass once rendered and was
   redrawn as an 8-tooth gear before it ever reached `MainWindow.axaml`.
+- The optimization explanation lists each setting and its ON/OFF/reset/delete action. MainWindowViewModel aggregates running states across tabs, disables the entire content including logs, and displays a themed indeterminate progress overlay. One-click reports its current phase through OneClickProgressText and clears it in finally. User close requests are blocked during processing; programmatic and OS shutdown remain available.
+  During cancellable Ping measurement, the overlay exposes the existing cancel command while normal controls stay disabled.
 - Destructive maintenance commands are visually flagged (red button via `Classes.danger="{Binding
   Definition.IsDestructive}"`) but run immediately on click — no confirmation checkbox or modal dialog gates them.
 - Some maintenance categories also expose a "まとめて実行" (run-all) button that runs every command in the
@@ -451,6 +461,10 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   RealTimeTranslator, nothing here needs live config reload while a background pipeline runs). Path resolved by
   `AppPaths` per-OS convention: `%APPDATA%\Shisui\settings.json` (Windows) /
   `~/Library/Application Support/Shisui/settings.json` (macOS).
+  Only a genuinely missing file permits initial saving. Read failures (including invalid or null JSON) are logged and
+  block saves for that service instance, preserving the original file and NIC/Wi-Fi journals until the problem is fixed
+  and the app is restarted. UI save failures are reported separately from completed OS changes; update preferences are
+  restored when saving fails. NIC DNS read failures remain in the adapter list with a distinct status and exception log.
 - Logging: `SuperLightLogger` NuGet package (same as RealTimeTranslator), via `LoggerBootstrap`. Logs to
   `AppPaths.LogsDirectory`.
   Session startup records the app version, OS/build, architecture, runtime, culture and Windows elevation state.
