@@ -73,6 +73,9 @@ cleanup targets described in [DESIGN.md](DESIGN.md#インストール移行の�
 - **Command builders are pure functions**: no `Process`/OS calls inside `*CommandBuilder` / `*Catalog` classes —
   keeps them unit-testable. OS access belongs to services and executors; annotate platform-specific entry points with `[SupportedOSPlatform(...)]`.
 - **Native AOT and JSON**: follow the source-generation and release-path checks in "Build & Test Commands".
+- **Settings persistence**: preserve the load-failure save block and recovery journals described in
+  [DESIGN.md](DESIGN.md#設定と更新). When changing save callers, verify that save failures are reported
+  separately from completed OS changes and that update preferences roll back on save failure.
 - **macOS distribution**: verify on real hardware before shipping; implementation and parser tests alone
   do not establish compatibility. The currently supported distribution is documented in DESIGN.
 
