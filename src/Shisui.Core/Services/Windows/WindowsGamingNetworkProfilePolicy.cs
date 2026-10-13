@@ -12,6 +12,9 @@ public static class WindowsGamingNetworkProfilePolicy
     public const string RealtekGreenEthernetKeyword = "EnableGreenEthernet";
     public const string RealtekGigaLiteKeyword = "GigaLite";
     public const string RealtekPowerSavingModeKeyword = "PowerSavingMode";
+    public const string FlowControlKeyword = "*FlowControl";
+    public const string RealtekAdvancedEeeKeyword = "AdvancedEEE";
+    public const string UdpRscKeyword = "*UdpRsc";
     public const string RssKeyword = "*RSS";
     public const string LsoV2IPv4Keyword = "*LsoV2IPv4";
     public const string LsoV2IPv6Keyword = "*LsoV2IPv6";
@@ -40,6 +43,9 @@ public static class WindowsGamingNetworkProfilePolicy
             [RealtekGreenEthernetKeyword] = new("0", BinaryValues),
             [RealtekGigaLiteKeyword] = new("0", BinaryValues),
             [RealtekPowerSavingModeKeyword] = new("0", BinaryValues),
+            [FlowControlKeyword] = new("0", ChecksumValues),
+            [RealtekAdvancedEeeKeyword] = new("0", BinaryValues),
+            [UdpRscKeyword] = new("0", BinaryValues),
             [RssKeyword] = new("1", BinaryValues, true),
             [LsoV2IPv4Keyword] = new("1", BinaryValues, true),
             [LsoV2IPv6Keyword] = new("1", BinaryValues, true),
@@ -97,7 +103,7 @@ public static class WindowsGamingNetworkProfilePolicy
 
         if (interfaceType == EthernetInterfaceType)
         {
-            return StandardOffloadKeywords.Concat(IsRealtekEthernet(driverProvider, pnpDeviceId)
+            return StandardOffloadKeywords.Concat(new[] { UdpRscKeyword }).Concat(IsRealtekEthernet(driverProvider, pnpDeviceId)
                 ?
                 new[]
                 {
@@ -107,10 +113,13 @@ public static class WindowsGamingNetworkProfilePolicy
                     RealtekGigaLiteKeyword,
                     RealtekPowerSavingModeKeyword,
                 }
-                : new[] { InterruptModerationKeyword, EnergyEfficientEthernetKeyword }).ToArray();
+                : new[] { InterruptModerationKeyword, EnergyEfficientEthernetKeyword })
+                .Concat(IsRealtekPciEthernet(pnpDeviceId)
+                    ? new[] { FlowControlKeyword, RealtekAdvancedEeeKeyword }
+                    : Array.Empty<string>()).ToArray();
         }
 
-        return StandardOffloadKeywords.Concat(IsVerifiedMediaTekWifi(driverProvider, pnpDeviceId)
+        return StandardOffloadKeywords.Concat(new[] { UdpRscKeyword }).Concat(IsVerifiedMediaTekWifi(driverProvider, pnpDeviceId)
             ? new[] { InterruptModerationKeyword, MediaTekLowPowerKeyword, MediaTekUapsdKeyword }
             : new[] { InterruptModerationKeyword }).ToArray();
     }
@@ -127,6 +136,10 @@ public static class WindowsGamingNetworkProfilePolicy
     public static bool IsVerifiedMediaTekWifi(string driverProvider, string pnpDeviceId) =>
         string.Equals(driverProvider, MediaTekDriverProvider, StringComparison.Ordinal) &&
         pnpDeviceId.StartsWith(MediaTekPnpPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>追加のRealtek項目はPCIベンダーIDが確認できる場合に限る。媒体と物理NICは呼出元で確認する。</summary>
+    public static bool IsRealtekPciEthernet(string pnpDeviceId) =>
+        pnpDeviceId.StartsWith(RealtekPciPnpPrefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>プロバイダー名またはPCI/USBのベンダーIDでRealtek製と確認できる物理Ethernetを受け入れる。</summary>
     public static bool IsRealtekEthernet(string driverProvider, string pnpDeviceId) =>

@@ -13,7 +13,7 @@ public sealed class WindowsGamingNetworkProfilePolicyTests
             true, 6, "Intel", "PCI\\VEN_8086&DEV_1234");
 
         CollectionAssert.AreEqual(
-            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*InterruptModeration", "*EEE" },
+            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*UdpRsc", "*InterruptModeration", "*EEE" },
             keywords.ToArray());
     }
 
@@ -28,11 +28,14 @@ public sealed class WindowsGamingNetworkProfilePolicyTests
             {
                 "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4",
                 "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6",
+                "*UdpRsc",
                 "*InterruptModeration",
                 "*EEE",
                 "EnableGreenEthernet",
                 "GigaLite",
                 "PowerSavingMode",
+                "*FlowControl",
+                "AdvancedEEE",
             },
             keywords.ToArray());
     }
@@ -60,7 +63,7 @@ public sealed class WindowsGamingNetworkProfilePolicyTests
             true, 71, "MediaTek, Inc.", "PCI\\VEN_14C3&DEV_0616&SUBSYS_061614C3");
 
         CollectionAssert.AreEqual(
-            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*InterruptModeration", "LowPowerEnable", "UAPSDSupport" },
+            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*UdpRsc", "*InterruptModeration", "LowPowerEnable", "UAPSDSupport" },
             keywords.ToArray());
         Assert.DoesNotContain("*EEE", keywords);
     }
@@ -71,7 +74,7 @@ public sealed class WindowsGamingNetworkProfilePolicyTests
         var keywords = WindowsGamingNetworkProfilePolicy.GetApplicableKeywords(
             true, 71, "Unknown Vendor", "PCI\\VEN_9999&DEV_0001");
 
-        CollectionAssert.AreEqual(new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*InterruptModeration" }, keywords.ToArray());
+        CollectionAssert.AreEqual(new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*UdpRsc", "*InterruptModeration" }, keywords.ToArray());
     }
 
     [TestMethod]
