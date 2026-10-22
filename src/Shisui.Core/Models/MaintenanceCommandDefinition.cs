@@ -11,4 +11,8 @@ public sealed record MaintenanceCommandDefinition(
     string Description,
     bool IsDestructive,
     bool RequiresReboot,
-    bool IncludeInOneClickOptimization = false);
+    bool IncludeInOneClickOptimization = false)
+{
+    /// <summary>おまかせ対象のうち、DHCP・DNS・TCP・NIC の設定前に実行する修復。</summary>
+    public bool RunBeforeOneClickConfiguration { get; init; }
+}

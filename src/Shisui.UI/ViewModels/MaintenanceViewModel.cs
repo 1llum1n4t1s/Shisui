@@ -73,6 +73,11 @@ public partial class MaintenanceViewModel : ObservableObject
                 {
                     var result = await _maintenanceService.RunAsync(item.Definition.Id);
                     CommandExecuted?.Invoke(this, result);
+                    if (result.RequiresOperationAbort)
+                    {
+                        StatusText = $"「{group.Name}」を中断しました。{result.StandardError}";
+                        return;
+                    }
                     if (!result.Success)
                     {
                         failed++;

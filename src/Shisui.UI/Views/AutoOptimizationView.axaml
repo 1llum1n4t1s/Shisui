@@ -22,12 +22,7 @@
                       IsEnabled="{Binding !IsOperationRunning}"
                       HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
-                <DataTemplate DataType="models:NetworkAdapterInfo">
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding DisplayName}" />
-                    <TextBlock Text="(無効)" Classes="caption" IsVisible="{Binding !IsUp}" />
-                  </StackPanel>
-                </DataTemplate>
+                <StaticResource ResourceKey="NetworkAdapterItemTemplate" />
               </ComboBox.ItemTemplate>
             </ComboBox>
             <Button Grid.Column="1" Content="一覧を更新" Command="{Binding DnsSettings.LoadAdaptersCommand}"

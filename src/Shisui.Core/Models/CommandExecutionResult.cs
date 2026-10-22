@@ -13,6 +13,9 @@ public sealed record CommandExecutionResult(
     /// <summary>ファイルログの開始・終了・画面通知を結ぶID。画面表示には使わない。</summary>
     public string? DiagnosticId { get; init; }
 
+    /// <summary>子プロセスの終了を確認できない等、後続の変更操作を中断すべき結果。</summary>
+    public bool RequiresOperationAbort { get; init; }
+
     public static CommandExecutionResult Skipped(string reason) =>
         new(false, reason, -1, string.Empty, reason);
 }

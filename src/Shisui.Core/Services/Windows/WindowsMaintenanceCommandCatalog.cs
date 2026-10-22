@@ -22,9 +22,13 @@ public static class WindowsMaintenanceCommandCatalog
 
     public static IReadOnlyList<WindowsMaintenanceCommand> All { get; } =
     [
+        new(new MaintenanceCommandDefinition("ipsec-clear-active-sa", CategoryStackReset, "確立済み IPsec SA を破棄",
+                "現在の IPsec セッションを破棄します。VPN などの通信が一時的に切れる場合があります。固定ポリシーは変更しません。", true, false, true)
+            { RunBeforeOneClickConfiguration = true },
+            "powershell", WindowsConditionalNetworkResetCommandBuilder.BuildClearActiveIpsecSaArguments()),
         new(new MaintenanceCommandDefinition("nbtstat-purge-reload", CategoryCache, "NetBIOS 名前キャッシュを再読込", "キャッシュを消去し、ローカルの名前登録を再読込します。", false, false, true),
             "nbtstat", "-R"),
-        new(new MaintenanceCommandDefinition("nbtstat-reregister", CategoryCache, "NetBIOS 名前を再登録", "WINS サーバーへの名前登録を更新します。", false, false),
+        new(new MaintenanceCommandDefinition("nbtstat-reregister", CategoryCache, "NetBIOS 名前を再登録", "WINS が構成され NetBIOS が無効でない場合に、WINS サーバーへの名前登録を更新します。", false, false, true),
             "nbtstat", "-RR"),
         new(new MaintenanceCommandDefinition("ipconfig-registerdns", CategoryCache, "DNS 登録を更新", "この PC の名前と IP アドレスを動的 DNS に登録します。", false, false),
             "ipconfig", "/registerdns"),

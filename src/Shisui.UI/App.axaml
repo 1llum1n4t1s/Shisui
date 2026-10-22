@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:Shisui.Core.Models"
              x:Class="Shisui.UI.App"
              RequestedThemeVariant="Default">
 
@@ -8,6 +9,12 @@
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="/Resources/Themes.axaml" />
       </ResourceDictionary.MergedDictionaries>
+      <DataTemplate x:Key="NetworkAdapterItemTemplate" DataType="models:NetworkAdapterInfo">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="{Binding DisplayName}" />
+          <TextBlock Text="(無効)" Classes="caption" IsVisible="{Binding !IsUp}" />
+        </StackPanel>
+      </DataTemplate>
     </ResourceDictionary>
   </Application.Resources>
 

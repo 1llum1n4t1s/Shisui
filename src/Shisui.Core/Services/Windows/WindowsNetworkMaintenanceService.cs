@@ -9,6 +9,7 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor, 
 {
     private const string PcieLinkStateCommandId = "powercfg-pcie-link-state-ac-off";
     private static readonly TimeSpan RollbackTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ConditionalResetTimeout = TimeSpan.FromSeconds(45);
 
     public IReadOnlyList<MaintenanceCommandDefinition> GetAvailableCommands() =>
         WindowsMaintenanceCommandCatalog.All.Select(c => c.Definition).ToList();
@@ -24,6 +25,17 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor, 
             return CommandExecutionResult.Skipped($"未知のコマンド ID: {commandId}");
         }
 
+        if (commandId == "nbtstat-reregister")
+        {
+            return await RunConditionalResetAsync(command.Definition.Label,
+                WindowsConditionalNetworkResetCommandBuilder.BuildReregisterWinsArguments(), ct);
+        }
+
+        if (commandId == "ipsec-clear-active-sa")
+        {
+            return await RunConditionalResetAsync(command.Definition.Label, command.Arguments, ct);
+        }
+
         if (commandId is "powercfg-wifi-ac-max-performance" or "powercfg-wifi-ac-restore")
         {
             return settingsService is null
@@ -35,6 +47,23 @@ public sealed class WindowsNetworkMaintenanceService(ICommandExecutor executor, 
         return commandId == PcieLinkStateCommandId
             ? await DisablePcieLinkStatePowerManagementOnAcAsync(ct)
             : await executor.RunAsync(command.FileName, command.Arguments, ct);
+    }
+
+    private async Task<CommandExecutionResult> RunConditionalResetAsync(string label, string arguments, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(ConditionalResetTimeout);
+        try
+        {
+            return await executor.RunAsync("powershell", arguments, timeout.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // executor の終了要求が拒否された可能性もあるため、後続の変更は中断する。
+            return new(false, label, -1, string.Empty,
+                $"{label}は{ConditionalResetTimeout.TotalSeconds:0}秒以内に完了せず、子プロセスへ終了を要求しました。終了や反映状態を確認できないため、後続処理を中断します。PC を再起動してから再実行してください。")
+            { RequiresOperationAbort = true };
+        }
     }
 
     private async Task<CommandExecutionResult> DisablePcieLinkStatePowerManagementOnAcAsync(CancellationToken ct)

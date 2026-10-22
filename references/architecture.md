@@ -161,7 +161,22 @@ in the XML doc on `IDotConfigurationService`.
 The 「自動最適化」 tab's 「クイック最適化」 card exposes the DNS tab's shared adapter selection and a
 「おまかせ高速化設定」 button for users who don't want to understand each individual toggle. The tab-level
 `AutoOptimizationViewModel` command delegates the mutation to `DnsSettingsViewModel.RunOneClickOptimizationAsync`
-and then refreshes the manual TCP tab's state badges. Under the existing shared mutation lease, optional Windows
+and then refreshes the manual TCP tab's state badges. Optional Windows `IIpStackResetService` first captures
+all NIC connection settings through `IIpStackPlatform`, saves `AppSettings.PendingIpStackReset`, resets IPv4/IPv6,
+restores and verifies the original values. Unsupported configurations and failed journal writes stop before
+reset; incomplete restoration stops later mutations. OS-wide IP/TCP tuning is reset and then optimized;
+effective global values are not replayed as fixed overrides of Windows defaults. Platform command builders remain pure and the journal
+models are registered in `ShisuiJsonContext`. The original survives process termination; uncertain child
+completion requires a different boot ID before recovery. After restoration, automatic recovery never
+replays the original over subsequent optimization. Final settings are captured before `route /f`, and the
+journal is cleared only after persistent settings match on a later boot. A visible explicit restore action
+remains available while pending recovery disables normal tab operations without preventing window closure.
+Under the existing shared mutation lease, allowlisted
+maintenance with `RunBeforeOneClickConfiguration` runs before DHCP/DNS/TCP/NIC settings. IPsec repair queries
+both Main Mode and Quick Mode SAs before deleting captured Quick Mode then Main Mode SAs. It does not modify
+IPsec policies. No SAs or unavailable support is an explicit skip; query and partial deletion failures remain
+failures while subsequent repairs continue. New SAs may be established, so a permanently empty SA list is not
+the completion criterion. Next, optional Windows
 `IWinsockResetService` first checks the native Winsock SPI catalog, including hidden and standalone LSPs;
 on a 64-bit OS it also checks the 32-bit catalog with `WSCEnumProtocols32`. Only complete, nonempty catalogs
 whose protocol chains are all base providers (`ChainLen=1`) permit `netsh winsock reset`. Layered providers
@@ -185,7 +200,8 @@ The remaining sequence switches the selected preset to
 Cloudflare standard, enables DoH if the preset supports it, flushes the DNS cache, and — when
 `INetworkMaintenanceService` is available (Windows; injected as `INetworkMaintenanceService? = null` the same
 way the other Windows-only services are, so macOS silently skips this step) — also runs only maintenance commands
-whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true: NetBIOS name-cache purge/reload,
+whose `MaintenanceCommandDefinition.IncludeInOneClickOptimization` flag is true, omitting repairs already run
+before configuration: NetBIOS name-cache purge/reload and conditional WINS name re-registration,
 all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
 the IPv6 neighbor-discovery cache flush, and `netsh winsock set autotuning on` so old tweak tools cannot leave
 Winsock's independent send-buffer autotuning disabled.
@@ -204,7 +220,14 @@ a failed initial read must not cause a write. It neither switches power plans no
 This action is separately available in the maintenance tab. Its UI description explains that it affects PCI Express
 devices beyond the selected NIC and may increase power consumption and heat; streaming improvement is not guaranteed.
 The command sequence uses the documented [powercfg AC-value and activation commands](https://learn.microsoft.com/en-us/windows-hardware/design/device-experiences/powercfg-command-line-options).
-This is an explicit allowlist: DNS/NetBIOS registration and HTTP.sys log-buffer/server-response-cache operations
+WINS registration runs through the same conditional path for manual and one-click execution: CIM must confirm
+an IP-enabled NIC with NetBIOS not disabled and a valid configured WINS server before fixed System32 `nbtstat -RR`
+is invoked. Missing/unreadable configuration is not treated as a confirmed absence, and native failure codes
+propagate through PowerShell. No WINS server or NetBIOS configuration is changed.
+Both conditional commands have a 45-second linked timeout. The executor attempts to terminate the child
+process tree, but termination is not guaranteed. Timeout results set `RequiresOperationAbort`: one-click
+and manual batch callers stop subsequent mutations, retain the failure, and advise restarting the PC.
+This is an explicit allowlist: dynamic DNS registration and HTTP.sys log-buffer/server-response-cache operations
 remain available in the maintenance tab but are deliberately excluded
 from one-click because their applicability depends on name-registration or HTTP-server use; one-click also
 switches to public DNS. They are evaluated separately from latency tuning. DNS cache flushing is already handled

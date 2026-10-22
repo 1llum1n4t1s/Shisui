@@ -35,6 +35,9 @@ public sealed class AppSettings
     /// <summary>電源プランごとの Wi-Fi AC 設定の元の値。再適用で上書きしない。</summary>
     public List<WifiPowerPlanSnapshot> WifiPowerPlanSnapshots { get; set; } = [];
 
+    /// <summary>IP スタック初期化前の全 NIC 設定。復元と再起動後の確認が終わるまで保持する。</summary>
+    public IpStackResetJournal? PendingIpStackReset { get; set; }
+
     /// <summary>
     /// Velopack 自動更新の配信元。Cloudflare R2 (カスタムドメイン) をハードコード固定する。
     /// <see cref="JsonIgnore"/> なので settings.json から書き換え不可 (悪意ある第三者ホストへの誘導を防ぐ)。

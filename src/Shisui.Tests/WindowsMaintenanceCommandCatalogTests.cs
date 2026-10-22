@@ -108,7 +108,9 @@ public class WindowsMaintenanceCommandCatalogTests
 
         CollectionAssert.AreEqual(new[]
         {
+            "ipsec-clear-active-sa",
             "nbtstat-purge-reload",
+            "nbtstat-reregister",
             "arp-clear",
             "netsh-ipv4-delete-destinationcache",
             "netsh-ipv6-delete-destinationcache",
@@ -121,7 +123,6 @@ public class WindowsMaintenanceCommandCatalogTests
             "route-clear",
         }, includedIds);
 
-        CollectionAssert.DoesNotContain(includedIds, "nbtstat-reregister");
         CollectionAssert.DoesNotContain(includedIds, "ipconfig-registerdns");
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-flush-logbuffer");
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-delete-cache");

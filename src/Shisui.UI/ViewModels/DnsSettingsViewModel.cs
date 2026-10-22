@@ -26,6 +26,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IGamingNetworkProfileService? _gamingNetworkProfileService;
     private readonly IWinsockResetService? _winsockResetService;
     private readonly IWinHttpCacheService? _winHttpCacheService;
+    private readonly IIpStackResetService? _ipStackResetService;
     private int _adapterDetailsRequestVersion;
     private int _dohStateRequestVersion;
     private int _busyOperationCount;
@@ -33,6 +34,18 @@ public partial class DnsSettingsViewModel : ObservableObject
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
+
+    public bool IsIpStackRecoveryRequired => _ipStackResetService?.IsRecoveryRequired ?? false;
+
+    public bool HasIpStackBackup => _ipStackResetService is not null &&
+        _settingsService.Current.PendingIpStackReset is not null;
+
+    public string IpStackRecoveryText => _settingsService.Current.PendingIpStackReset?.LastError
+        ?? (IsIpStackRecoveryRequired
+            ? "IP 設定の復元が完了していません。ログを確認し、必要な場合は再起動後に復元してください。"
+            : _settingsService.Current.PendingIpStackReset?.Phase == "Restored"
+                ? "設定の適用が途中で終わったため、IP 設定の退避データを保持しています。"
+                : "IP 設定の退避データを保持しています。再起動後に設定を確認します。");
 
     public bool IsAdapterNameCleanupAvailable => IsWindows && _adapterNameService is not null;
 
@@ -147,8 +160,12 @@ public partial class DnsSettingsViewModel : ObservableObject
                 items.Add("Realtek PCIe Flow Control・Advanced EEE：OFF（対応項目）");
                 items.Add("NIC URO：OFF（対応項目）");
             }
+            if (_ipStackResetService is not null)
+                items.Add("IP スタック：全 NIC の設定を退避して初期化・復元");
             if (_maintenanceService is not null)
             {
+                items.Add("IPsec 通信状態：削除（接続がある場合）");
+                items.Add("WINS 名前登録：更新（利用時）");
                 items.Add("NetBIOS・ARP・経路・IPv6 近隣キャッシュ：削除");
                 items.Add("Winsock 送信バッファ自動調整：ON");
                 items.Add("UDP URO・USO（OS）：既定化");
@@ -184,7 +201,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         IDhcpLeaseService? dhcpLeaseService = null,
         IGamingNetworkProfileService? gamingNetworkProfileService = null,
         IWinsockResetService? winsockResetService = null,
-        IWinHttpCacheService? winHttpCacheService = null)
+        IWinHttpCacheService? winHttpCacheService = null,
+        IIpStackResetService? ipStackResetService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -201,6 +219,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _gamingNetworkProfileService = gamingNetworkProfileService;
         _winsockResetService = winsockResetService;
         _winHttpCacheService = winHttpCacheService;
+        _ipStackResetService = ipStackResetService;
 
         // 前回選択したプリセットを復元する (組み込みプリセットのみ。フィールド直接代入で OnChanged を
         // 発火させず、初期 DoH 状態の取得は下の RefreshDohStateAsync で一度だけ明示的に行う)。
@@ -264,10 +283,7 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     partial void OnSelectedPresetChanged(DnsProviderPreset value)
     {
-        OnPropertyChanged(nameof(IsCustomPresetSelected));
-        OnPropertyChanged(nameof(IsDohAvailable));
-        OnPropertyChanged(nameof(IsDotAvailable));
-        OnPropertyChanged(nameof(ShowDohDotInteractionNote));
+        NotifySelectedPresetDependentPropertiesChanged();
         // プリセットを切り替えたら、その宛先の DoH 実状態を取り直してチェックボックス・バッジへ反映する。
         _ = RefreshDohStateAsync(value.Servers);
         // DoT は OS 側に状態読み取り手段が無いため (IDotConfigurationService 参照)、
@@ -275,6 +291,14 @@ public partial class DnsSettingsViewModel : ObservableObject
         UseDot = false;
         // 前のプリセットに対する疎通テスト結果を持ち越さない。
         PingStatusText = string.Empty;
+    }
+
+    private void NotifySelectedPresetDependentPropertiesChanged()
+    {
+        OnPropertyChanged(nameof(IsCustomPresetSelected));
+        OnPropertyChanged(nameof(IsDohAvailable));
+        OnPropertyChanged(nameof(IsDotAvailable));
+        OnPropertyChanged(nameof(ShowDohDotInteractionNote));
     }
 
     [RelayCommand]
@@ -473,6 +497,15 @@ public partial class DnsSettingsViewModel : ObservableObject
                 return;
             }
 
+            if (_ipStackResetService is not null)
+            {
+                OneClickProgressText = "全 NIC の IP 設定を退避・初期化・復元しています";
+                var resetResults = await _ipStackResetService.ResetAndRestoreAsync();
+                results.AddRange(resetResults);
+                if (resetResults.Any(r => r.RequiresOperationAbort) || _ipStackResetService.IsRecoveryRequired)
+                    throw new InvalidOperationException("IP 設定の退避・復元を確認できないため、後続の設定を中断しました。ログを確認してください。");
+            }
+
             // SelectedPreset のセッターではなくバッキングフィールドへ直接代入する。セッター経由だと
             // OnSelectedPresetChanged が同期発火し、その中の fire-and-forget な RefreshDohStateAsync
             // (旧プリセット向けの無駄な呼び出し)が、この後 EnableAsync 実行後に await する
@@ -483,10 +516,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             selectedPreset = DnsPresetCatalog.CloudflareStandard;
 #pragma warning restore MVVMTK0034
             OnPropertyChanged(nameof(SelectedPreset));
-            OnPropertyChanged(nameof(IsCustomPresetSelected));
-            OnPropertyChanged(nameof(IsDohAvailable));
-            OnPropertyChanged(nameof(IsDotAvailable));
-            OnPropertyChanged(nameof(ShowDohDotInteractionNote));
+            NotifySelectedPresetDependentPropertiesChanged();
             // DoT は DoH と比べて速度上のメリットが無いため (下の解説キャプション参照) ここでは触れないが、
             // 前のプリセットのチェック状態を持ち越さないよう明示的にリセットする (OnSelectedPresetChanged と同じ扱い)。
             UseDot = false;
@@ -496,6 +526,28 @@ public partial class DnsSettingsViewModel : ObservableObject
             var servers = preset.Servers;
             NetworkAdapterNameCleanupResult? adapterNameCleanupResult = null;
             MaintenanceCommandDefinition? routeClearCommand = null;
+            var oneClickMaintenanceCommands = _maintenanceService?.GetAvailableCommands()
+                .Where(c => c.IncludeInOneClickOptimization).ToArray() ?? [];
+
+            // 接続状態を破棄する修復は、DHCP と希望の通信設定を適用する前に済ませる。
+            foreach (var command in oneClickMaintenanceCommands.Where(c =>
+                         c.RunBeforeOneClickConfiguration && c.Id != RouteClearCommandId))
+            {
+                OneClickProgressText = command.Label + "…";
+                CommandExecutionResult repairResult;
+                try
+                {
+                    repairResult = await _maintenanceService!.RunAsync(command.Id);
+                }
+                catch (Exception ex)
+                {
+                    repairResult = new(false, command.Label, -1, string.Empty, ex.Message);
+                    LoggerBootstrap.Log.Error($"おまかせ高速化設定の事前修復に失敗しました: {command.Id}", ex);
+                }
+                results.Add(repairResult);
+                if (repairResult.RequiresOperationAbort)
+                    throw new InvalidOperationException(repairResult.StandardError);
+            }
 
             // 先に条件付き修復を済ませ、Winsock 自動調整や希望の TCP/NIC 設定を後から適用する。
             if (_winsockResetService is not null)
@@ -549,11 +601,9 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 // カタログでワンクリック対象と明示されたメンテナンスだけを実行する。許可リスト方式にすることで、
                 // 手動メンテナンス用コマンドを今後同じカテゴリへ追加しても、意図せず初心者向けボタンへ混入しない。
-                // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。DNS/NetBIOS 再登録は名前登録を
-                // 利用する環境に依存し、HTTP.sys のログ/応答キャッシュはサーバー用のため対象外。送信自動調整は受信側の
+                // DNS キャッシュは上の _cacheService.FlushAsync() で既に処理済み。WINS 再登録は構成がある場合だけ行う。
+                // DNS 再登録と HTTP.sys のログ/応答キャッシュは対象外。送信自動調整は受信側の
                 // Auto-Tuning とは別系統なので、古い高速化ツールで無効化された状態をここで明示的に有効へ戻す。
-                var oneClickMaintenanceCommands = _maintenanceService.GetAvailableCommands()
-                    .Where(c => c.IncludeInOneClickOptimization);
                 foreach (var command in oneClickMaintenanceCommands)
                 {
                     if (command.Id == RouteClearCommandId)
@@ -562,8 +612,13 @@ public partial class DnsSettingsViewModel : ObservableObject
                         routeClearCommand = command;
                         continue;
                     }
+                    if (command.RunBeforeOneClickConfiguration)
+                        continue;
                     OneClickProgressText = command.Label + "…";
-                    results.Add(await _maintenanceService.RunAsync(command.Id));
+                    var maintenanceResult = await _maintenanceService.RunAsync(command.Id);
+                    results.Add(maintenanceResult);
+                    if (maintenanceResult.RequiresOperationAbort)
+                        throw new InvalidOperationException(maintenanceResult.StandardError);
                 }
             }
 
@@ -648,6 +703,16 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            // 最終設定の再起動後確認用データは、通信を切断する route /f より先に保存する。
+            if (_ipStackResetService is not null)
+            {
+                OneClickProgressText = "再起動後の IP 設定の確認情報を保存しています";
+                var completionResults = await _ipStackResetService.CompleteOptimizationAsync();
+                results.AddRange(completionResults);
+                if (completionResults.Any(r => r.RequiresOperationAbort))
+                    throw new InvalidOperationException("再起動後の確認情報を保存できないため、経路の削除を中断しました。");
+            }
+
             if (routeClearCommand is not null)
             {
                 OneClickProgressText = "ルーティングテーブルを削除しています";
@@ -727,8 +792,56 @@ public partial class DnsSettingsViewModel : ObservableObject
         finally
         {
             OneClickProgressText = string.Empty;
+            NotifyIpStackRecoveryState();
             EndBusyOperation();
         }
+    }
+
+    internal Task RecoverPendingIpStackAsync() => RunIpStackRecoveryAsync(restoreOriginal: false);
+
+    [RelayCommand]
+    private Task RestoreIpStackAsync() => RunIpStackRecoveryAsync(restoreOriginal: true);
+
+    private async Task RunIpStackRecoveryAsync(bool restoreOriginal)
+    {
+        if (_ipStackResetService is null || !HasIpStackBackup)
+            return;
+
+        BeginBusyOperation();
+        OneClickProgressText = restoreOriginal ? "退避した IP 設定を復元しています" : "前回の IP 初期化の状態を確認しています";
+        try
+        {
+            using var mutationLease = await _networkMutationGate.EnterAsync();
+            var results = restoreOriginal
+                ? await _ipStackResetService.RestoreOriginalAsync()
+                : await _ipStackResetService.RecoverPendingAsync();
+            foreach (var result in results)
+                CommandExecuted?.Invoke(this, result);
+            if (results.Count > 0)
+                StatusText = results.All(r => r.Success)
+                    ? "IP 設定の復旧・確認が完了しました。ログを確認してください。"
+                    : "IP 設定の復旧・確認が完了していません。ログを確認してください。";
+            await LoadAdaptersCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"IP 設定の復旧・確認に失敗しました: {ex.Message}";
+            CommandExecuted?.Invoke(this, new(false, "IP 設定の復旧・確認", -1, string.Empty, ex.Message));
+            LoggerBootstrap.Log.Error("IP 設定の復旧・確認に失敗しました", ex);
+        }
+        finally
+        {
+            OneClickProgressText = string.Empty;
+            NotifyIpStackRecoveryState();
+            EndBusyOperation();
+        }
+    }
+
+    private void NotifyIpStackRecoveryState()
+    {
+        OnPropertyChanged(nameof(IsIpStackRecoveryRequired));
+        OnPropertyChanged(nameof(HasIpStackBackup));
+        OnPropertyChanged(nameof(IpStackRecoveryText));
     }
 
     private async Task<bool> TrySaveSelectionAsync()
