@@ -171,7 +171,9 @@ MSI レイアウトの変化を署名済み配布経路で検証する理由で�
 channel は `win`、manifest は `releases.win.json`、移行用の固定ファイルは `Shisui-win.msi` です。
 GitHub Releases は配信に使いません。
 公開は配信中 metadata の退避、版付き nupkg、固定名バイナリ、更新 metadata の順です。
-Cloudflare cache purge 後に manifest 一致と固定 MSI の配信サイズを確認し、
+固定名ファイルは、キャッシュ回避クエリ付き URL とクライアントが使う固定 URL の実体を取得し、
+ローカル配布物との SHA256 一致を確認します。不一致の URL だけ Cloudflare cache purge を行い、
+固定 URL の実体が一致するまで上限付きで再確認します。さらに manifest の内容一致と固定 MSI の配信サイズを確認し、
 metadata 公開後の失敗では退避 metadata を復元して再 purge します。
 世代整理は manifest が参照する全オブジェクトと最新2版の版付き配布物を保持します。
 PerUser Setup.exe は公開対象から除外し、過去の配信物とキャッシュは MSI の伝播成功後にだけ整理します。
@@ -190,7 +192,9 @@ PerUser Setup.exe は公開対象から除外し、過去の配信物とキャ�
   例外として RACK/TLP の変更不要判定だけは、PowerShell に値がないため確認済みの日英ラベルを限定解析します。
   未知の言語・不完全な出力を有効と推測せず、設定コマンドの失敗を成功へ置き換えません。
 - Windows の外部コマンドは既知のシステムコマンドだけを絶対パスへ解決し、未知の相対実行ファイルを拒否します。
-- executor のキャンセル時と開始後の例外時は子プロセスツリー全体を終了させ、変更コマンドをバックグラウンドへ残しません。
+- executor のキャンセル時と開始後の例外時は子プロセスツリー全体へ終了を要求して待機します。
+  終了要求が拒否される場合もあるため、終了を保証する境界にはしません。IP 初期化や条件付き修復で
+  終了を確認できない場合の後続操作中断・再起動待ちは、各 service と呼び出し元が管理します。
 - builder、catalog、parser は OS を呼ばない純粋処理です。OS アクセスは service、executor、専用のネイティブ API 実装の責務です。
 - `INetworkMutationGate` は非再入です。複合操作は外側で一度だけ取得し、内側から再取得しません。
 - 公式 DNS プリセットの IP、DoH template、DoT host は一体の契約です。特に Cloudflare のフィルタ段階ごとの
