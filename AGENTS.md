@@ -29,8 +29,7 @@ script (`scripts/release-local.ps1`) does its own RID-locked self-contained publ
 Release output defaults to a unique user-Temp `Codex\Shisui\release-<id>` directory, with signed packages
 under `packages` and intermediate build output under `build`. To select it explicitly, use `-WorkDirectory`
 with a path below user-Temp `Codex\Shisui`; the script rejects repository/Codex-home paths, reparse points,
-and path components named `artifacts`. Reusing an existing work directory requires the external
-`~/.codex/scripts/CodexCleanup.psm1` helper. The script retains local output after completion; inspect and
+and path components named `artifacts`. Reusing an existing work directory checks the allowed temporary root and rejects links before standard filesystem cleanup. The script retains local output after completion; inspect and
 clean it through the applicable cleanup procedure once it is no longer needed. `-UseEnvironmentalAotTools`
 passes `IlcUseEnvironmentalTools=true` to publish only when using an already configured native toolchain.
 Native AOT is enabled repository-wide through `Directory.Build.props`. When adding serialized application models,

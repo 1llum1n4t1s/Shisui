@@ -6,7 +6,7 @@
 # 前提:
 #   - SimplySign Desktop が接続済み (証明書が CurrentUser\My に見えていること)
 #   - Directory.Build.props の <Version> がリリースしたいバージョンになっていること (/vava 済み)
-#   - C:\Users\IMT\dev\Secret\secrets.json に cloudflare.api_token があること
+#   - D:\Dev\Secret\secrets.json に cloudflare.api_token があること
 #
 # 使い方:
 #   pwsh scripts/release-local.ps1                # フルリリース (build + sign + upload + cleanup)
@@ -19,6 +19,35 @@ param(
     [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) "Codex\Shisui\release-$([Guid]::NewGuid().ToString('N'))"),
     [switch]$UseEnvironmentalAotTools
 )
+
+
+# 検証済みの作業対象だけを標準APIで削除する。
+function Remove-LocalWorkItem {
+    param([string[]]$LiteralPath, [string]$AllowedRoot, [switch]$IgnoreMissing, [switch]$AllowLeafJunction)
+    if ([string]::IsNullOrWhiteSpace($AllowedRoot) -or -not [IO.Path]::IsPathRooted($AllowedRoot)) { throw 'Cleanup root must be absolute.' }
+    $boundary = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+    foreach ($target in $LiteralPath) {
+        if ([string]::IsNullOrWhiteSpace($target) -or -not [IO.Path]::IsPathRooted($target)) { throw 'Cleanup target must be absolute.' }
+        $resolved = [IO.Path]::GetFullPath($target)
+        if (-not $resolved.StartsWith($boundary, [StringComparison]::OrdinalIgnoreCase)) { throw 'Cleanup target is outside the allowed root.' }
+        $ancestor = $resolved
+        while ($ancestor) {
+            if (Test-Path -LiteralPath $ancestor) {
+                $item = Get-Item -LiteralPath $ancestor -Force -ErrorAction Stop
+                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -and -not ($AllowLeafJunction -and $ancestor -eq $resolved -and $item.LinkType -eq 'Junction')) { throw 'Cleanup path contains a reparse point.' }
+            }
+            $ancestor = Split-Path $ancestor -Parent
+        }
+        if (-not (Test-Path -LiteralPath $resolved)) { if ($IgnoreMissing) { continue }; throw "Cleanup target is missing: $resolved" }
+        $item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
+        $leafLink = [bool]($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
+        if ($item.PSIsContainer -and -not $leafLink) {
+            if (@(Get-ChildItem -LiteralPath $resolved -Recurse -Force -ErrorAction Stop | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }).Count) { throw 'Cleanup directory contains a reparse point.' }
+        }
+        Remove-Item -LiteralPath $resolved -Recurse:($item.PSIsContainer -and -not $leafLink) -Force -ErrorAction Stop
+        if (Test-Path -LiteralPath $resolved) { throw "Cleanup target remains: $resolved" }
+    }
+}
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -33,7 +62,7 @@ $WranglerVersion = '4.149.0'        # サプライチェーン対策でバージ
 $Bucket = 'shisui-updates'
 $BaseUrl = 'https://shisui.kagayoi.com'
 $AccountId = '10901bfadbf1005164774a7350082985'
-$SecretsPath = 'C:\Users\IMT\dev\Secret\secrets.json'
+$SecretsPath = 'D:\Dev\Secret\secrets.json'
 $CertSubjectName = 'Open Source Developer Yuichiro Shinozaki'
 # /n (Subject 名) で選択: 証明書の年次更新で thumbprint が変わっても動く
 $SignParams = "/n `"$CertSubjectName`" /fd SHA256 /td SHA256 /tr http://time.certum.pl"
@@ -73,7 +102,6 @@ $ArtifactsDir = Join-Path $WorkDir 'packages'
 $BuildOutputDir = Join-Path $WorkDir 'build'
 $RollbackDir = Join-Path $WorkDir 'rollback-previous'
 $taskKey = [IO.Path]::GetRelativePath($TemporaryRoot, $WorkDir).Split([IO.Path]::DirectorySeparatorChar)[0]
-$CleanupLedgerDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Codex\TaskArtifacts\Shisui\$taskKey\cleanup"
 
 function Invoke-Native {
     param([string]$Description, [scriptblock]$Block)
@@ -124,8 +152,7 @@ if (-not $SkipUpload) {
 }
 
 if (Test-Path -LiteralPath $WorkDir) {
-    Import-Module (Join-Path $env:USERPROFILE '.codex/scripts/CodexCleanup.psm1') -ErrorAction Stop
-    Remove-CodexItem -LiteralPath $WorkDir -AllowedRoot $TemporaryRoot -LedgerRoot $CleanupLedgerDir
+    Remove-LocalWorkItem -LiteralPath $WorkDir -AllowedRoot $TemporaryRoot
 }
 New-Item -ItemType Directory -Path $ArtifactsDir -Force | Out-Null
 $toolTemp = Join-Path $WorkDir 'tool-temp'
@@ -271,7 +298,15 @@ function Publish-R2Artifact {
 Write-Host '== R2 アップロード ==' -ForegroundColor Cyan
 $uploaded = 0
 $publishedMetadata = [System.Collections.Generic.List[string]]::new()
-$zoneId = $null
+# メタデータの公開前に、失敗時の復元にも使う配信 zone を確定する。
+$cfHeaders = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
+$zoneName = ([uri]$BaseUrl).Host -replace '^[^.]+\.', ''
+$zoneResp = Invoke-RestMethod -Uri "https://api.cloudflare.com/client/v4/zones?name=$zoneName" -Headers $cfHeaders -TimeoutSec 30
+if (-not $zoneResp.success -or @($zoneResp.result).Count -ne 1 -or
+    $zoneResp.result[0].account.id -ne $AccountId) {
+    throw "Cloudflare zone '$zoneName' と配信アカウントを一意に確認できませんでした"
+}
+$zoneId = $zoneResp.result[0].id
 try {
     # manifest が先に見えて未アップロードの nupkg を参照しないよう、版付きpayloadを最初に置く。
     foreach ($file in $payloadFiles) {
@@ -291,23 +326,49 @@ try {
     Write-Host "✅ R2 アップロード完了: $uploaded ファイル"
 
     # ---- 2.5 Cloudflare エッジキャッシュのパージ ----
-    # 固定名ファイル (MSI / Portable.zip / RELEASES / releases.*.json / assets.*.json) は
-    # 毎リリースで中身が変わるのに URL が不変。パージしないと自動更新が旧版を掴む。
-    Write-Host '== Cloudflare キャッシュパージ ==' -ForegroundColor Cyan
-    $cfHeaders = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
-    $zoneName = ([uri]$BaseUrl).Host -replace '^[^.]+\.', ''   # <sub>.kagayoi.com → kagayoi.com (apex)
-    $zoneResp = Invoke-RestMethod -Uri "https://api.cloudflare.com/client/v4/zones?name=$zoneName" -Headers $cfHeaders -TimeoutSec 30
-    if (-not $zoneResp.success -or @($zoneResp.result).Count -eq 0) { throw "Cloudflare zone '$zoneName' の取得に失敗しました" }
-    $zoneId = $zoneResp.result[0].id
-    $purgeUrls = @($publishArtifactFiles | Where-Object { $_.Name -notlike '*.nupkg' } | ForEach-Object { "$BaseUrl/$($_.Name)" })
+    # 固定名ファイルの実物を先に照合し、古い内容が確認できた URL だけをパージする。
+    Write-Host '== Cloudflare キャッシュ確認 ==' -ForegroundColor Cyan
+    $probeDir = Join-Path $WorkDir 'cache-probe'
+    New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
+    $purgeUrls = @(
+        foreach ($file in ($publishArtifactFiles | Where-Object { $_.Name -notlike '*.nupkg' })) {
+            $url = "$BaseUrl/$($file.Name)"
+            $probePath = Join-Path $probeDir $file.Name
+            Invoke-WebRequest -Uri "${url}?_=$([Guid]::NewGuid().ToString('N'))" `
+                -Headers @{ 'Cache-Control' = 'no-cache' } -OutFile $probePath -TimeoutSec 60
+            # query が別キャッシュになる設定でも、クライアントが使う固定 URL を確認する。
+            $fixedProbePath = $probePath + '.fixed'
+            Invoke-WebRequest -Uri $url -OutFile $fixedProbePath -TimeoutSec 60
+            if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -or
+                (Get-FileHash -LiteralPath $fixedProbePath -Algorithm SHA256).Hash -ne
+                (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) {
+                $url
+            }
+        }
+    )
     if ($purgeUrls.Count -gt 0) {
-        $purgeBody = "{`"files`":$(ConvertTo-Json -InputObject $purgeUrls -AsArray -Compress)}"
+        $purgeBody = [PSCustomObject]@{ files = $purgeUrls } | ConvertTo-Json -Compress
         $purgeResp = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
             -Headers $cfHeaders -ContentType 'application/json' -Body $purgeBody -TimeoutSec 30
         if (-not $purgeResp.success) { throw "Cloudflare キャッシュパージに失敗しました: $($purgeResp.errors | ConvertTo-Json -Compress)" }
         Write-Host "  ✅ パージ: $($purgeUrls.Count) URL"
+        foreach ($file in ($publishArtifactFiles | Where-Object { "$BaseUrl/$($_.Name)" -in $purgeUrls })) {
+            $matched = $false
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+                $probePath = Join-Path $probeDir ($file.Name + '.fixed')
+                Invoke-WebRequest -Uri "$BaseUrl/$($file.Name)" -OutFile $probePath -TimeoutSec 60
+                if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -eq
+                    (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) {
+                    $matched = $true
+                    break
+                }
+                Start-Sleep -Seconds 3
+            }
+            if (-not $matched) { throw "固定 URL の配信内容が一致しません: $($file.Name)" }
+        }
     } else {
-        Write-Host '  パージ対象なし'
+        Write-Host '  ✅ 配信ファイルの SHA256 一致。パージ不要'
     }
 
 # ---- 3. 配信確認 (manifest 完全一致リトライ方式) ----
@@ -425,9 +486,21 @@ foreach ($legacySetup in $legacySetupFiles) {
         if ($statusCode -ne 404) { throw }
     }
 }
-if ($legacySetupFiles.Count -gt 0) {
-    $legacySetupUrls = @($legacySetupFiles | ForEach-Object { "$BaseUrl/$($_.Name)" })
-    $legacyPurgeBody = "{`"files`":$(ConvertTo-Json -InputObject $legacySetupUrls -AsArray -Compress)}"
+$legacySetupUrls = @(
+    foreach ($legacySetup in $legacySetupFiles) {
+        $url = "$BaseUrl/$($legacySetup.Name)"
+        try {
+            $null = Invoke-WebRequest -Method Head -Uri $url -TimeoutSec 30
+            $url
+        } catch {
+            $responseProperty = $_.Exception.PSObject.Properties['Response']
+            $statusCode = if ($responseProperty -and $responseProperty.Value) { [int]$responseProperty.Value.StatusCode } else { $null }
+            if ($statusCode -ne 404) { throw }
+        }
+    }
+)
+if ($legacySetupUrls.Count -gt 0) {
+    $legacyPurgeBody = [PSCustomObject]@{ files = $legacySetupUrls } | ConvertTo-Json -Compress
     Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
         -Headers $cfHeaders -ContentType 'application/json' -Body $legacyPurgeBody -TimeoutSec 30 | Out-Null
 }
