@@ -9,10 +9,13 @@ namespace Shisui.Core.Services.MacOS;
 /// "(N) &lt;サービス名&gt;" の次の行に "(Hardware Port: ..., Device: &lt;device&gt;)" が続く形式で、
 /// 無効化済みサービスは "*" が前置される (この記号だけ英語非依存なので安全に無視できる)。
 /// </summary>
-public static class MacNetworkServiceOrderParser
+public static partial class MacNetworkServiceOrderParser
 {
-    private static readonly Regex ServiceLinePattern = new(@"^\(\d+\)\s*\*?(.+)$", RegexOptions.Compiled);
-    private static readonly Regex DeviceLinePattern = new(@"Device:\s*([\w.]+)\)", RegexOptions.Compiled);
+    [GeneratedRegex(@"^\(\d+\)\s*\*?(.+)$")]
+    private static partial Regex ServiceLinePattern();
+
+    [GeneratedRegex(@"Device:\s*([\w.]+)\)")]
+    private static partial Regex DeviceLinePattern();
 
     public static IReadOnlyDictionary<string, string> ParseServiceNameToDevice(string stdout)
     {
@@ -21,13 +24,13 @@ public static class MacNetworkServiceOrderParser
 
         for (var i = 0; i < lines.Length; i++)
         {
-            var serviceMatch = ServiceLinePattern.Match(lines[i].Trim());
+            var serviceMatch = ServiceLinePattern().Match(lines[i].Trim());
             if (!serviceMatch.Success || i + 1 >= lines.Length)
             {
                 continue;
             }
 
-            var deviceMatch = DeviceLinePattern.Match(lines[i + 1].Trim());
+            var deviceMatch = DeviceLinePattern().Match(lines[i + 1].Trim());
             if (deviceMatch.Success)
             {
                 map[serviceMatch.Groups[1].Value.Trim()] = deviceMatch.Groups[1].Value;

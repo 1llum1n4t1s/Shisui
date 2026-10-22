@@ -16,7 +16,7 @@ namespace Shisui.Core.Services.Windows;
 
 /// <summary>旧PerUser版と旧MSIの既知の誤配置を、署名済みProgram Files版へ移行する。</summary>
 [SupportedOSPlatform("windows")]
-public static class WindowsPerMachineMigration
+public static partial class WindowsPerMachineMigration
 {
     private const string AppId = "Shisui";
     private const string StableExeName = "Shisui.exe";
@@ -1049,8 +1049,8 @@ public static class WindowsPerMachineMigration
         uint flags);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int MessageBoxW(IntPtr windowHandle, string text, string caption, uint type);
+    [LibraryImport("user32.dll", EntryPoint = "MessageBoxW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial int MessageBoxW(IntPtr windowHandle, string text, string caption, uint type);
 }
 
 /// <summary>Windows 限定モデル用 JSON シリアライズコンテキスト(NativeAOT/トリミング対応)。</summary>

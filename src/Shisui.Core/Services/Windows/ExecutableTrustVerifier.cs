@@ -8,7 +8,7 @@ namespace Shisui.Core.Services.Windows;
 
 /// <summary>実行ファイルの Authenticode 署名と署名者を Windows の信頼ポリシーで検証する。</summary>
 [SupportedOSPlatform("windows")]
-public static class ExecutableTrustVerifier
+public static partial class ExecutableTrustVerifier
 {
     private static readonly Guid WinTrustActionGenericVerifyV2 =
         new("00AAC56B-CD44-11D0-8CC2-00C04FC295EE");
@@ -101,7 +101,7 @@ public static class ExecutableTrustVerifier
             };
 
             var action = WinTrustActionGenericVerifyV2;
-            var status = WinVerifyTrust(nint.Zero, ref action, ref trustData);
+            var status = WinVerifyTrust(nint.Zero, in action, ref trustData);
             if (status != 0)
             {
                 failureReason = $"Authenticode 署名を検証できませんでした (0x{status:X8})";
@@ -133,7 +133,7 @@ public static class ExecutableTrustVerifier
             {
                 trustData.StateAction = WinTrustDataStateAction.Close;
                 var action = WinTrustActionGenericVerifyV2;
-                _ = WinVerifyTrust(nint.Zero, ref action, ref trustData);
+                _ = WinVerifyTrust(nint.Zero, in action, ref trustData);
             }
 
             if (fileInfoPointer != nint.Zero)
@@ -201,27 +201,27 @@ public static class ExecutableTrustVerifier
 
     // 昇格対象の隣接ディレクトリに置かれた同名 DLL を読み込まない。
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("wintrust.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
-    private static extern int WinVerifyTrust(
+    [LibraryImport("wintrust.dll", EntryPoint = "WinVerifyTrust", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int WinVerifyTrust(
         nint windowHandle,
-        [In] ref Guid actionId,
-        [In, Out] ref WinTrustData trustData);
+        in Guid actionId,
+        ref WinTrustData trustData);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("wintrust.dll", ExactSpelling = true)]
-    private static extern nint WTHelperProvDataFromStateData(nint stateData);
+    [LibraryImport("wintrust.dll", EntryPoint = "WTHelperProvDataFromStateData")]
+    private static partial nint WTHelperProvDataFromStateData(nint stateData);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("wintrust.dll", ExactSpelling = true)]
-    private static extern nint WTHelperGetProvSignerFromChain(
+    [LibraryImport("wintrust.dll", EntryPoint = "WTHelperGetProvSignerFromChain")]
+    private static partial nint WTHelperGetProvSignerFromChain(
         nint providerData,
         uint signerIndex,
         [MarshalAs(UnmanagedType.Bool)] bool counterSigner,
         uint counterSignerIndex);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("wintrust.dll", ExactSpelling = true)]
-    private static extern nint WTHelperGetProvCertFromChain(nint signer, uint certificateIndex);
+    [LibraryImport("wintrust.dll", EntryPoint = "WTHelperGetProvCertFromChain")]
+    private static partial nint WTHelperGetProvCertFromChain(nint signer, uint certificateIndex);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct WinTrustFileInfo

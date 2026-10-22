@@ -10,17 +10,16 @@ namespace Shisui.Core.Services.MacOS;
 /// " &lt;hop&gt;  *" ) は固定の英語/数値書式でロケールに依存しない。応答が無いホップは
 /// Address/RoundtripMs が null になる (通常のトレースルートでも起きる挙動)。
 /// </summary>
-public static class MacTraceRouteParser
+public static partial class MacTraceRouteParser
 {
-    private static readonly Regex HopPattern = new(
-        @"^\s*(\d+)\s+(?:(\S+)\s+([\d.]+)\s*ms|\*)",
-        RegexOptions.Compiled | RegexOptions.Multiline);
+    [GeneratedRegex(@"^\s*(\d+)\s+(?:(\S+)\s+([\d.]+)\s*ms|\*)", RegexOptions.Multiline)]
+    private static partial Regex HopPattern();
 
     public static IReadOnlyList<TraceRouteHop> Parse(string stdout)
     {
         var hops = new List<TraceRouteHop>();
 
-        foreach (Match match in HopPattern.Matches(stdout))
+        foreach (Match match in HopPattern().Matches(stdout))
         {
             var hopNumber = int.Parse(match.Groups[1].Value);
             var hasAddress = match.Groups[2].Success;

@@ -5,7 +5,7 @@ using Shisui.Core.Interfaces;
 namespace Shisui.Core.Services.Windows;
 
 [SupportedOSPlatform("windows")]
-public sealed class WindowsWinHttpAutoProxyApi : IWinHttpAutoProxyApi
+public sealed partial class WindowsWinHttpAutoProxyApi : IWinHttpAutoProxyApi
 {
     // STATE / ALL / NOTIFY は含めず、サービス側の PAD とスクリプトキャッシュだけを対象にする。
     internal const uint CacheOnlyFlags = 0x00020000 | 0x00000004 | 0x00000008;
@@ -46,15 +46,15 @@ public sealed class WindowsWinHttpAutoProxyApi : IWinHttpAutoProxyApi
     }
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("winhttp.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern nint WinHttpOpen(string agent, uint accessType, string? proxy, string? bypass, uint flags);
+    [LibraryImport("winhttp.dll", EntryPoint = "WinHttpOpen", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial nint WinHttpOpen(string agent, uint accessType, string? proxy, string? bypass, uint flags);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("winhttp.dll", ExactSpelling = true)]
-    private static extern uint WinHttpResetAutoProxy(nint session, uint flags);
+    [LibraryImport("winhttp.dll", EntryPoint = "WinHttpResetAutoProxy")]
+    private static partial uint WinHttpResetAutoProxy(nint session, uint flags);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [DllImport("winhttp.dll", ExactSpelling = true, SetLastError = true)]
+    [LibraryImport("winhttp.dll", EntryPoint = "WinHttpCloseHandle", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool WinHttpCloseHandle(nint session);
+    private static partial bool WinHttpCloseHandle(nint session);
 }

@@ -7,11 +7,16 @@ namespace Shisui.Core.Services.MacOS;
 /// <c>ifconfig &lt;device&gt;</c> の出力をパースする純粋関数 (プロセス起動・OS 呼び出しを行わない、
 /// ユニットテスト対象)。ifconfig の出力は BSD 標準の固定英語書式でロケールに依存しない。
 /// </summary>
-public static class MacIfConfigParser
+public static partial class MacIfConfigParser
 {
-    private static readonly Regex EtherPattern = new(@"ether\s+([0-9a-fA-F:]{17})", RegexOptions.Compiled);
-    private static readonly Regex StatusPattern = new(@"status:\s*(\S+)", RegexOptions.Compiled);
-    private static readonly Regex MediaPattern = new(@"media:\s*(.+)", RegexOptions.Compiled);
+    [GeneratedRegex(@"ether\s+([0-9a-fA-F:]{17})")]
+    private static partial Regex EtherPattern();
+
+    [GeneratedRegex(@"status:\s*(\S+)")]
+    private static partial Regex StatusPattern();
+
+    [GeneratedRegex(@"media:\s*(.+)")]
+    private static partial Regex MediaPattern();
 
     public static NetworkAdapterDetails? Parse(string stdout, string adapterId)
     {
@@ -20,9 +25,9 @@ public static class MacIfConfigParser
             return null;
         }
 
-        var mac = Match(EtherPattern, stdout);
-        var status = Match(StatusPattern, stdout);
-        var media = Match(MediaPattern, stdout)?.Trim();
+        var mac = Match(EtherPattern(), stdout);
+        var status = Match(StatusPattern(), stdout);
+        var media = Match(MediaPattern(), stdout)?.Trim();
 
         return new NetworkAdapterDetails(
             adapterId,

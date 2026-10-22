@@ -12,7 +12,7 @@ namespace Shisui.UI.Services;
 /// 実際の管理者権限は起動直後にここで自己再起動して取得する。
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class WindowsElevationHelper
+public static partial class WindowsElevationHelper
 {
     private const string AppUserModelId = "velopack.Shisui";
 
@@ -73,6 +73,6 @@ public static class WindowsElevationHelper
         }
     }
 
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+    [LibraryImport("shell32.dll", EntryPoint = "SetCurrentProcessExplicitAppUserModelID", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetCurrentProcessExplicitAppUserModelID(string appId);
 }

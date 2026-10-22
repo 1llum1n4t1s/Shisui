@@ -7,7 +7,7 @@ namespace Shisui.Core.Services.Windows;
 
 /// <summary>Winsock SPI を使い、非表示・単独の LSP を含む全登録を読み取る。</summary>
 [SupportedOSPlatform("windows")]
-public sealed class WindowsWinsockCatalogInspector(IWinsockCatalogApi? api = null) : IWinsockCatalogInspector
+public sealed partial class WindowsWinsockCatalogInspector(IWinsockCatalogApi? api = null) : IWinsockCatalogInspector
 {
     private readonly IWinsockCatalogApi _api = api ?? new NativeWinsockCatalogApi();
     private const int SocketError = -1;
@@ -165,7 +165,7 @@ public sealed class WindowsWinsockCatalogInspector(IWinsockCatalogApi? api = nul
 
     private static WinsockCatalogInspection Unknown(string detail) => new(false, false, detail);
 
-    private sealed class NativeWinsockCatalogApi : IWinsockCatalogApi
+    private sealed partial class NativeWinsockCatalogApi : IWinsockCatalogApi
     {
         public bool Is64BitOperatingSystem => Environment.Is64BitOperatingSystem;
         public bool Is64BitProcess => Environment.Is64BitProcess;
@@ -205,19 +205,19 @@ public sealed class WindowsWinsockCatalogInspector(IWinsockCatalogApi? api = nul
                 : WSCEnumProtocols(IntPtr.Zero, buffer, ref length, out error);
 
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        [DllImport("ws2_32.dll", ExactSpelling = true)]
-        private static extern int WSAStartup(ushort version, IntPtr data);
+        [LibraryImport("ws2_32.dll", EntryPoint = "WSAStartup")]
+        private static partial int WSAStartup(ushort version, IntPtr data);
 
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        [DllImport("ws2_32.dll", ExactSpelling = true)]
-        private static extern int WSACleanup();
+        [LibraryImport("ws2_32.dll", EntryPoint = "WSACleanup")]
+        private static partial int WSACleanup();
 
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        [DllImport("ws2_32.dll", ExactSpelling = true)]
-        private static extern int WSCEnumProtocols(IntPtr protocols, IntPtr buffer, ref uint bufferLength, out int error);
+        [LibraryImport("ws2_32.dll", EntryPoint = "WSCEnumProtocols")]
+        private static partial int WSCEnumProtocols(IntPtr protocols, IntPtr buffer, ref uint bufferLength, out int error);
 
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        [DllImport("ws2_32.dll", ExactSpelling = true)]
-        private static extern int WSCEnumProtocols32(IntPtr protocols, IntPtr buffer, ref uint bufferLength, out int error);
+        [LibraryImport("ws2_32.dll", EntryPoint = "WSCEnumProtocols32")]
+        private static partial int WSCEnumProtocols32(IntPtr protocols, IntPtr buffer, ref uint bufferLength, out int error);
     }
 }

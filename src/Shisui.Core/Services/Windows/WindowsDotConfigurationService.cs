@@ -9,23 +9,11 @@ public sealed class WindowsDotConfigurationService(ICommandExecutor executor) : 
 {
     public async Task<IReadOnlyList<CommandExecutionResult>> EnableAsync(DnsServerSet servers, string dotHost, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDotCommandBuilder.BuildEnable(servers, dotHost))
-        {
-            results.Add(await executor.RunAsync(WindowsDotCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDotCommandBuilder.FileName, WindowsDotCommandBuilder.BuildEnable(servers, dotHost), ct);
     }
 
     public async Task<IReadOnlyList<CommandExecutionResult>> DisableAsync(DnsServerSet servers, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDotCommandBuilder.BuildDisable(servers))
-        {
-            results.Add(await executor.RunAsync(WindowsDotCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDotCommandBuilder.FileName, WindowsDotCommandBuilder.BuildDisable(servers), ct);
     }
 }

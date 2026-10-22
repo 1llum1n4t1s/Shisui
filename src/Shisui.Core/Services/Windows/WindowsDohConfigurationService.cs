@@ -9,24 +9,12 @@ public sealed class WindowsDohConfigurationService(ICommandExecutor executor) : 
 {
     public async Task<IReadOnlyList<CommandExecutionResult>> EnableAsync(DnsServerSet servers, string dohTemplate, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDohCommandBuilder.BuildEnable(servers, dohTemplate))
-        {
-            results.Add(await executor.RunAsync(WindowsDohCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDohCommandBuilder.FileName, WindowsDohCommandBuilder.BuildEnable(servers, dohTemplate), ct);
     }
 
     public async Task<IReadOnlyList<CommandExecutionResult>> DisableAsync(DnsServerSet servers, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDohCommandBuilder.BuildDisable(servers))
-        {
-            results.Add(await executor.RunAsync(WindowsDohCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDohCommandBuilder.FileName, WindowsDohCommandBuilder.BuildDisable(servers), ct);
     }
 
     public async Task<DohStatus> GetStatusAsync(DnsServerSet servers, CancellationToken ct = default)

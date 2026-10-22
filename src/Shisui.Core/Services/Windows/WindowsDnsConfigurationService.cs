@@ -9,23 +9,11 @@ public sealed class WindowsDnsConfigurationService(ICommandExecutor executor) : 
 {
     public async Task<IReadOnlyList<CommandExecutionResult>> ApplyAsync(string adapterId, DnsServerSet servers, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDnsCommandBuilder.BuildApply(adapterId, servers))
-        {
-            results.Add(await executor.RunAsync(WindowsDnsCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDnsCommandBuilder.FileName, WindowsDnsCommandBuilder.BuildApply(adapterId, servers), ct);
     }
 
     public async Task<IReadOnlyList<CommandExecutionResult>> ResetToAutomaticAsync(string adapterId, CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsDnsCommandBuilder.BuildResetToAutomatic(adapterId))
-        {
-            results.Add(await executor.RunAsync(WindowsDnsCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsDnsCommandBuilder.FileName, WindowsDnsCommandBuilder.BuildResetToAutomatic(adapterId), ct);
     }
 }

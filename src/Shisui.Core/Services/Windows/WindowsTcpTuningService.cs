@@ -9,24 +9,12 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
 {
     public async Task<IReadOnlyList<CommandExecutionResult>> EnableBbr2Async(CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildEnableBbr2())
-        {
-            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildEnableBbr2(), ct);
     }
 
     public async Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildRevertBbr2ToDefault())
-        {
-            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildRevertBbr2ToDefault(), ct);
     }
 
     public Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) =>
@@ -56,13 +44,7 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
 
     public async Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildRevertGlobalOptionsToDefault())
-        {
-            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildRevertGlobalOptionsToDefault(), ct);
     }
 
     public Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default) =>
@@ -90,13 +72,7 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
         string adapterId,
         CancellationToken ct = default)
     {
-        var results = new List<CommandExecutionResult>();
-        foreach (var args in WindowsTcpCommandBuilder.BuildRevertMtuToDefault(adapterId))
-        {
-            results.Add(await executor.RunAsync(WindowsTcpCommandBuilder.FileName, args, ct));
-        }
-
-        return results;
+        return await WindowsCommandSequence.RunAsync(executor, WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildRevertMtuToDefault(adapterId), ct);
     }
 
     public async Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default)

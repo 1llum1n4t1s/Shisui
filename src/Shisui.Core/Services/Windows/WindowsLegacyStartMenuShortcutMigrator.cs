@@ -7,7 +7,7 @@ namespace Shisui.Core.Services.Windows;
 /// v1.0.7 までに作成された著者名サブフォルダ内のスタートメニューショートカットを、
 /// 現行のスタートメニュー直下へ一度だけ移行する。
 /// </summary>
-public static class WindowsLegacyStartMenuShortcutMigrator
+public static partial class WindowsLegacyStartMenuShortcutMigrator
 {
     private const int ShellChangeNotifyUpdateDirectory = 0x00001000;
     private const uint ShellChangeNotifyPathUnicode = 0x0005;
@@ -128,6 +128,6 @@ public static class WindowsLegacyStartMenuShortcutMigrator
         }
     }
 
-    [DllImport("shell32.dll", ExactSpelling = true)]
-    private static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
+    [LibraryImport("shell32.dll", EntryPoint = "SHChangeNotify")]
+    private static partial void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
 }
