@@ -23,7 +23,7 @@
     <!-- Velopack 本体は Program.cs / UpdateService が直接使うため、VelopackUpdateDialog 経由の
          transitive 参照に頼らず直接参照する。 -->
     <PackageReference Include="Velopack" Version="1.2.161" />
-    <PackageReference Include="VelopackUpdateDialog.Avalonia" Version="1.0.19" />
+    <PackageReference Include="VelopackUpdateDialog.Avalonia" Version="1.0.20" />
   </ItemGroup>
 
   <ItemGroup>
