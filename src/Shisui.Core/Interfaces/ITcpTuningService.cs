@@ -21,6 +21,9 @@ public interface ITcpTuningService
     /// <summary>よく変更される TCP グローバル詳細設定を Windows のシステム既定値へ個別に戻す。</summary>
     Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default);
 
+    /// <summary>おまかせ用に RSS・ECN・timestamps・Fast Open/fallback を有効化し、RSC を無効化する。</summary>
+    Task<IReadOnlyList<CommandExecutionResult>> ApplyLowLatencyGlobalOptionsAsync(CancellationToken ct = default);
+
     /// <summary>インターフェース別の TcpAckFrequency/TCPNoDelay/TcpDelAckTicks 明示値を削除して Windows 既定へ戻す。</summary>
     Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default);
 

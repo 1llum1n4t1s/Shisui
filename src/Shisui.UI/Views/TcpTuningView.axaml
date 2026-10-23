@@ -118,7 +118,7 @@
       <primitives:HeaderedContentControl Header="TCP グローバル詳細設定">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"
-                     Text="PC 全体に適用されます。通常は既定値を使ってください。" />
+                     Text="PC 全体に適用されます。おまかせ高速化では低遅延を優先した値を設定します。" />
           <Grid ColumnDefinitions="*,140,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
             <StackPanel Grid.Row="0" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="RSC (受信セグメント結合)" FontWeight="SemiBold" />
@@ -159,7 +159,7 @@
             <StackPanel Grid.Row="4" Grid.Column="0" Spacing="1" Margin="0,0,12,0" VerticalAlignment="Center">
               <TextBlock Text="TCP Fast Open" FontWeight="SemiBold" />
               <TextBlock Classes="caption" TextWrapping="Wrap"
-                         Text="再接続時の待ち時間を短縮します。現在値は取得できませんが、設定は可能です。" />
+                         Text="対応するアプリと接続先では、TCP 通信開始までの待ち時間を短縮できます。" />
             </StackPanel>
             <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding FastOpenStateText}" FontWeight="SemiBold" VerticalAlignment="Center" />
             <Button Grid.Row="4" Grid.Column="2" Content="有効化" Command="{Binding SetOptionCommand}" CommandParameter="FastOpen:True" Margin="0,2,4,2" VerticalAlignment="Center" IsEnabled="{Binding !IsOperationRunning}" />

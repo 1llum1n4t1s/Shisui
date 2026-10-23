@@ -298,7 +298,7 @@ public partial class TcpTuningViewModel(
             EcnStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.EcnCapability));
             TimestampsStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.Timestamps));
             RssStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.Rss));
-            FastOpenStateText = FormatFastOpen(snapshot.GetOptionValue(TcpGlobalOption.FastOpen));
+            FastOpenStateText = FormatOption(snapshot.GetOptionValue(TcpGlobalOption.FastOpen));
             AutoTuningStateText = FormatAutoTuningLevel(TcpSettingsVerifier.GetEffectiveAutoTuningLevel(snapshot));
             if (Enum.TryParse<AutoTuningLevel>(snapshot.AutoTuningLevel, ignoreCase: true, out var parsedLevel))
             {
@@ -333,10 +333,6 @@ public partial class TcpTuningViewModel(
         "DEFAULT" => "⚪ 既定",
         _ => "⚪ 不明",
     };
-
-    // FastOpen は Windows の照会 API に公開されておらず取得できない。誤解を避けて明示する。
-    private static string FormatFastOpen(string rawValue) =>
-        string.IsNullOrEmpty(rawValue) ? "⚪ 取得非対応" : FormatOption(rawValue);
 
     private static string FormatAutoTuningLevel(string rawValue) => rawValue.ToUpperInvariant() switch
     {

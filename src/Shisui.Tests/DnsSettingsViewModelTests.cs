@@ -83,7 +83,7 @@ public sealed class DnsSettingsViewModelTests
         await optimizationViewModel.RunQuickOptimizationCommand.ExecuteAsync(null);
 
         CollectionAssert.AreEqual(
-            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "EnableRss", "DisableRsc", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
+            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "ApplyLowLatencyGlobalOptions", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
             tcpTuningService.Calls);
         StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "BBR2");
         StringAssert.Contains(dnsViewModel.StatusText, "実効 Normal を確認済み");
@@ -482,6 +482,9 @@ public sealed class DnsSettingsViewModelTests
             {
                 [TcpGlobalOption.Rss] = "Enabled",
                 [TcpGlobalOption.Rsc] = "Disabled",
+                [TcpGlobalOption.EcnCapability] = "Enabled",
+                [TcpGlobalOption.Timestamps] = "Enabled",
+                [TcpGlobalOption.FastOpen] = "Enabled",
             }, "Normal", AutoTuningLevelEffective: "Local");
         public bool ThrowOnRead { get; init; }
 
@@ -513,6 +516,12 @@ public sealed class DnsSettingsViewModelTests
         public override Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default)
         {
             Calls.Add("RevertGlobalOptions");
+            return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([Success()]);
+        }
+
+        public override Task<IReadOnlyList<CommandExecutionResult>> ApplyLowLatencyGlobalOptionsAsync(CancellationToken ct = default)
+        {
+            Calls.Add("ApplyLowLatencyGlobalOptions");
             return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([Success()]);
         }
 
@@ -565,7 +574,7 @@ public sealed class DnsSettingsViewModelTests
             var output = arguments switch
             {
                 var value when value == WindowsTcpStateCommandBuilder.Arguments =>
-                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled",
+                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled\nECN=Enabled\nTIMESTAMPS=Enabled\nFASTOPEN=Enabled",
                 WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments => $"Power Scheme GUID: {powerScheme:D}",
                 var value when value.Contains(WindowsPowerPlanCommandBuilder.WirelessPowerSavingModeGuid, StringComparison.Ordinal) =>
                     WindowsPowerPlanCommandBuilderTests.QueryOutput(powerScheme, 0, 2)

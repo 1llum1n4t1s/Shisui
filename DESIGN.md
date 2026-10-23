@@ -85,11 +85,10 @@ Windows Start の重複キャッシュを更新します。
 
 共有ゲートは DNS、DoH/DoT、TCP、MTU、メンテナンス、ゲーム向け NIC 設定、NIC 詳細設定初期化、接続名整理を
 ViewModel 横断で直列化します。読み取り専用の状態取得と診断はゲートを占有しません。
-「おまかせ高速化設定」は同じリース内で全 NIC の IP 設定の退避・IPv4/IPv6 スタック初期化・元設定の復元と読み戻し確認を最初に行います。その後、IPsec の確立済み接続状態の破棄、条件付き Winsock リセットと WinHTTP 自動プロキシキャッシュ消去、選択 NIC の DHCP 解放・再取得、DNS、許可リスト化されたキャッシュ処理と UDP オフロード既定化・PCI Express 省電力の AC 時無効化、TCP 既定化と BBR2・RACK/TLP・RSS 有効化、低遅延を優先する RSC 無効化、選択物理 NIC のゲーム向け設定、
+「おまかせ高速化設定」は同じリース内で IPv4/IPv6 スタックをリセットします。その後、IPsec の確立済み接続状態の破棄、条件付き Winsock リセットと WinHTTP 自動プロキシキャッシュ消去、選択 NIC の DHCP 解放・再取得、DNS、許可リスト化されたキャッシュ処理と UDP オフロード既定化・PCI Express 省電力の AC 時無効化、TCP 既定化と BBR2・RACK/TLP・RSS 有効化、低遅延を優先する RSC 無効化、選択物理 NIC のゲーム向け設定、
 切断済みデバイス整理を順番に実行し、接続名を参照する処理が終わった後にだけ名前整理を行います。
-退避対象は NIC ごとの接続設定です。OS 全体の IP/TCP 調整値は初期化対象とし、その後におまかせ設定を適用します。実効値しか取得できないグローバル値を書き戻して Windows の自動値を固定化しません。IP 初期化の原本と段階は `AppSettings.PendingIpStackReset` に保存します。`Prepared` の保存成功前には初期化せず、復元失敗・読み戻し不一致・保存失敗は後続操作を中断します。未復元の間は通常の画面操作を止め、ログと明示復元を利用できます。アプリ終了やタイムアウトで子プロセスの終了が不明な場合は最終変更時の boot ID を保持し、別 boot になるまで復元を発行しません。
-`Restored` 以降は元設定を自動再適用しません。通常の最適化設定を適用後、`route /f` より前に `ExpectedFinal` を保存して `AwaitingReboot` にし、別 boot で永続設定との一致を確認できた場合だけ原本を削除します。不一致時は原本を保持して通知し、利用者の明示操作でのみ元へ戻せます。NIC は GUID で照合し、DHCP/RA 等の動的アドレス・動的経路は固定値として再作成しません。完全に表現・復元できない構成は初期化前に拒否します。
-IP 初期化で退避する経路は永続ストアの静的経路と、稼働中ストアの無期限の手動経路です。稼働中ストアの期限付き経路は DHCP/RA 等で再取得する一時状態として退避・再作成しません。永続ストアの期限付き経路は未対応として初期化前に停止します。
+IP 初期化は退避・復元を行わず、以前の固定 IP・静的経路・DNS や OS 全体の調整値を再適用しません。各 reset の前に対応する NSI 保存キー（IPv4 `{eb004a00-9b1a-11d4-9123-0050047759bc}\26` / IPv6 `{eb004a01-9b1a-11d4-9123-0050047759bc}\26`）の削除権限を検査します。読み書きは可能で削除だけが拒否され、所有者が Administrators、保護された正規順の Allow ACE だけの DACL で、既存権限で DACL を変更できる場合に限り、Administrators へのこのキーだけの非継承 DELETE を追加します。既存 ACE・所有者・グループ・保護状態は維持し、変更前後の権限を読み戻します。拒否 ACE・特殊 ACE・別所有者などは補完せず失敗を記録します。全ハンドルを閉じてから通常の netsh reset を実行し、キーが再生成される場合も次回は同じ検査を行います。
+Windows の reset ハンドラーは全項目の成功後も `ERROR_SUPPRESS_OUTPUT`（15017）を返し、netsh はこれを終了コード 1 に変換します。この reset だけは、終了コード 1・stderr 空・全 34 項目の成功と再起動案内が System32 の netiohlp リソースから構築した全文に一致する場合に限って完了と判定します。カテゴリ順と空のカテゴリ名も照合し、リソースの形式が未知、出力の欠落・追加、エラーがある場合は失敗のままです。生の終了コードは保持し、完了判定を別に記録します。反映には引き続き PC の再起動が必要です。それ以外の非 0 は失敗を記録して IPv6 のリセットと後続の再設定へ進み、全体を成功とは表示しません。各外部処理は 120 秒で中断を要求し、タイムアウト・例外・終了不明の場合だけ `RequiresOperationAbort` で後続の変更を停止し、再起動後のやり直しを案内します。子プロセスが終了要求を受け付けない場合も、実際の終了まで処理中状態と変更操作の排他を保持します。旧版の IP 退避情報は設定読込時の未使用フィールドとして無視し、起動時の復旧・復元ボタン・復旧待ちの操作制限は設けません。
 Wi-Fi の電源設定は現在のプランの AC 値だけを最大パフォーマンスへ変更し、DC 値を読み戻して保持を確認します。
 変更前の AC 値は電源プラン GUID ごとに AppSettings の `WifiPowerPlanSnapshots` へ保存し、再適用でも上書きせず、メンテナンスの復元操作で戻せます。
 復元時に現在値が適用値・元値のどちらでもない場合は外部変更を保護します。未確認の設定や変更中のプラン切替は成功として扱いません。
@@ -108,9 +107,10 @@ IPsec・WINS の各条件付き処理には 45 秒の上限を設けます。超
 ルート表クリア（`route /f`）は通常のメンテナンスループで保留し、名前整理を含む他の変更処理が終わった最後の変更操作として一度だけ実行します。
 PC 全体に影響して通信が切れるため、完了後は再起動を案内します。失敗・例外は全体の失敗としてログに残し、この処理まで同じリースを保持します。
 BBR2 は全 5 テンプレート、RACK/TLP は Compat を除く 4 テンプレートへ適用します。UDP は URO/USO のみを既定化し、
-UDP 全体の reset は行いません。ECN などの詳細値は Windows 既定を維持します。適用後は同じリース内で BBR2、RSS 有効・RSC 無効のグローバル状態と Internet の受信ウィンドウ実効値を読み戻し、
+UDP 全体の reset は行いません。TCP の既定化は不調な旧設定を除く修復工程とし、その後に RSS・ECN・timestamps・Fast Open / fallback 有効、RSC 無効を明示的に適用します。手動の既定化にはこの上書きを含めません。
+適用後は同じリース内で BBR2、RSS 有効・RSC 無効、Fast Open 有効と Internet の ECN・timestamps 有効、受信ウィンドウ実効値を読み戻し、
 ポリシー上書き・不完全取得を成功扱いしません。RACK/TLP は日英の既知ラベルで両方の有効状態を確認できた場合、
-再設定せず変更不要とします。未確認・無効の場合は設定コマンドの結果を保持します。UDP などはコマンド受付結果のみです。
+再設定せず変更不要とします。未確認・無効の場合は設定コマンドの結果を保持します。Fast Open fallback・UDP などはコマンド受付結果のみです。
 DHCP は名前・GUID・InterfaceIndex が一致した選択 NIC に限定し、固定 IP と不明状態は解放しません。
 DHCP の利用状態が不明な場合は確認不能の失敗結果を残し、既知の対象外として成功表示しません。
 IPv4 は DHCP 有効時、IPv6 は有効な取得済み DHCPv6 リースがある場合だけ処理します。
@@ -120,6 +120,32 @@ PCI Express は現在の電源プランのリンク状態の電源管理だけ�
 変更前の取得に失敗した場合は書き込まず、適用後は AC 値がオフ・DC 値が変更前と同じであることを確認します。
 電源プランの切り替えや DC 値の書き込みは行いません。メンテナンス画面からも個別に実行できます。
 選択した NIC 以外の PCI Express 機器にも影響し、消費電力・発熱が増える可能性を画面に表示します。
+
+### 低遅延を優先する設定方針
+
+おまかせ高速化は、省電力・CPU負荷・最大受信速度より、通信の待機と損失回復の遅れを減らすことを優先します。
+Windows既定値であることだけを採用理由にしません。設定が受理されたこと、保存値・実効値の確認、通信相手との機能交渉、遅延の比較測定は別々に扱います。
+この方針はWindowsのTCP/IPと対応NICに適用し、すべてのゲーム・経路で改善するとの意味にはしません。
+
+| 設定 | おまかせの選択 | 根拠と適用条件 |
+| --- | --- | --- |
+| ECN | 有効 | 対応する相手・経路では、損失に代えて輻輳通知を扱える。対応ルーターのキュー制御も必要で、単独で待ち行列を解消する機能ではない。[IETF RFC 3168、2001年9月、§5–6](https://www.rfc-editor.org/rfc/rfc3168.html) |
+| timestamps | `allowed` から `enabled` | 受信接続だけでなく送信接続でも交渉する。RTT計測・PAWSを利用可能にするが、各パケットの送信待ちを直接短くする設定ではない。[Microsoft、netsh interface、tcp set global](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)、[IETF RFC 7323、2014年9月、§3–5](https://www.rfc-editor.org/rfc/rfc7323.html) |
+| Fast Open / fallback | 明示的に有効 | 対応アプリ・サーバーの初期データ付き接続では開始まで最大1 RTTを節約できる。アプリ側の利用と相手側の対応が必要。fallbackは互換性のため有効にする。[IETF RFC 7413、2014年12月、§1–4](https://www.rfc-editor.org/rfc/rfc7413.html)、[Microsoft、IPPROTO_TCP socket options、TCP_FASTOPEN](https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-tcp-socket-options) |
+| 割り込み調整・EEE・確認済み省電力 | 対応する選択NICで無効 | 割り込みの待機や低電力状態からの復帰を減らす。CPU負荷・消費電力の増加を許容する。[Microsoft、Network Adapter Performance Tuning、Low latency packet processing](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics)、[Intel、Ethernet Adapters and Devices User Guide 30.5、Other Power Options](https://edc.intel.com/content/www/us/en/design/products/ethernet/adapters-and-devices-user-guide/30.5/other-power-options/) |
+| RSS・LSOv2・チェックサム | 有効を維持 | Microsoftの低遅延向け指針もstatic offloadの有効化を挙げる。LSOは大きなTCP送信の分割であり、小さなUDPゲーム通信の待ちを直接取り除く設定ではない。[Microsoft、同Low latency節](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics) |
+| TCP RSC・対応NICのUDP URO | 無効を維持 | CPU負荷より低遅延を優先する選択。TCP RSCの無効化は低遅延用途で利益がある場合の選択肢だが、合成のためにTCP通知を次のDPCまで遅らせる実装は仕様上禁止される。常にタイマー待ちが加わるとは説明しない。UROによるゲーム遅延改善量は未実測。[Microsoft、Choosing a Network Adapter、RSC](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)、[Indicating Coalesced Segments](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/indicating-coalesced-segments)、[UDP RSC Offload](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/udp-rsc-offload) |
+| RACK/TLP・受信ウィンドウ | 組で有効・Normalを維持 | 損失検出と受信ウィンドウの不足を避ける。Experimentalや再送タイマーの短縮が通常のRTTを短くするとは判断しない。[IETF RFC 8985、2021年2月](https://www.rfc-editor.org/rfc/rfc8985.html)、[Microsoft、netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface) |
+
+資料の確認日は2026年10月23日です。MicrosoftのNIC指針はWindows Server向けのため、Windows 11の各ゲームでの効果を実証する資料とは区別します。
+ローカルのWindowsビルド26300で設定値・照会経路を確認していますが、このプロファイルでのRTT・ジッター・損失・フレーム時間の比較測定は未実施です。
+BBR2とloopback Large MTUの既存組み合わせは維持しますが、全通信やUDPゲームでの低遅延を示す測定結果はありません。
+
+RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、pacing・RTO・HyStart・PRRの新たな強制値は追加しません。
+負荷・ドライバー・輻輳制御との組み合わせを確認する必要があり、低遅延に有利な共通値を確定できないためです。
+既存のACK/Nagleレジストリ調整の除去は維持します。`TcpAckFrequency=1`は即時ACKの機構を持つ候補ですが、Windows 11での有効な設定経路と対象接続を未確認です。
+`TcpDelAckTicks`の旧Windows向け説明やMSMQ固有の`TCPNoDelay`を一般アプリへ転用しません。
+将来ACK頻度を採用する場合は、現行OSの対応、対象テンプレート、実通信でのACK・上り混雑を確認します。[Microsoft、KB328890](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/registry-entry-control-tcp-acknowledgment-behavior)、[Set-NetTCPSetting、DelayedAckFrequency / DelayedAckTimeoutMs](https://learn.microsoft.com/en-us/powershell/module/nettcpip/set-nettcpsetting)
 
 ### ゲーム向け NIC 設定
 

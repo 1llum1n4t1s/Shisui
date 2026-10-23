@@ -80,6 +80,7 @@ so **no `System.Text.Encoding.CodePages` PackageReference is needed** (adding it
 warning). `DecodeConsoleOutput` is `internal` + unit-tested (`ProcessCommandExecutorDecodeTests`). Both process
 executors terminate the whole process tree both on cancellation and on other post-start exceptions, so a failed
 wait or output read does not leave a privileged command running in the background.
+終了要求を受け付けない子プロセスも、実際の終了までは待機を続けます。生バイト読取り経路では、キャンセル済みの出力を破棄先へ読み進めてパイプ詰まりを避けます。macOS のイベント読取りはそのまま継続し、どちらも呼び出し元の処理中状態と変更操作の排他を保持します。
 
 ### DI: Windows-only features are optional dependencies, not stubbed
 
@@ -161,16 +162,26 @@ in the XML doc on `IDotConfigurationService`.
 The 「自動最適化」 tab's 「クイック最適化」 card exposes the DNS tab's shared adapter selection and a
 「おまかせ高速化設定」 button for users who don't want to understand each individual toggle. The tab-level
 `AutoOptimizationViewModel` command delegates the mutation to `DnsSettingsViewModel.RunOneClickOptimizationAsync`
-and then refreshes the manual TCP tab's state badges. Optional Windows `IIpStackResetService` first captures
-all NIC connection settings through `IIpStackPlatform`, saves `AppSettings.PendingIpStackReset`, resets IPv4/IPv6,
-restores and verifies the original values. Unsupported configurations and failed journal writes stop before
-reset; incomplete restoration stops later mutations. OS-wide IP/TCP tuning is reset and then optimized;
-effective global values are not replayed as fixed overrides of Windows defaults. Platform command builders remain pure and the journal
-models are registered in `ShisuiJsonContext`. The original survives process termination; uncertain child
-completion requires a different boot ID before recovery. After restoration, automatic recovery never
-replays the original over subsequent optimization. Final settings are captured before `route /f`, and the
-journal is cleared only after persistent settings match on a later boot. A visible explicit restore action
-remains available while pending recovery disables normal tab operations without preventing window closure.
+and then refreshes the manual TCP tab's state badges. Optional Windows `IIpStackResetService` first runs
+IPv4 and IPv6 reset, followed by the configuration below. It does not capture or restore previous NIC
+settings or global tuning. Before each reset, a separate PowerShell command probes the corresponding fixed
+NSI IPv4/IPv6 `\26` key. Only when read/write succeeds but adding DELETE fails, the owner is Administrators,
+the DACL is protected and canonical with ordinary Allow ACEs only, and WRITE_DAC is already available, it adds
+a non-inherited DELETE-only Administrators ACE. It preserves other ACL entries, owner, group, and protection,
+ignoring only the DACL AutoInherited bookkeeping flag that Windows can add when saving the descriptor.
+It checks for intervening changes, reads the result back, and closes every handle before netsh runs. The comparison
+and write are not atomic, so an external ACL change in that interval remains a limitation. Unrecognized
+ACLs remain unchanged and are reported as failures; no ownership or privilege takeover is attempted.
+The reset helper can return `ERROR_SUPPRESS_OUTPUT` (15017) even after every reset succeeds; netsh maps this
+to process exit 1. Only for this reset command, exit 1 with empty stderr and output exactly matching all
+34 success messages plus the restart notice is accepted as complete. The expected output comes from the
+System32 netiohlp string resources, preserving category order and empty category names; an unknown resource
+shape, missing/extra output, or any error keeps the original failure. The raw exit code is retained and the
+separate completion decision is logged. Other nonzero exits remain failures while reconfiguration
+continues. Completion still requires a PC restart for Windows to apply the reset fully.
+Each external command has a 120-second timeout; cancellation, exceptions, or an unknown process exit stop
+later mutations through `RequiresOperationAbort`. There is no recovery journal, startup recovery, restore
+button, or recovery-dependent UI lock. Legacy IP backup properties in settings JSON are ignored.
 Under the existing shared mutation lease, allowlisted
 maintenance with `RunBeforeOneClickConfiguration` runs before DHCP/DNS/TCP/NIC settings. IPsec repair queries
 both Main Mode and Quick Mode SAs before deleting captured Quick Mode then Main Mode SAs. It does not modify
@@ -236,7 +247,9 @@ once through `IDnsCacheService`. Finally
 templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
 enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
 initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
-then explicitly enables global RSS and disables global RSC to prioritize low latency over receive throughput. ECN retains the Windows default; the manual reset operation still
+then calls `ApplyLowLatencyGlobalOptionsAsync` to explicitly enable global RSS, ECN, timestamps, Fast Open and
+Fast Open fallback, and disable global RSC through six commands. These overrides prioritize latency; their effects
+depend on the peer, network path and application. The manual reset operation still
 restores all options to their defaults without these one-click overrides. These global states do not prove
 individual NIC capabilities or latency improvement. Disabling RSC can increase CPU usage and reduce receive throughput.
 Microsoft's [RSC guidance](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)
@@ -277,11 +290,13 @@ to the selected adapter (unlike the DNS and gaming NIC changes), the button's de
 multi-NIC environments.
 
 Before reporting completion, one-click reads a fresh TCP snapshot inside the same mutation lease.
-`TcpSettingsVerifier` checks BBR2 across all five templates, global RSS enabled/RSC disabled state and the effective Internet auto-tuning level, including
-the GroupPolicy override. A mismatch, incomplete snapshot, or read failure is logged as a failed verification,
+`TcpSettingsVerifier` checks BBR2 across all five templates, global RSS enabled/RSC disabled, Internet ECN and
+timestamps enabled, global Fast Open enabled, and the effective Internet auto-tuning level Normal, including
+the GroupPolicy override. A mismatch, unavailable value, incomplete snapshot, or read failure is logged as a failed verification,
 without losing prior command results or preventing settings persistence/adapter cleanup. Manual BBR2 enablement
 and auto-tuning changes use the same verifier. Command failures remain failures even when readback matches.
 RACK/TLP writes still report command acceptance only; only the no-change path confirms the pre-existing state.
+Fast Open fallback is command-acceptance-only; Fast Open readback does not verify fallback.
 The PCI Express action separately verifies its AC/DC power values. UDP and other settings remain command-acceptance-only. MTU is not changed by one-click.
 
 Because `SelectedPreset`'s setter would trigger `OnSelectedPresetChanged`'s fire-and-forget
@@ -290,7 +305,7 @@ assigns the backing field directly and raises the needed `OnPropertyChanged` not
 going through the property setter (2026-07-06, found via `/rere` review — the two `RefreshDohStateAsync` calls
 could complete out of order and leave the DoH checkbox showing a stale state).
 
-### Reading current state is locale-independent (PowerShell cmdlets, NOT netsh text)
+### Reading current state is locale-independent (PowerShell cmdlets and netsh dump)
 
 `netsh int tcp show global` / `show supplemental` values are stable English tokens (`enabled` / `bbr2`) but the
 **labels are localized** (Japanese Windows shows 「Receive-Side Scaling 状態」 etc.), so parsing that text breaks
@@ -301,17 +316,22 @@ English-fixed by us and the enum values are English, so the whole output is loca
 `WindowsTcpStateParser` (pure, unit-tested) parses it. **BBR2 status = all 5 templates' `CongestionProvider`**
 (Enabled / Partial / Disabled only when all five named templates are present exactly once; missing, duplicate,
 malformed or mixed named/legacy output becomes Unknown). Historical unnamed fixtures are accepted only with exactly
-five values. The PowerShell command uses `ErrorActionPreference='Stop'` so partial command failures cannot masquerade
-as successful reads. Two things are deliberately *not* in the badge: **FastOpen** (no PowerShell
-property exists → shown as 「取得非対応」) and **loopbacklargemtu** (only in fully-localized netsh output, unreadable
-locale-independently → the BBR2 enable button still sets it, but its live state isn't tracked).
+five values. The PowerShell command uses `ErrorActionPreference='Stop'` so cmdlet failures cannot masquerade
+as successful reads. **FastOpen** has no PowerShell property, so the same script invokes the absolute System32
+`netsh.exe interface tcp dump` and reads its locale-independent, replayable command keywords. It accepts only a
+zero exit code, exactly one `set global` line and exactly one `fastopen=` token whose value is `enabled` or
+`disabled` (case-insensitive), emitting canonical `FASTOPEN=Enabled` or `FASTOPEN=Disabled`. Missing, unsupported,
+malformed or ambiguous output, a nonzero exit code or an exception produces an empty `FASTOPEN=` value while
+preserving the other state reads. This unavailable value fails one-click verification. No localized `show global`
+labels are parsed for this read. **loopbacklargemtu** is still not tracked in the live state; the BBR2 enable
+button sets it without a readback check.
 
 **Auto-tuning level** rides in the same one-line script: `AUTOTUNE=` holds `AutoTuningLevelLocal`,
 `AUTOTUNE_POLICY=` holds `AutoTuningLevelGroupPolicy`, and `AUTOTUNE_SOURCE=` holds `AutoTuningLevelEffective`
 (Local/GroupPolicy, not a tuning level). The badge and verifier use the effective value selected by that source;
 an unknown source never silently falls back to Local. The selector still shows the editable local setting.
 See [the Microsoft property contract](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/nettcpipprov/msft-nettcpsetting).
-Reading these adds no process spawn. **MTU
+Reading these auto-tuning properties adds no process spawn beyond the state script and its Fast Open dump. **MTU
 is different**: it's per-adapter rather than global, so `WindowsMtuStateCommandBuilder`/`WindowsMtuStateParser`
 are a separate one-line `Get-NetIPInterface -InterfaceAlias <adapter>` command taking an adapter name, invoked
 whenever the MTU restoration card's own adapter selection changes rather than folded into the global TCP snapshot.

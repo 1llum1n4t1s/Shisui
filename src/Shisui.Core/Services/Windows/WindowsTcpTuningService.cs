@@ -53,6 +53,10 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
             WindowsLegacyTcpRegistryCommandBuilder.Arguments,
             ct);
 
+    public Task<IReadOnlyList<CommandExecutionResult>> ApplyLowLatencyGlobalOptionsAsync(CancellationToken ct = default) =>
+        WindowsCommandSequence.RunAsync(executor, WindowsTcpCommandBuilder.FileName,
+            WindowsTcpCommandBuilder.BuildLowLatencyGlobalOptions(), ct);
+
     public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled), ct);
 

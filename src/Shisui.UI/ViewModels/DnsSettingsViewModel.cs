@@ -35,18 +35,6 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
 
-    public bool IsIpStackRecoveryRequired => _ipStackResetService?.IsRecoveryRequired ?? false;
-
-    public bool HasIpStackBackup => _ipStackResetService is not null &&
-        _settingsService.Current.PendingIpStackReset is not null;
-
-    public string IpStackRecoveryText => _settingsService.Current.PendingIpStackReset?.LastError
-        ?? (IsIpStackRecoveryRequired
-            ? "IP 設定の復元が完了していません。ログを確認し、必要な場合は再起動後に復元してください。"
-            : _settingsService.Current.PendingIpStackReset?.Phase == "Restored"
-                ? "設定の適用が途中で終わったため、IP 設定の退避データを保持しています。"
-                : "IP 設定の退避データを保持しています。再起動後に設定を確認します。");
-
     public bool IsAdapterNameCleanupAvailable => IsWindows && _adapterNameService is not null;
 
     public ObservableCollection<NetworkAdapterInfo> Adapters { get; } = [];
@@ -149,9 +137,10 @@ public partial class DnsSettingsViewModel : ObservableObject
                 items.Add("DoH：ON");
             if (_tcpTuningService is not null)
             {
-                items.Add("TCP 設定・旧レジストリ調整：既定化");
+                items.Add("TCP 設定・旧レジストリ調整：初期化後に再設定");
                 items.Add("輻輳制御：BBR2 / 受信ウィンドウ：Normal");
                 items.Add("TCP RACK・TLP・RSS：ON / RSC：OFF");
+                items.Add("ECN・timestamps・Fast Open / fallback：ON");
             }
             if (_gamingNetworkProfileService is not null)
             {
@@ -161,7 +150,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 items.Add("NIC URO：OFF（対応項目）");
             }
             if (_ipStackResetService is not null)
-                items.Add("IP スタック：全 NIC の設定を退避して初期化・復元");
+                items.Add("IP スタック：IPv4・IPv6 をリセットしてから下記の設定を適用");
             if (_maintenanceService is not null)
             {
                 items.Add("IPsec 通信状態：削除（接続がある場合）");
@@ -485,6 +474,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         var resultsReported = false;
         var routeCleanupAttempted = false;
         var winsockRepairRequested = false;
+        var ipStackResetRequested = false;
         OneClickProgressText = "適用の準備をしています";
         BeginBusyOperation();
         try
@@ -499,11 +489,12 @@ public partial class DnsSettingsViewModel : ObservableObject
 
             if (_ipStackResetService is not null)
             {
-                OneClickProgressText = "全 NIC の IP 設定を退避・初期化・復元しています";
-                var resetResults = await _ipStackResetService.ResetAndRestoreAsync();
+                OneClickProgressText = "IPv4・IPv6 の IP スタックをリセットしています";
+                ipStackResetRequested = true;
+                var resetResults = await _ipStackResetService.ResetAsync();
                 results.AddRange(resetResults);
-                if (resetResults.Any(r => r.RequiresOperationAbort) || _ipStackResetService.IsRecoveryRequired)
-                    throw new InvalidOperationException("IP 設定の退避・復元を確認できないため、後続の設定を中断しました。ログを確認してください。");
+                if (resetResults.Any(r => r.RequiresOperationAbort))
+                    throw new InvalidOperationException("IP 初期化の終了を確認できないため、後続の設定を中断しました。ログを確認してください。");
             }
 
             // SelectedPreset のセッターではなくバッキングフィールドへ直接代入する。セッター経由だと
@@ -632,9 +623,8 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
                 results.AddRange(await _tcpTuningService.EnableBbr2Async());
                 results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
-                // おまかせは低遅延を優先する。RSS で受信処理を分散し、RSC による受信の集約は無効にする。
-                results.Add(await _tcpTuningService.SetTcpGlobalOptionAsync(TcpGlobalOption.Rss, true));
-                results.Add(await _tcpTuningService.SetTcpGlobalOptionAsync(TcpGlobalOption.Rsc, false));
+                // 修復用の既定化とは別に、対応経路での輻輳通知・RTT 計測・接続開始の短縮を利用可能にする。
+                results.AddRange(await _tcpTuningService.ApplyLowLatencyGlobalOptionsAsync());
                 results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
                 results.AddRange(await _tcpTuningService.EnableLossRecoveryAsync());
@@ -649,6 +639,9 @@ public partial class DnsSettingsViewModel : ObservableObject
                     results.Add(TcpSettingsVerifier.VerifyAutoTuning(snapshot, AutoTuningLevel.Normal));
                     results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Rss, true));
                     results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Rsc, false));
+                    results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.EcnCapability, true));
+                    results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Timestamps, true));
+                    results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.FastOpen, true));
                 }
                 catch (Exception ex)
                 {
@@ -703,16 +696,6 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
-            // 最終設定の再起動後確認用データは、通信を切断する route /f より先に保存する。
-            if (_ipStackResetService is not null)
-            {
-                OneClickProgressText = "再起動後の IP 設定の確認情報を保存しています";
-                var completionResults = await _ipStackResetService.CompleteOptimizationAsync();
-                results.AddRange(completionResults);
-                if (completionResults.Any(r => r.RequiresOperationAbort))
-                    throw new InvalidOperationException("再起動後の確認情報を保存できないため、経路の削除を中断しました。");
-            }
-
             if (routeClearCommand is not null)
             {
                 OneClickProgressText = "ルーティングテーブルを削除しています";
@@ -751,7 +734,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (allSucceeded)
             {
                 StatusText = IsTcpOptimizationAvailable
-                    ? "設定コマンドを実行しました。BBR2・RSS 有効 / RSC 無効のグローバル状態と受信ウィンドウ (Internet) の実効 Normal を確認済みです。RACK / TLP・UDP などの実状態は未検証です。"
+                    ? "設定コマンドを実行しました。BBR2・RSS・Fast Open 有効 / RSC 無効と、Internet の ECN・timestamps 有効・受信ウィンドウ実効 Normal を確認済みです。Fast Open fallback・RACK / TLP・UDP の実状態は未検証です。遅延改善量も未測定です。"
                     : "おまかせ高速化設定を適用しました";
                 if (_gamingNetworkProfileService is not null)
                 {
@@ -762,7 +745,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText = "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
             }
-            if (routeCleanupAttempted || winsockRepairRequested
+            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested
                 || (allSucceeded && (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null)))
             {
                 StatusText += " 設定の反映には PC を再起動してください";
@@ -783,7 +766,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
-            if (routeCleanupAttempted || winsockRepairRequested)
+            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested)
             {
                 StatusText += " PC を再起動してください";
             }
@@ -792,56 +775,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         finally
         {
             OneClickProgressText = string.Empty;
-            NotifyIpStackRecoveryState();
             EndBusyOperation();
         }
-    }
-
-    internal Task RecoverPendingIpStackAsync() => RunIpStackRecoveryAsync(restoreOriginal: false);
-
-    [RelayCommand]
-    private Task RestoreIpStackAsync() => RunIpStackRecoveryAsync(restoreOriginal: true);
-
-    private async Task RunIpStackRecoveryAsync(bool restoreOriginal)
-    {
-        if (_ipStackResetService is null || !HasIpStackBackup)
-            return;
-
-        BeginBusyOperation();
-        OneClickProgressText = restoreOriginal ? "退避した IP 設定を復元しています" : "前回の IP 初期化の状態を確認しています";
-        try
-        {
-            using var mutationLease = await _networkMutationGate.EnterAsync();
-            var results = restoreOriginal
-                ? await _ipStackResetService.RestoreOriginalAsync()
-                : await _ipStackResetService.RecoverPendingAsync();
-            foreach (var result in results)
-                CommandExecuted?.Invoke(this, result);
-            if (results.Count > 0)
-                StatusText = results.All(r => r.Success)
-                    ? "IP 設定の復旧・確認が完了しました。ログを確認してください。"
-                    : "IP 設定の復旧・確認が完了していません。ログを確認してください。";
-            await LoadAdaptersCoreAsync();
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"IP 設定の復旧・確認に失敗しました: {ex.Message}";
-            CommandExecuted?.Invoke(this, new(false, "IP 設定の復旧・確認", -1, string.Empty, ex.Message));
-            LoggerBootstrap.Log.Error("IP 設定の復旧・確認に失敗しました", ex);
-        }
-        finally
-        {
-            OneClickProgressText = string.Empty;
-            NotifyIpStackRecoveryState();
-            EndBusyOperation();
-        }
-    }
-
-    private void NotifyIpStackRecoveryState()
-    {
-        OnPropertyChanged(nameof(IsIpStackRecoveryRequired));
-        OnPropertyChanged(nameof(HasIpStackBackup));
-        OnPropertyChanged(nameof(IpStackRecoveryText));
     }
 
     private async Task<bool> TrySaveSelectionAsync()

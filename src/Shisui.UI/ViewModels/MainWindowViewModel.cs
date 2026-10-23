@@ -44,7 +44,7 @@ public partial class MainWindowViewModel : ObservableObject
         ? "処理が終わるまでお待ちください"
         : DnsSettings.OneClickProgressText;
 
-    public bool CanChangeNetwork => !IsProcessing && !DnsSettings.IsIpStackRecoveryRequired;
+    public bool CanChangeNetwork => !IsProcessing;
 
     public MainWindowViewModel(
         DnsSettingsViewModel dnsSettings,
@@ -109,9 +109,6 @@ public partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(IsProcessing));
             OnPropertyChanged(nameof(CanChangeNetwork));
         }
-
-        if (e.PropertyName is null or nameof(DnsSettingsViewModel.IsIpStackRecoveryRequired))
-            OnPropertyChanged(nameof(CanChangeNetwork));
 
         if (e.PropertyName is null or nameof(DnsSettingsViewModel.OneClickProgressText))
         {

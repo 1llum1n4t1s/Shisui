@@ -70,6 +70,17 @@ public static class WindowsTcpCommandBuilder
         "int tcp set heuristics forcews=default",
     ];
 
+    /// <summary>既定化とは独立した、おまかせ用の低遅延優先設定。効果は通信相手・経路・アプリの対応に依存する。</summary>
+    public static IReadOnlyList<string> BuildLowLatencyGlobalOptions() =>
+    [
+        BuildSetGlobalOption(TcpGlobalOption.Rss, true),
+        BuildSetGlobalOption(TcpGlobalOption.Rsc, false),
+        BuildSetGlobalOption(TcpGlobalOption.EcnCapability, true),
+        BuildSetGlobalOption(TcpGlobalOption.Timestamps, true),
+        BuildSetGlobalOption(TcpGlobalOption.FastOpen, true),
+        "int tcp set global fastopenfallback=enabled",
+    ];
+
     public static string BuildSetGlobalOption(TcpGlobalOption option, bool enabled)
     {
         var value = enabled ? "enabled" : "disabled";

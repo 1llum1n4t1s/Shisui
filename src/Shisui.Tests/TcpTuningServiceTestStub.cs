@@ -10,6 +10,7 @@ internal abstract class TcpTuningServiceTestStub : ITcpTuningService
     public virtual Task<IReadOnlyList<CommandExecutionResult>> RevertBbr2ToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<CommandExecutionResult> ResetAllTcpSettingsToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<IReadOnlyList<CommandExecutionResult>> RevertGlobalOptionsToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
+    public virtual Task<IReadOnlyList<CommandExecutionResult>> ApplyLowLatencyGlobalOptionsAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) => throw new NotSupportedException();
     public virtual Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) => throw new NotSupportedException();

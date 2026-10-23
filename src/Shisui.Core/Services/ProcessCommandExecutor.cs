@@ -92,13 +92,13 @@ public class ProcessCommandExecutor : ICommandExecutor
         }
         catch (OperationCanceledException ex)
         {
-            await TerminateProcessAsync(process);
+            await TerminateProcessAsync(process, drainOutput: true);
             trace.Interrupted(ex, DecodeConsoleOutput(stdoutBuffer.ToArray()), DecodeConsoleOutput(stderrBuffer.ToArray()));
             throw;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await TerminateProcessAsync(process);
+            await TerminateProcessAsync(process, drainOutput: true);
             trace.Interrupted(ex, DecodeConsoleOutput(stdoutBuffer.ToArray()), DecodeConsoleOutput(stderrBuffer.ToArray()));
             return trace.Complete(new CommandExecutionResult(false, commandLine, -1, string.Empty, ex.Message));
         }
@@ -183,19 +183,53 @@ public class ProcessCommandExecutor : ICommandExecutor
     }
 
     /// <summary>待機のキャンセル後も管理者権限の子プロセスを残さないよう、プロセスツリーを終了する。</summary>
-    internal static async Task TerminateProcessAsync(Process process)
+    internal static async Task TerminateProcessAsync(Process process, bool drainOutput = false)
     {
+        try
+        {
+            _ = process.Id;
+        }
+        catch (InvalidOperationException)
+        {
+            // 起動に失敗し、関連付けられた子プロセスがない場合だけ待機を省く。
+            return;
+        }
+
+        var exited = process.WaitForExitAsync(CancellationToken.None);
         try
         {
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
             }
         }
         catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or NotSupportedException)
         {
-            // 既に終了した、または終了要求を受け付けないプロセスでも、元のキャンセルはそのまま通知する。
+            // 終了要求に失敗しても、終了確認までは呼び出し元の処理中状態と排他を保つ。
+        }
+
+        if (!drainOutput)
+        {
+            // macOS のイベント読取りはそのまま継続し、同期ストリームへ切り替えない。
+            await exited;
+            return;
+        }
+
+        try
+        {
+            // キャンセル済みの出力読取りを引き継ぎ、残存プロセスをパイプ詰まりで止めない。
+            var drainOut = process.StartInfo.RedirectStandardOutput
+                ? process.StandardOutput.BaseStream.CopyToAsync(Stream.Null)
+                : Task.CompletedTask;
+            var drainErr = process.StartInfo.RedirectStandardError
+                ? process.StandardError.BaseStream.CopyToAsync(Stream.Null)
+                : Task.CompletedTask;
+            await Task.WhenAll(exited, drainOut, drainErr);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            // 出力を読み切れなくても、子プロセスの終了確認だけは省かない。
+            await exited;
         }
     }
 

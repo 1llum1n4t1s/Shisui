@@ -40,7 +40,6 @@ public partial class App : Application
             {
                 DataContext = mainViewModel,
             };
-            _ = mainViewModel.DnsSettings.RecoverPendingIpStackAsync();
             desktop.Exit += (_, _) => LoggerBootstrap.Shutdown();
         }
 
@@ -62,7 +61,6 @@ public partial class App : Application
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
-            services.AddSingleton<IIpStackPlatform, Core.Services.Windows.WindowsIpStackPlatform>();
             services.AddSingleton<IIpStackResetService, Core.Services.Windows.WindowsIpStackResetService>();
             services.AddSingleton<IWinsockCatalogInspector, Core.Services.Windows.WindowsWinsockCatalogInspector>();
             services.AddSingleton<IWinsockResetService, Core.Services.Windows.WindowsWinsockResetService>();
