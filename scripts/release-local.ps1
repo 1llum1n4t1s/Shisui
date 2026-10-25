@@ -17,7 +17,8 @@ param(
     [switch]$SkipUpload,
     [string[]]$Runtimes = @('win-x64'),
     [string]$WorkDirectory = (Join-Path ([IO.Path]::GetTempPath()) "Codex\Shisui\release-$([Guid]::NewGuid().ToString('N'))"),
-    [switch]$UseEnvironmentalAotTools
+    [switch]$UseEnvironmentalAotTools,
+    [string]$SourceGitSha
 )
 
 
@@ -126,6 +127,17 @@ $versionNode = ([xml](Get-Content 'Directory.Build.props' -Raw)).SelectSingleNod
 $version = if ($versionNode) { $versionNode.InnerText.Trim() } else { $null }
 if (-not $version) { throw 'Directory.Build.props から <Version> を取得できませんでした' }
 Write-Host "バージョン: $version"
+if (-not $SourceGitSha) {
+    $SourceGitSha = (& git rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'source SHAを取得できません。' }
+}
+if ($SourceGitSha -notmatch '^[0-9a-f]{40}$') { throw 'SourceGitShaは完全なcommit SHAを指定してください。' }
+$currentSha = (& git rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $currentSha -cne $SourceGitSha) { throw '固定source SHAとHEADが一致しません。' }
+$sourceChanges = @(& git status --porcelain --untracked-files=normal)
+if ($LASTEXITCODE -ne 0 -or $sourceChanges.Count -gt 0) { throw '固定sourceの配布にはクリーンなworking treeが必要です。' }
+$dotnetSdkVersion = (& dotnet --version).Trim()
+if ($LASTEXITCODE -ne 0 -or $dotnetSdkVersion -notmatch '^10\.') { throw '.NET 10 SDKが必要です。' }
 
 # SimplySign 接続確認 (証明書が見えなければ署名できないので最初に落とす)
 $cert = Get-ChildItem Cert:\CurrentUser\My |
@@ -183,6 +195,8 @@ foreach ($runtime in $Runtimes) {
     Invoke-Native "dotnet publish ($runtime)" {
         dotnet publish src/Shisui.UI/Shisui.UI.csproj -c Release -r $runtime `
             --self-contained true --no-restore -p:OS=Windows_NT -o $publishDir `
+            -p:PublishAot=true -p:TargetFramework=net10.0 "-p:SourceRevisionId=$SourceGitSha" `
+            "-p:InformationalVersion=$version+$SourceGitSha" -p:IncludeSourceRevisionInInformationalVersion=false `
             -p:UseArtifactsOutput=true "-p:ArtifactsPath=$BuildOutputDir" @aotToolArgs
     }
 
@@ -231,6 +245,12 @@ foreach ($signedArtifact in Get-ChildItem $ArtifactsDir -File | Where-Object { $
     }
     Write-Host "  ✅ $($signedArtifact.Name): Valid ($($sig.SignerCertificate.Subject -replace ',.*$'))"
 }
+
+# 署名・再署名後の同じ実物を検証し、この後はrepack/buildしない。
+if ($Runtimes.Count -ne 1 -or $Runtimes[0] -ne 'win-x64') { throw '検証対象の配布RIDはwin-x64だけです。' }
+& (Join-Path $PSScriptRoot 'verify-release-artifacts.ps1') -ArtifactsDirectory $ArtifactsDir `
+    -WorkDirectory $WorkDir -Version $version -SourceGitSha $SourceGitSha `
+    -SignerName $CertSubjectName -DotnetSdkVersion $dotnetSdkVersion -Runtime $Runtimes[0]
 
 if ($SkipUpload) {
     Write-Host "`n✅ -SkipUpload 指定のためここで終了。成果物: $ArtifactsDir" -ForegroundColor Green
@@ -307,9 +327,29 @@ if (-not $zoneResp.success -or @($zoneResp.result).Count -ne 1 -or
     throw "Cloudflare zone '$zoneName' と配信アカウントを一意に確認できませんでした"
 }
 $zoneId = $zoneResp.result[0].id
+# 最初のPUTより前に、版付きpayloadの正確なR2 keyを認証済みGETで照合する。
+# 404だけを未送信とし、同一bytesは再送せず、不一致・照会不能は停止する。
+$existingPayloads = @{}
+foreach ($file in $payloadFiles) {
+    if ($file.Name -notmatch [regex]::Escape($version)) { throw "payload keyに今回の版がありません: $($file.Name)" }
+    $encodedKey = [uri]::EscapeDataString($file.Name)
+    $objectUri = "https://api.cloudflare.com/client/v4/accounts/$AccountId/r2/buckets/$Bucket/objects/$encodedKey"
+    $existingPath = Join-Path $WorkDir ("existing-" + $file.Name)
+    try {
+        Invoke-WebRequest -Uri $objectUri -Headers $cfHeaders -OutFile $existingPath -TimeoutSec 60
+        if ((Get-FileHash -LiteralPath $existingPath -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { throw "同じ版のR2 payloadが異なるbytesで存在します: $($file.Name)" }
+        $existingPayloads[$file.Name] = $true
+    } catch {
+        $responseProperty = $_.Exception.PSObject.Properties['Response']
+        $statusCode = if ($responseProperty -and $responseProperty.Value) { [int]$responseProperty.Value.StatusCode } else { $null }
+        if ($statusCode -ne 404) { throw "R2 payloadの事前照合に失敗しました: $($file.Name)" }
+    }
+}
 try {
     # manifest が先に見えて未アップロードの nupkg を参照しないよう、版付きpayloadを最初に置く。
     foreach ($file in $payloadFiles) {
+        if ($existingPayloads.ContainsKey($file.Name)) { Write-Host "  ✅ 送信済みpayloadのSHA256一致: $($file.Name)"; continue }
         Publish-R2Artifact $file
         $uploaded++
     }
@@ -430,6 +470,26 @@ try {
             }
         }
         Write-Host "  ✅ $msiUrl の配信サイズ一致"
+    }
+    # 両方の通常URLを全bodyで照合する。query/headerやHEADは成功の代用にしない。
+    Write-Host '== 新旧ドメインの通常URL・全body SHA256照合 ==' -ForegroundColor Cyan
+    foreach ($hostUrl in @($BaseUrl, 'https://shisui.nephilim.jp')) {
+        $matched = $false
+        for ($attempt = 1; $attempt -le 18; $attempt++) {
+            $allMatched = $true
+            foreach ($file in @($metadataFiles + $payloadFiles + $fixedBinaryFiles)) {
+                $probePath = Join-Path $probeDir ("normal-$(([uri]$hostUrl).Host)-$($file.Name)")
+                try {
+                    Invoke-WebRequest -Uri "$hostUrl/$($file.Name)" -OutFile $probePath -TimeoutSec 60
+                    if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -ne
+                        (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { $allMatched = $false }
+                } catch { $allMatched = $false }
+            }
+            if ($allMatched) { $matched = $true; break }
+            if ($attempt -lt 18) { Start-Sleep -Seconds 5 }
+        }
+        if (-not $matched) { throw "通常URLの最終成果物が一致しません。旧版清掃を中止します: $hostUrl" }
+        Write-Host "  ✅ $hostUrl manifest/NUPKG/MSIの全body SHA256一致"
     }
 } catch {
     $publishError = $_
