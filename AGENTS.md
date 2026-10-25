@@ -93,6 +93,13 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   (`CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK x64 `signtool.exe`.
   `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
   `cloudflare.api_token` from the release script's configured secret source.
+- The release script requires a clean working tree (including untracked files), .NET 10 SDK,
+  and a full source commit SHA matching HEAD. `-SourceGitSha` defaults to HEAD; it cannot select
+  another revision. These checks also apply to `-SkipUpload`.
+- Preserve the automatic post-signing `scripts/verify-release-artifacts.ps1` gate and its
+  `verified-release-artifacts.json` evidence in the release work directory. Publish the same
+  verified bytes without rebuilding or repacking. The verification scope and upload safeguards
+  are documented in DESIGN; this static artifact check does not replace UI verification.
 - `vava.config.json` runs certificate precheck and the local release script through `/vava`.
   Change versions only through `/vava`; do not hand-edit `Directory.Build.props` `<Version>`.
 - Publish signed PerMachine MSI, never the generated PerUser Setup.exe. Preserve publication ordering,

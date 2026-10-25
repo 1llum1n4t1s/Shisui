@@ -199,19 +199,30 @@ Native AOT での実行を保証するため、JSON は
 起動時確認は `CheckForUpdatesOnStartup` に従い、MainWindow が確定するよう
 `Dispatcher.UIThread.Post(Background)` で遅延させます。開発・未インストール版では確認をスキップします。
 
-Windows リリースはローカルで win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
+Windows リリースはクリーンな作業ツリーと HEAD に一致する完全な source SHA、.NET 10 SDK を前提に、
+ローカルで win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
 生成、`ProgramFiles64Folder\Shisui` への Directory 表正規化、Authenticode 再署名・検証を行います。
 この正規化は旧 Velopack の `TARGETDIR\INSTALLFOLDER` 配置問題を防ぎ、移行時の
 `VELOPACK_INSTALLDIR` 指定も同じ配置を補強します。更新と CLI の固定バージョンを揃え、
 MSI レイアウトの変化を署名済み配布経路で検証する理由です。
 
+署名後の最終配布物は `verify-release-artifacts.ps1` が検証します。NUPKG 内の EXE は
+版と source SHA、署名者、AMD64 PE と CLR header 不在を照合し、nuspec の RID・channel・実行ファイル名も確認します。
+MSI は署名・版・x64・PerMachine 属性・Directory 表を、manifest は単一の完全 NUPKG の
+identity・サイズ・hash を照合します。結果は作業ディレクトリの `verified-release-artifacts.json` に保存されます。
+検証後に再ビルド・再パッケージせず、同じ bytes を公開します。これは静的な配布物検証で、アプリや MSI を起動する検証ではありません。
+
 配信元は R2 バケット `shisui-updates` の `https://shisui.kagayoi.com` です。
 channel は `win`、manifest は `releases.win.json`、移行用の固定ファイルは `Shisui-win.msi` です。
 GitHub Releases は配信に使いません。
 公開は配信中 metadata の退避、版付き nupkg、固定名バイナリ、更新 metadata の順です。
+最初のアップロード前に、版付き payload の正確な R2 key を認証済み GET で照合します。
+404 のときだけ新規送信し、既存 bytes の SHA256 が一致すれば再送を省略します。不一致や照会不能では公開を停止し、同じ版を異なる内容で上書きしません。
 固定名ファイルは、キャッシュ回避クエリ付き URL とクライアントが使う固定 URL の実体を取得し、
 ローカル配布物との SHA256 一致を確認します。不一致の URL だけ Cloudflare cache purge を行い、
 固定 URL の実体が一致するまで上限付きで再確認します。さらに manifest の内容一致と固定 MSI の配信サイズを確認し、
+新旧両ドメインの通常 URL から manifest・NUPKG・MSI の全 body を取得し、ローカル最終配布物との SHA256 一致まで上限付きで確認します。
+この最終確認は HEAD やキャッシュ回避クエリの成功では代用しません。
 metadata 公開後の失敗では退避 metadata を復元して再 purge します。
 世代整理は manifest が参照する全オブジェクトと最新2版の版付き配布物を保持します。
 PerUser Setup.exe は公開対象から除外し、過去の配信物とキャッシュは MSI の伝播成功後にだけ整理します。
