@@ -34,7 +34,8 @@ function Read-MsiRows($Database, [string]$Sql, [int]$Columns) {
     $view = $null
     try {
         $view = $Database.OpenView($Sql)
-        $view.Execute()
+        # COMの戻り値を行データのpipelineへ混ぜない。
+        [void]$view.Execute()
         while ($null -ne ($record = $view.Fetch())) {
             try {
                 $values = @(for ($index = 1; $index -le $Columns; $index++) { $record.StringData($index) })
@@ -42,7 +43,7 @@ function Read-MsiRows($Database, [string]$Sql, [int]$Columns) {
             } finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($record) }
         }
     } finally {
-        if ($null -ne $view) { $view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
+        if ($null -ne $view) { [void]$view.Close(); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) }
     }
 }
 function Get-Identity([IO.FileInfo]$File) {
