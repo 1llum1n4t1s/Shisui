@@ -59,6 +59,7 @@ public partial class App : Application
             services.AddSingleton<IDohConfigurationService, Core.Services.Windows.WindowsDohConfigurationService>();
             services.AddSingleton<IDotConfigurationService, Core.Services.Windows.WindowsDotConfigurationService>();
             services.AddSingleton<IDnsCacheService, Core.Services.Windows.WindowsDnsCacheService>();
+            services.AddSingleton<IDnsClientRepairService, Core.Services.Windows.WindowsDnsClientRepairService>();
             services.AddSingleton<ITcpTuningService, Core.Services.Windows.WindowsTcpTuningService>();
             services.AddSingleton<INetworkMaintenanceService, Core.Services.Windows.WindowsNetworkMaintenanceService>();
             services.AddSingleton<IIpStackResetService, Core.Services.Windows.WindowsIpStackResetService>();

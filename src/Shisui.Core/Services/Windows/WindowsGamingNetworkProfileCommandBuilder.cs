@@ -10,6 +10,7 @@ public static class WindowsGamingNetworkProfileCommandBuilder
     public const string EnergyEfficientEthernetKeyword = WindowsGamingNetworkProfilePolicy.EnergyEfficientEthernetKeyword;
     public const string MediaTekLowPowerKeyword = WindowsGamingNetworkProfilePolicy.MediaTekLowPowerKeyword;
     public const string MediaTekUapsdKeyword = WindowsGamingNetworkProfilePolicy.MediaTekUapsdKeyword;
+    public const string MediaTekAmsduTxKeyword = WindowsGamingNetworkProfilePolicy.MediaTekAmsduTxKeyword;
     public const string RealtekGreenEthernetKeyword = WindowsGamingNetworkProfilePolicy.RealtekGreenEthernetKeyword;
     public const string RealtekGigaLiteKeyword = WindowsGamingNetworkProfilePolicy.RealtekGigaLiteKeyword;
     public const string RealtekPowerSavingModeKeyword = WindowsGamingNetworkProfilePolicy.RealtekPowerSavingModeKeyword;
@@ -175,7 +176,15 @@ public static class WindowsGamingNetworkProfileCommandBuilder
         $"(({quotedKeyword} -ceq '{MediaTekLowPowerKeyword}' -or {quotedKeyword} -ceq '{MediaTekUapsdKeyword}') -and " +
         $"[int]{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType} -and " +
         $"[string]::Equals([string]{adapterExpression}.DriverProvider,'{WindowsGamingNetworkProfilePolicy.MediaTekDriverProvider}',[StringComparison]::Ordinal) -and " +
-        $"[string]{adapterExpression}.PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.MediaTekPnpPrefix}*')";
+        $"[string]{adapterExpression}.PnPDeviceID -like '{WindowsGamingNetworkProfilePolicy.MediaTekPnpPrefix}*') -or " +
+        $"({quotedKeyword} -ceq '{MediaTekAmsduTxKeyword}' -and " +
+        // 元の CIM 属性の型を、query の JSON 用変換や setter の媒体変換よりも厳密に確認する。
+        $"{adapterExpression}.HardwareInterface -is [bool] -and {adapterExpression}.HardwareInterface -eq $true -and " +
+        $"$null -ne {adapterExpression}.InterfaceType -and " +
+        $"{adapterExpression}.InterfaceType.GetType().FullName -cmatch '^System\\.(SByte|Byte|U?Int(16|32|64))$' -and " +
+        $"{adapterExpression}.InterfaceType -eq {WindowsGamingNetworkProfilePolicy.WifiInterfaceType} -and " +
+        $"[string]::Equals([string]{adapterExpression}.DriverProvider,'{WindowsGamingNetworkProfilePolicy.MediaTekDriverProvider}',[StringComparison]::Ordinal) -and " +
+        $"[string]{adapterExpression}.PnPDeviceID -match '^{System.Text.RegularExpressions.Regex.Escape(WindowsGamingNetworkProfilePolicy.MediaTekRz616PnpPrefix)}(?:&|\\\\|\\z)')";
 
     private static string BuildEncodedArguments(string script) =>
         $"-NoProfile -NonInteractive -EncodedCommand {Convert.ToBase64String(Encoding.Unicode.GetBytes(script))}";

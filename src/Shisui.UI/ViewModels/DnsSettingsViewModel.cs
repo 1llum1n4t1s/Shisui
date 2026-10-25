@@ -19,6 +19,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly INetworkMutationGate _networkMutationGate;
     private readonly INetworkAdapterNameService? _adapterNameService;
     private readonly IDohConfigurationService? _dohService;
+    private readonly IDnsClientRepairService? _dnsClientRepairService;
     private readonly IDotConfigurationService? _dotService;
     private readonly ITcpTuningService? _tcpTuningService;
     private readonly INetworkMaintenanceService? _maintenanceService;
@@ -132,15 +133,18 @@ public partial class DnsSettingsViewModel : ObservableObject
     {
         get
         {
-            var items = new List<string> { "DNS：Cloudflare", "DNS キャッシュ：削除" };
+            var items = new List<string> { "DNS：Cloudflare", _dnsClientRepairService is null
+                ? "DNS キャッシュ：削除" : "DNS Client：キャッシュ再構築・NRPT / hosts・名前解決を確認" };
             if (IsWindows && _dohService is not null)
                 items.Add("DoH：ON");
             if (_tcpTuningService is not null)
             {
                 items.Add("TCP 設定・旧レジストリ調整：初期化後に再設定");
+                items.Add("選択 NIC の TCP ACK 頻度：1");
                 items.Add("輻輳制御：BBR2 / 受信ウィンドウ：Normal");
                 items.Add("TCP RACK・TLP・RSS：ON / RSC：OFF");
                 items.Add("ECN・timestamps・Fast Open / fallback：ON");
+                items.Add("TCP ペーシング：always（PC 全体）");
             }
             if (_gamingNetworkProfileService is not null)
             {
@@ -148,6 +152,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 items.Add("NIC RSS・LSO・チェックサム：ON（対応項目）");
                 items.Add("Realtek PCIe Flow Control・Advanced EEE：OFF（対応項目）");
                 items.Add("NIC URO：OFF（対応項目）");
+                items.Add("MediaTek RZ616 A-MSDU 送信：OFF（対応項目）");
             }
             if (_ipStackResetService is not null)
                 items.Add("IP スタック：IPv4・IPv6 をリセットしてから下記の設定を適用");
@@ -191,7 +196,8 @@ public partial class DnsSettingsViewModel : ObservableObject
         IGamingNetworkProfileService? gamingNetworkProfileService = null,
         IWinsockResetService? winsockResetService = null,
         IWinHttpCacheService? winHttpCacheService = null,
-        IIpStackResetService? ipStackResetService = null)
+        IIpStackResetService? ipStackResetService = null,
+        IDnsClientRepairService? dnsClientRepairService = null)
     {
         _adapterService = adapterService;
         _dnsService = dnsService;
@@ -201,6 +207,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         _networkMutationGate = networkMutationGate;
         _adapterNameService = adapterNameService;
         _dohService = dohService;
+        _dnsClientRepairService = dnsClientRepairService;
         _dotService = dotService;
         _tcpTuningService = tcpTuningService;
         _maintenanceService = maintenanceService;
@@ -236,6 +243,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         // 起動時に、選択中プリセットの DoH 実状態をチェックボックス・バッジへ反映する
         // (UseDoh は設定ファイルに保存せず、OS の実際の登録状況を単一の真実とする)。
         _ = RefreshDohStateAsync(SelectedPreset.Servers);
+        _ = VerifyPendingDnsHealthAsync();
     }
 
     partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshAdapterDetailsAsync(value);
@@ -395,6 +403,12 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             var results = (await _dnsService.ApplyAsync(adapter.Id, servers)).ToList();
+            if (results.Any(result => result.RequiresOperationAbort))
+            {
+                foreach (var result in results)
+                    CommandExecuted?.Invoke(this, result);
+                throw new InvalidOperationException("DNS 設定処理の終了を確認できないため、後続の変更を中断しました。");
+            }
 
             if (dohAvailable)
             {
@@ -402,6 +416,14 @@ public partial class DnsSettingsViewModel : ObservableObject
                     ? await _dohService!.EnableAsync(servers, preset.DohTemplate!)
                     : await _dohService!.DisableAsync(servers);
                 results.AddRange(dohResults);
+                if (useDoh)
+                    UseDoh = dohResults.Count > 0 && dohResults.All(result => result.Success && !result.RequiresOperationAbort);
+                if (dohResults.Any(result => result.RequiresOperationAbort))
+                {
+                    foreach (var result in results)
+                        CommandExecuted?.Invoke(this, result);
+                    throw new InvalidOperationException("DoH 設定処理の終了を確認できないため、後続の変更を中断しました。");
+                }
             }
 
             if (dotAvailable)
@@ -446,6 +468,11 @@ public partial class DnsSettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = "DNS の適用または現在値の確認に失敗しました。ログを確認してください";
+            if (dohAvailable)
+            {
+                UseDoh = false;
+                DohStateText = "⚪ 不明";
+            }
             LoggerBootstrap.Log.Error("DNS の適用または現在値の確認に失敗しました", ex);
         }
         finally
@@ -475,6 +502,9 @@ public partial class DnsSettingsViewModel : ObservableObject
         var routeCleanupAttempted = false;
         var winsockRepairRequested = false;
         var ipStackResetRequested = false;
+        var ackConfigurationRequested = false;
+        DnsClientRepairBaseline? dnsBaseline = null;
+        DnsClientRepairReport? dnsHealthReport = null;
         OneClickProgressText = "適用の準備をしています";
         BeginBusyOperation();
         try
@@ -485,6 +515,14 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText = "アダプタを選択してください";
                 return;
+            }
+
+            if (_dnsClientRepairService is not null)
+            {
+                OneClickProgressText = "DNS Client の確認境界を記録しています";
+                dnsBaseline = await _dnsClientRepairService.CaptureBaselineAsync();
+                results.Add(dnsBaseline.Result);
+                EnsureCommandsFinished(results);
             }
 
             if (_ipStackResetService is not null)
@@ -555,6 +593,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                     LoggerBootstrap.Log.Error("おまかせ高速化設定の Winsock 修復に失敗しました", ex);
                 }
             }
+            EnsureCommandsFinished(results);
             if (_winHttpCacheService is not null)
             {
                 try
@@ -569,6 +608,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
             if (_dhcpLeaseService is not null)
             {
                 // DHCP 再取得後に希望の DNS を適用する。解放・再取得は選択した NIC だけを対象にする。
@@ -577,17 +617,28 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             OneClickProgressText = "DNS・DoH を設定しています";
+            EnsureCommandsFinished(results);
             results.AddRange(await _dnsService.ApplyAsync(adapter.Id, servers));
 
+            EnsureCommandsFinished(results);
             if (IsDohAvailable)
             {
-                results.AddRange(await _dohService!.EnableAsync(servers, preset.DohTemplate!));
-                UseDoh = true;
+                var dohResults = await _dohService!.EnableAsync(servers, preset.DohTemplate!);
+                results.AddRange(dohResults);
+                UseDoh = dohResults.Count > 0 && dohResults.All(result => result.Success);
+                DohStateText = UseDoh ? FormatDohStatus(DohStatus.Enabled) : "⚪ 不明";
+                if (dohResults.Any(result => result.RequiresOperationAbort))
+                    throw new InvalidOperationException("DoH 設定処理の終了を確認できないため、後続の変更を中断しました。");
             }
 
-            OneClickProgressText = "通信キャッシュを削除しています";
-            results.Add(await _cacheService.FlushAsync());
+            EnsureCommandsFinished(results);
+            if (_dnsClientRepairService is null)
+            {
+                OneClickProgressText = "通信キャッシュを削除しています";
+                results.Add(await _cacheService.FlushAsync());
+            }
 
+            EnsureCommandsFinished(results);
             if (_maintenanceService is not null)
             {
                 // カタログでワンクリック対象と明示されたメンテナンスだけを実行する。許可リスト方式にすることで、
@@ -613,6 +664,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
             if (_tcpTuningService is not null)
             {
                 // まず公式の TCP 全体リセットで、他のチューニングツールが変更した supplemental template や
@@ -621,12 +673,29 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // 全体リセット後に BBR2 を設定することで、既定化の対象に巻き込まれず最終状態を BBR2 にする。
                 OneClickProgressText = "TCP の低遅延設定を適用しています";
                 results.Add(await _tcpTuningService.ResetAllTcpSettingsToDefaultAsync());
+                EnsureCommandsFinished(results);
                 results.AddRange(await _tcpTuningService.EnableBbr2Async());
+                EnsureCommandsFinished(results);
                 results.AddRange(await _tcpTuningService.RevertGlobalOptionsToDefaultAsync());
+                EnsureCommandsFinished(results);
                 // 修復用の既定化とは別に、対応経路での輻輳通知・RTT 計測・接続開始の短縮を利用可能にする。
                 results.AddRange(await _tcpTuningService.ApplyLowLatencyGlobalOptionsAsync());
+                if (results.Any(result => result.RequiresOperationAbort))
+                    throw new InvalidOperationException("先行する設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
+                var pacingResult = await _tcpTuningService.EnableTcpPacingAsync();
+                results.Add(pacingResult);
+                if (pacingResult.RequiresOperationAbort)
+                    throw new InvalidOperationException("TCP ペーシングの設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
                 results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
+                EnsureCommandsFinished(results);
+                // 旧値の除去後に、選択 NIC へ即時 ACK を設定する。接続名整理より先に適用する。
+                ackConfigurationRequested = true;
+                var ackResult = await _tcpTuningService.SetTcpAckFrequencyAsync(adapter.Id, true);
+                results.Add(ackResult);
+                if (ackResult.RequiresOperationAbort)
+                    throw new InvalidOperationException("ACK 頻度の設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
+                EnsureCommandsFinished(results);
                 results.AddRange(await _tcpTuningService.EnableLossRecoveryAsync());
 
                 // 設定コマンドが成功しても、非対応ビルドやポリシー上書きで目的の実状態とは限らない。
@@ -650,6 +719,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
             if (_gamingNetworkProfileService is not null)
             {
                 // 一括処理が保持する同じリースで適用し、ゲートの二重取得と改名前の接続名の取り違えを防ぐ。
@@ -672,6 +742,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
             if (_adapterNameService is not null)
             {
                 // Windows では adapter.Id が接続名そのものなので、名前を使う DNS/TCP/NIC 処理をすべて終えてから
@@ -696,6 +767,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
             if (routeClearCommand is not null)
             {
                 OneClickProgressText = "ルーティングテーブルを削除しています";
@@ -711,6 +783,17 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
+            EnsureCommandsFinished(results);
+            if (_dnsClientRepairService is not null)
+            {
+                OneClickProgressText = "DNS Client のキャッシュを再構築し、動作を確認しています";
+                dnsHealthReport = await _dnsClientRepairService.RepairAndVerifyAsync(
+                    servers, dnsBaseline!, IsDohAvailable, routeCleanupAttempted);
+                results.Add(dnsHealthReport.Result);
+                _settingsService.Current.DnsHealthVerificationPending = !dnsHealthReport.Result.Success;
+                EnsureCommandsFinished(results);
+            }
+
             foreach (var result in results)
             {
                 CommandExecuted?.Invoke(this, result);
@@ -724,6 +807,8 @@ public partial class DnsSettingsViewModel : ObservableObject
             _settingsService.Current.LastSelectedPresetId = preset.Id;
             OneClickProgressText = "結果を保存・確認しています";
             var settingsSaved = await TrySaveSelectionAsync();
+            if (!settingsSaved && _dnsClientRepairService is not null)
+                _settingsService.Current.DnsHealthVerificationPending = true;
 
             var allSucceeded = results.All(r => r.Success)
                                && (adapterNameCleanupResult?.Success ?? true);
@@ -734,7 +819,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (allSucceeded)
             {
                 StatusText = IsTcpOptimizationAvailable
-                    ? "設定コマンドを実行しました。BBR2・RSS・Fast Open 有効 / RSC 無効と、Internet の ECN・timestamps 有効・受信ウィンドウ実効 Normal を確認済みです。Fast Open fallback・RACK / TLP・UDP の実状態は未検証です。遅延改善量も未測定です。"
+                    ? "設定コマンドを実行しました。BBR2・RSS・Fast Open 有効 / RSC 無効と、Internet の ECN・timestamps 有効・受信ウィンドウ実効 Normal を確認済みです。選択 NIC の ACK 頻度の設定値 1 も確認済みです。Fast Open fallback・RACK / TLP・UDP の実状態は未検証です。遅延改善量も未測定です。"
                     : "おまかせ高速化設定を適用しました";
                 if (_gamingNetworkProfileService is not null)
                 {
@@ -745,7 +830,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText = "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
             }
-            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested
+            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested || ackConfigurationRequested
                 || (allSucceeded && (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null)))
             {
                 StatusText += " 設定の反映には PC を再起動してください";
@@ -753,6 +838,13 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (!settingsSaved)
             {
                 StatusText += " アプリの設定を保存できませんでした。ログを確認してください";
+            }
+            if (dnsHealthReport is not null && !dnsHealthReport.Result.Success)
+            {
+                StatusText += dnsHealthReport.VerificationDeferred
+                    ? " DNS の動作確認は未完了で原因は未確定です。再起動後に確認してください。"
+                    : " DNS の現在状態に未解決または確認不能の項目があります。";
+                StatusText += settingsSaved ? " 次回起動時にも再確認します。" : " 再確認待ちを保存できず、次回起動時の自動確認は保証できません。";
             }
         }
         catch (Exception ex)
@@ -766,15 +858,77 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
-            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested)
+            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested || ackConfigurationRequested)
             {
                 StatusText += " PC を再起動してください";
             }
             LoggerBootstrap.Log.Error("おまかせ高速化設定に失敗しました", ex);
+            if (_dnsClientRepairService is not null)
+            {
+                _settingsService.Current.DnsHealthVerificationPending = true;
+                var pendingSaved = await TrySaveSelectionAsync();
+                StatusText += pendingSaved ? " DNS の動作確認が未完了のため次回起動時にも再確認します。"
+                    : " DNS 再確認待ちを保存できず、次回起動時の自動確認は保証できません。";
+            }
         }
         finally
         {
             OneClickProgressText = string.Empty;
+            EndBusyOperation();
+        }
+    }
+
+    private static void EnsureCommandsFinished(IEnumerable<CommandExecutionResult> results)
+    {
+        if (results.Any(result => result.RequiresOperationAbort))
+            throw new InvalidOperationException("先行する設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
+    }
+
+    private async Task VerifyPendingDnsHealthAsync()
+    {
+        if (_dnsClientRepairService is null || !_settingsService.Current.DnsHealthVerificationPending)
+            return;
+
+        // 初期化中の通知先登録を待ち、通常の変更操作と同じリースで一度だけ確認する。
+        await Task.Yield();
+        BeginBusyOperation();
+        try
+        {
+            using var lease = await _networkMutationGate.EnterAsync();
+            var preset = SelectedPreset;
+            var baseline = await _dnsClientRepairService.CaptureBaselineAsync();
+            CommandExecuted?.Invoke(this, baseline.Result);
+            EnsureCommandsFinished([baseline.Result]);
+            var report = await _dnsClientRepairService.RepairAndVerifyAsync(
+                preset.Servers, baseline, preset.DohTemplate is not null && _dohService is not null, false);
+            CommandExecuted?.Invoke(this, report.Result);
+            if (!report.Result.Success || report.Result.RequiresOperationAbort)
+            {
+                _settingsService.Current.DnsHealthVerificationPending = true;
+                StatusText = "DNS の再確認を完了できませんでした。確認待ちを維持しています。ログを確認してください。";
+                return;
+            }
+
+            _settingsService.Current.DnsHealthVerificationPending = false;
+            if (await TrySaveSelectionAsync())
+            {
+                StatusText = "DNS の現在状態を確認し、確認待ちを解除しました。";
+            }
+            else
+            {
+                _settingsService.Current.DnsHealthVerificationPending = true;
+                StatusText = "DNS の現在状態は確認できましたが、確認待ちの解除を保存できませんでした。ログを確認してください。";
+            }
+        }
+        catch (Exception ex)
+        {
+            _settingsService.Current.DnsHealthVerificationPending = true;
+            CommandExecuted?.Invoke(this, new(false, "DNS Client 起動時再確認", -1, string.Empty, ex.Message));
+            StatusText = "DNS の再確認に失敗しました。確認待ちを維持しています。ログを確認してください。";
+            LoggerBootstrap.Log.Error("DNS Client の起動時再確認に失敗しました", ex);
+        }
+        finally
+        {
             EndBusyOperation();
         }
     }
@@ -808,7 +962,7 @@ public partial class DnsSettingsViewModel : ObservableObject
 
         try
         {
-            var status = await _dohService!.GetStatusAsync(servers);
+            var status = await _dohService!.GetStatusAsync(servers, SelectedPreset.DohTemplate!);
             if (requestVersion == Volatile.Read(ref _dohStateRequestVersion))
             {
                 DohStateText = FormatDohStatus(status);
@@ -822,6 +976,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (requestVersion == Volatile.Read(ref _dohStateRequestVersion))
             {
                 DohStateText = "⚪ 不明";
+                UseDoh = false;
             }
         }
     }

@@ -63,7 +63,7 @@ public sealed class WindowsGamingNetworkProfilePolicyTests
             true, 71, "MediaTek, Inc.", "PCI\\VEN_14C3&DEV_0616&SUBSYS_061614C3");
 
         CollectionAssert.AreEqual(
-            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*UdpRsc", "*InterruptModeration", "LowPowerEnable", "UAPSDSupport" },
+            new[] { "*RSS", "*LsoV2IPv4", "*LsoV2IPv6", "*IPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv4", "*TCPChecksumOffloadIPv6", "*UDPChecksumOffloadIPv4", "*UDPChecksumOffloadIPv6", "*UdpRsc", "*InterruptModeration", "LowPowerEnable", "UAPSDSupport", "AMSDUTx" },
             keywords.ToArray());
         Assert.DoesNotContain("*EEE", keywords);
     }

@@ -12,5 +12,5 @@ public interface IDohConfigurationService
 
     Task<IReadOnlyList<CommandExecutionResult>> DisableAsync(DnsServerSet servers, CancellationToken ct = default);
 
-    Task<DohStatus> GetStatusAsync(DnsServerSet servers, CancellationToken ct = default);
+    Task<DohStatus> GetStatusAsync(DnsServerSet servers, string expectedTemplate, CancellationToken ct = default);
 }

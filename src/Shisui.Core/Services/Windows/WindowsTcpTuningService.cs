@@ -60,8 +60,47 @@ public sealed class WindowsTcpTuningService(ICommandExecutor executor) : ITcpTun
     public Task<CommandExecutionResult> SetTcpGlobalOptionAsync(TcpGlobalOption option, bool enabled, CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.BuildSetGlobalOption(option, enabled), ct);
 
+    public async Task<CommandExecutionResult> EnableTcpPacingAsync(CancellationToken ct = default)
+    {
+        var result = await executor.RunAsync(WindowsTcpPacingCommandBuilder.FileName,
+            WindowsTcpPacingCommandBuilder.BuildEnableArguments(), ct);
+        if (!result.Success || WindowsTcpPacingCommandBuilder.IsVerifiedOutput(result.StandardOutput))
+            return result;
+
+        return result with
+        {
+            Success = false,
+            StandardError = result.StandardError + Environment.NewLine + "TCP ペーシングの適用結果を確認できませんでした。",
+        };
+    }
+
     public Task<CommandExecutionResult> ShowTcpGlobalStatusAsync(CancellationToken ct = default) =>
         executor.RunAsync(WindowsTcpCommandBuilder.FileName, WindowsTcpCommandBuilder.ShowGlobalStatus, ct);
+
+    public async Task<CommandExecutionResult> SetTcpAckFrequencyAsync(string adapterId, bool enabled, CancellationToken ct = default)
+    {
+        var result = await executor.RunAsync(WindowsTcpAckFrequencyCommandBuilder.FileName,
+            WindowsTcpAckFrequencyCommandBuilder.BuildSetArguments(adapterId, enabled), ct);
+        if (!result.Success)
+            return result;
+
+        var state = WindowsTcpAckFrequencyCommandBuilder.ParseState(result.StandardOutput);
+        if (state.IsKnown && state.Value == (enabled ? 1 : (int?)null))
+            return result;
+
+        return result with
+        {
+            Success = false,
+            StandardError = result.StandardError + Environment.NewLine + "TcpAckFrequency の変更結果を確認できませんでした。",
+        };
+    }
+
+    public async Task<TcpAckFrequencyState> GetTcpAckFrequencyAsync(string adapterId, CancellationToken ct = default)
+    {
+        var result = await executor.RunAsync(WindowsTcpAckFrequencyCommandBuilder.FileName,
+            WindowsTcpAckFrequencyCommandBuilder.BuildGetArguments(adapterId), ct);
+        return result.Success ? WindowsTcpAckFrequencyCommandBuilder.ParseState(result.StandardOutput) : TcpAckFrequencyState.Unknown;
+    }
 
     public async Task<TcpSettingsSnapshot> GetCurrentStateAsync(CancellationToken ct = default)
     {

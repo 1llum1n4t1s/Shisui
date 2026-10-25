@@ -83,7 +83,7 @@ public sealed class DnsSettingsViewModelTests
         await optimizationViewModel.RunQuickOptimizationCommand.ExecuteAsync(null);
 
         CollectionAssert.AreEqual(
-            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "ApplyLowLatencyGlobalOptions", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
+            new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "ApplyLowLatencyGlobalOptions", "EnableTcpPacing", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
             tcpTuningService.Calls);
         StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "BBR2");
         StringAssert.Contains(dnsViewModel.StatusText, "実効 Normal を確認済み");
@@ -422,7 +422,7 @@ public sealed class DnsSettingsViewModelTests
             CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<CommandExecutionResult>>([]);
 
-        public Task<DohStatus> GetStatusAsync(DnsServerSet servers, CancellationToken ct = default) =>
+        public Task<DohStatus> GetStatusAsync(DnsServerSet servers, string expectedTemplate, CancellationToken ct = default) =>
             StatusHandler(servers);
     }
 
@@ -525,6 +525,12 @@ public sealed class DnsSettingsViewModelTests
             return Task.FromResult<IReadOnlyList<CommandExecutionResult>>([Success()]);
         }
 
+        public override Task<CommandExecutionResult> EnableTcpPacingAsync(CancellationToken ct = default)
+        {
+            Calls.Add("EnableTcpPacing");
+            return Task.FromResult(Success());
+        }
+
         public override Task<CommandExecutionResult> SetTcpGlobalOptionAsync(
             TcpGlobalOption option, bool enabled, CancellationToken ct = default)
         {
@@ -575,6 +581,10 @@ public sealed class DnsSettingsViewModelTests
             {
                 var value when value == WindowsTcpStateCommandBuilder.Arguments =>
                     "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled\nECN=Enabled\nTIMESTAMPS=Enabled\nFASTOPEN=Enabled",
+                var value when value == WindowsTcpAckFrequencyCommandBuilder.BuildSetArguments(Adapter.Id, true) =>
+                    "TCPACKFREQUENCY=DWORD:1\r\n",
+                var value when value == WindowsTcpPacingCommandBuilder.BuildEnableArguments() =>
+                    "TCPPACING=ALWAYS\r\n",
                 WindowsPowerPlanCommandBuilder.GetActiveSchemeArguments => $"Power Scheme GUID: {powerScheme:D}",
                 var value when value.Contains(WindowsPowerPlanCommandBuilder.WirelessPowerSavingModeGuid, StringComparison.Ordinal) =>
                     WindowsPowerPlanCommandBuilderTests.QueryOutput(powerScheme, 0, 2)

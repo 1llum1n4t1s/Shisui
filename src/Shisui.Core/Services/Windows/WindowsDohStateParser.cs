@@ -1,56 +1,48 @@
+using System.Net;
+using System.Text.Json;
 using Shisui.Core.Models;
 
 namespace Shisui.Core.Services.Windows;
 
-/// <summary>
-/// <see cref="WindowsDohStateCommandBuilder"/> が出力する KEY=VALUE 行をパースする純粋関数
-/// (プロセス起動・OS 呼び出しを行わない、ユニットテスト対象)。
-/// </summary>
+/// <summary>対象 IP・期待テンプレート・元の bool 型をすべて確認する。</summary>
 public static class WindowsDohStateParser
 {
-    public static DohStatus Parse(string stdout, IReadOnlyList<string> expectedAddresses)
+    public static DohStatus Parse(string stdout, IReadOnlyList<string> expectedAddresses, string expectedTemplate)
     {
-        if (expectedAddresses.Count == 0)
+        if (expectedAddresses.Count == 0 || string.IsNullOrWhiteSpace(expectedTemplate))
+            return DohStatus.Unknown;
+        try
+        {
+            using var document = JsonDocument.Parse(stdout);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+                return DohStatus.Unknown;
+            var rows = document.RootElement.EnumerateArray().ToArray();
+            if (rows.Length != expectedAddresses.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+                return DohStatus.Unknown;
+            var enabled = 0;
+            foreach (var address in expectedAddresses.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var target = IPAddress.Parse(address);
+                var matches = rows.Where(row => row.ValueKind == JsonValueKind.Object &&
+                    row.TryGetProperty("ServerAddress", out var server) && server.ValueKind == JsonValueKind.String &&
+                    IPAddress.TryParse(server.GetString(), out var parsed) && parsed.Equals(target)).ToArray();
+                if (matches.Length != 1)
+                    return DohStatus.Unknown;
+                var fields = matches[0].EnumerateObject().ToArray();
+                if (fields.Length != 4 || fields.Select(field => field.Name).Distinct(StringComparer.Ordinal).Count() != 4 ||
+                    !matches[0].TryGetProperty("DohTemplate", out var template) || template.ValueKind != JsonValueKind.String ||
+                    !matches[0].TryGetProperty("AutoUpgrade", out var auto) || auto.ValueKind is not JsonValueKind.True and not JsonValueKind.False ||
+                    !matches[0].TryGetProperty("AllowFallbackToUdp", out var fallback) || fallback.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+                    return DohStatus.Unknown;
+                if (auto.GetBoolean() && string.Equals(template.GetString(), expectedTemplate, StringComparison.Ordinal))
+                    enabled++;
+            }
+            var count = expectedAddresses.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            return enabled == count ? DohStatus.Enabled : enabled == 0 ? DohStatus.Disabled : DohStatus.Partial;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException)
         {
             return DohStatus.Unknown;
         }
-
-        var autoUpgradeAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        string? currentServer = null;
-
-        foreach (var rawLine in stdout.Split('\n'))
-        {
-            var line = rawLine.Trim();
-            var eq = line.IndexOf('=');
-            if (eq <= 0)
-            {
-                continue;
-            }
-
-            var key = line[..eq].Trim().ToUpperInvariant();
-            var value = line[(eq + 1)..].Trim();
-
-            switch (key)
-            {
-                case "SERVER":
-                    currentServer = value;
-                    break;
-                case "AUTOUPGRADE":
-                    if (currentServer is not null && value.Equals("True", StringComparison.OrdinalIgnoreCase))
-                    {
-                        autoUpgradeAddresses.Add(currentServer);
-                    }
-
-                    break;
-            }
-        }
-
-        var matchCount = expectedAddresses.Count(a => autoUpgradeAddresses.Contains(a));
-        if (matchCount == expectedAddresses.Count)
-        {
-            return DohStatus.Enabled;
-        }
-
-        return matchCount == 0 ? DohStatus.Disabled : DohStatus.Partial;
     }
 }

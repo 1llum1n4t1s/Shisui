@@ -24,6 +24,9 @@ public interface ITcpTuningService
     /// <summary>おまかせ用に RSS・ECN・timestamps・Fast Open/fallback を有効化し、RSC を無効化する。</summary>
     Task<IReadOnlyList<CommandExecutionResult>> ApplyLowLatencyGlobalOptionsAsync(CancellationToken ct = default);
 
+    /// <summary>PC 全体の TCP pacingprofile を always にする。</summary>
+    Task<CommandExecutionResult> EnableTcpPacingAsync(CancellationToken ct = default);
+
     /// <summary>インターフェース別の TcpAckFrequency/TCPNoDelay/TcpDelAckTicks 明示値を削除して Windows 既定へ戻す。</summary>
     Task<CommandExecutionResult> RevertLegacyTcpRegistryTweaksToDefaultAsync(CancellationToken ct = default);
 
@@ -42,6 +45,12 @@ public interface ITcpTuningService
 
     /// <summary>指定アダプタの現在の IPv4 MTU を取得する。取得できない場合は null。</summary>
     Task<int?> GetMtuAsync(string adapterId, CancellationToken ct = default);
+
+    /// <summary>選択 NIC の TcpAckFrequency を DWORD 1 にする。無効時はこの値だけを削除する。</summary>
+    Task<CommandExecutionResult> SetTcpAckFrequencyAsync(string adapterId, bool enabled, CancellationToken ct = default);
+
+    /// <summary>選択 NIC の TcpAckFrequency 明示値を取得する。値なしと取得不能を区別する。</summary>
+    Task<TcpAckFrequencyState> GetTcpAckFrequencyAsync(string adapterId, CancellationToken ct = default);
 }
 
 public enum TcpGlobalOption

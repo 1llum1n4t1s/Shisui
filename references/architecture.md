@@ -123,16 +123,20 @@ in the UI for it).
 ### DNS over HTTPS (DoH) toggle (`IDohConfigurationService`, Windows)
 
 The DNS tab shows a DoH checkbox for presets that have a `DohTemplate` (all built-ins except カスタム). Enabling
-registers each of the preset's IPs via `netsh dnsclient add encryption server=<ip> dohtemplate=<url>
-autoupgrade=yes udpfallback=yes` and then `netsh dnsclient set global doh=yes`; disabling runs `netsh dnsclient
+reads all DoH registrations once, rejects duplicate/malformed target records, adds missing target entries with
+`Add-DnsClientDohServerAddress`, and repairs mismatched template/AutoUpgrade using `Set-DnsClientDohServerAddress`.
+Already matching entries need no setter. Existing `AllowFallbackToUdp=false` remains false; new entries retain
+the existing product fallback policy of true. It then runs absolute System32 `netsh dnsclient set global doh=yes`
+and reads all target entries back with strict template/bool/fallback checks. Only a unique verification marker
+confirms repair; this verifies stored registration, not TLS transport. Disabling still runs `netsh dnsclient
 delete encryption server=<ip> protocol=doh` per IP (global `doh` is left alone — it can affect other
 registrations). See the next section for the DoT sibling toggle, which uses the same `netsh dnsclient` family
 but is architecturally different because it has no state-read cmdlet.
 
 **The checkbox reflects real OS state, it is not a saved preference.** `WindowsDohStateCommandBuilder` /
-`WindowsDohStateParser` (pure, unit-tested, same locale-independent `KEY=VALUE` PowerShell pattern as the TCP tab)
-read `Get-DnsClientDohServerAddress -ServerAddress <ips>` and classify `DohStatus` = Enabled (all IPs
-`AutoUpgrade=True`) / Partial / Disabled / Unknown. `DnsSettingsViewModel.RefreshDohStateAsync` runs on startup
+`WindowsDohStateParser` read type-preserving JSON from `Get-DnsClientDohServerAddress` and classify
+`DohStatus` against the expected preset template and typed bool properties. Missing, duplicate or malformed
+target rows are Unknown; an AutoUpgrade flag alone cannot establish Enabled. `DnsSettingsViewModel.RefreshDohStateAsync` runs on startup
 and on preset change, setting `UseDoh = (status == Enabled)`. The *selected preset* is persisted
 (`AppSettings.LastSelectedPresetId`, restored via direct field assignment to avoid firing `OnSelectedPresetChanged`)
 so that the DoH state is read against the preset the user last used, not always the default.
@@ -241,22 +245,36 @@ and manual batch callers stop subsequent mutations, retain the failure, and advi
 This is an explicit allowlist: dynamic DNS registration and HTTP.sys log-buffer/server-response-cache operations
 remain available in the maintenance tab but are deliberately excluded
 from one-click because their applicability depends on name-registration or HTTP-server use; one-click also
-switches to public DNS. They are evaluated separately from latency tuning. DNS cache flushing is already handled
-once through `IDnsCacheService`. Finally
+switches to public DNS. They are evaluated separately from latency tuning. DNS cache flushing runs through the
+final DNS client verification service when available, or once through `IDnsCacheService` otherwise. Finally
 — only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — restores all five TCP
 templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
 enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
 initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
 then calls `ApplyLowLatencyGlobalOptionsAsync` to explicitly enable global RSS, ECN, timestamps, Fast Open and
 Fast Open fallback, and disable global RSC through six commands. These overrides prioritize latency; their effects
-depend on the peer, network path and application. The manual reset operation still
+depend on the peer, network path and application.
+`EnableTcpPacingAsync` then sets PC-wide TCP `pacingprofile=always`, regardless of the selected adapter's medium.
+The wired off/always/off measurement conditions do not restrict product applicability.
+It uses System32 netsh, checks native exit codes, and verifies a unique `pacingprofile=always` token in the
+`set global` lines of `int tcp dump`. This confirms stored configuration, not per-connection pacing or latency.
+Any prior `RequiresOperationAbort` prevents this setter and subsequent changes; the pacing result has the same abort boundary.
+The policy favors transmission smoothing and reduced queue pressure; off/always/off measurements with fixed BBR2
+did not consistently improve median latency. It neither requires BBR2 nor guarantees improvement. Manual reset remains default.
+The manual reset operation still
 restores all options to their defaults without these one-click overrides. These global states do not prove
 individual NIC capabilities or latency improvement. Disabling RSC can increase CPU usage and reduce receive throughput.
 Microsoft's [RSC guidance](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)
 allows disabling it for low-latency workloads that benefit; that Server guidance does not establish a measured improvement
 for every Windows 11 game. The one-click policy prioritizes latency, and includes the selected NIC gaming profile before device/name cleanup. Individual NIC apply/restore operations remain available. It
 removes only the per-interface legacy tweak values `TcpAckFrequency`, `TCPNoDelay`, and `TcpDelAckTicks` from
-`HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` so Windows falls back to its defaults,
+`HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` before applying `TcpAckFrequency=1`
+as a DWORD to the selected NIC only. `SetTcpAckFrequencyAsync` resolves the connection name exactly and uniquely,
+opens only the existing OS-provided interface GUID key, and checks the stored type/value and NIC identity after mutation.
+`GetTcpAckFrequencyAsync` distinguishes an absent value (Windows default) from an unreadable or unsupported value (Unknown)
+using strict ASCII markers. This is stored configuration; a restart is required to change runtime ACK behavior.
+After one-click device/name cleanup, the manual TCP tab reloads adapters and selects the renamed target before refreshing its state.
+One-click also
 disables IPv4/IPv6 loopback Large MTU as part of the BBR2 configuration, and resets receive-window auto-tuning to Normal. The registry command emits
 `REMOVED=N`, never deletes an interface key, and deliberately does not touch the unrelated MSMQ `TCPNoDelay` value.
 Because Microsoft documents these delayed-ACK registry changes as requiring a restart, the one-click description
@@ -270,7 +288,8 @@ labels and explicit `enabled` values; unknown labels, missing/duplicate fields o
 Compat's loss-recovery settings are left to the preceding TCP reset; its BBR2
 enablement remains unchanged. The paired loss-recovery command follows Microsoft's
 [netsh guidance](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface).
-The TCP tab exposes aggregate TCP reset, global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
+The TCP tab exposes selected-NIC ACK frequency enable/default actions and stored-value badges, aggregate TCP reset,
+global-option reset, legacy ACK/Nagle cleanup, and paired RACK/TLP enablement
 as separate commands; one-click must not be the only UI path to any setting mutation it performs.
 The TCP/UDP/power normalization phase, including BBR2/loss-recovery enablement and the narrow PCI Express AC power setting, is limited to documented TCP/UDP/power state and those three specifically named legacy
 per-interface values. It does not delete arbitrary registry values,
@@ -281,8 +300,22 @@ disconnected PnP network-device registration and, when possible, strips the sele
 This must run after every operation that uses the old connection name; if a rename succeeds, the new name is persisted
 before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
 are intentionally included and the button description warns that Windows will redetect them when reconnected.
-After DHCP, DNS, TCP, NIC settings and device/name cleanup, one-click runs the deferred `route-clear` once as its final mutation while retaining the same shared lease.
+After DHCP, DNS, TCP, NIC settings and device/name cleanup, one-click runs the deferred `route-clear` once as its final network-configuration mutation while retaining the same shared lease.
 This clears the PC-wide route table and interrupts connectivity; users are told to restart afterwards. Command failure or an exception is logged and makes the overall operation fail.
+When the optional Windows `IDnsClientRepairService` is present, one-click captures a runtime-only System event
+RecordId/XML SHA256 baseline before its first setter. It replaces the earlier cache flush with a final cache
+rebuild and current NRPT/hosts/Windows resolution/fresh-event verification after route cleanup. The first event
+range starts at the pre-mutation baseline; retries continue from the previous captured end, including waiting gaps.
+At most two attempts allow postconfiguration stabilization, while first-attempt event IDs, record IDs and ranges
+remain visible. Lost/replaced/unreadable boundaries and unknown event schemas never establish zero new errors
+and cannot be cleared merely by a later successful probe.
+An unresolved probe after route cleanup remains a failed verification with an undetermined cause, even when
+`VerificationDeferred` requests a later check. Every failed/unknown DNS verification sets the persisted primitive
+`DnsHealthVerificationPending`; the next startup performs one new baseline/rebuild/read/probe under the shared
+mutation gate, with deferred classification disabled. Only confirmed success clears the flag. If saving that
+clear fails, memory rolls back to pending and the UI separates successful DNS checks from failed settings save.
+No pending-state UI lock or configuration snapshot/restore is introduced. Missing service/macOS retain the old
+cache-flush path. NRPT/hosts/certificates/TLS/proxy settings and Tailscale service state are never reset by this check.
 Other destructive maintenance actions (per-adapter MTU restoration and the remaining commands in the 「ファイアウォール・スタックリセット」category)
 remain excluded. Since PCI Express AC power management / UDP defaults / BBR2 and RACK/TLP enablement / TCP global-option reset / loopback Large MTU / auto-tuning /
 cache-maintenance commands / route-table clearing are global, not scoped
@@ -403,6 +436,16 @@ PCI vendor 10EC or USB vendor 0BDA, and `LowPowerEnable` / `UAPSDSupport` only f
 and PCI vendor 14C3). These Realtek power properties are changed only when the driver actually exposes the exact key
 with binary 0/1 values. Their binary semantics were verified against `RTL8168H.ndi.NT` in driver INF
 1168.27.50.920; the MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
+`AMSDUTx=0` additionally requires physical Wi-Fi, exact provider `MediaTek, Inc.` and PCI VEN_14C3/DEV_0616
+with a device-token boundary. Its generated query/apply/restore policy checks the original bool/integer CIM types
+before accepting the property; string attributes cannot satisfy this additional allowlist. Both published binary
+values 0/1 are required. Existing journal, conflict, restoration and stored-value verification paths apply.
+This favors reducing transmit aggregation without claiming consistent measured latency improvement.
+`AMSDURx` is not modified or reset: disabling receive aggregation has no confirmed aggregation-wait reduction
+mechanism for this driver. Transmit and receive operations have different responsibilities; this does not assert
+that changing receive capability can never affect an AP. See Microsoft's
+[WDI transmit](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-transmit-operations-and-offloads)
+and [WDI receive](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-receive-operations-and-offloads) contracts.
 This is not a generic manufacturer-independent Wi-Fi power switch. Missing properties are reported;
 malformed values, wrong media/provider combinations and identity changes cannot authorize writes or restore.
 The additional `*FlowControl` and `AdvancedEEE` targets are 0 and require physical Ethernet with a

@@ -105,9 +105,10 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
 
         foreach (var script in generatedScripts)
         {
-            var source = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+            // 外側の EncodedCommand だけで隔離し、二重 Base64 による Windows の引数長超過を避ける。
+            var source = script.Replace("'", "''", StringComparison.Ordinal);
             var checker =
-                $"$s=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{source}'));" +
+                $"$s='{source}';" +
                 "$tokens=$null;$errors=$null;" +
                 "[Management.Automation.Language.Parser]::ParseInput($s,[ref]$tokens,[ref]$errors)|Out-Null;" +
                 "if($errors.Count -ne 0){[Console]::Error.WriteLine(($errors|ForEach-Object Message)-join [Environment]::NewLine);exit 1}";

@@ -80,6 +80,9 @@ Windows Start の重複キャッシュを更新します。
 3. executor が外部プロセスを実行し、service または純粋な parser が結果をモデルへ変換します。
    Winsock 登録の検査と WinHTTP キャッシュ操作は、専用の API 抽象を介して Windows ネイティブ API を呼びます。
 4. executor が実行時点の開始・終了、所要時間、終了コード、標準出力・標準エラーをファイルへ記録します。
+
+Windows のおまかせ設定では、最初の設定変更前に System ログの最新 RecordId と同イベント XML の SHA256 を実行中だけ保持します。最後の経路削除後に DNS Client キャッシュ再構築と現在状態を検証し、旧位置のキャッシュ削除とは重複させません。検証は NRPT の列挙・実効ポリシー、ローカル hosts の安全な読取り、Windows 名前解決、境界以降の関連イベントを別々に扱います。境界の消失・入替え・取得不能は新エラー0件としません。再試行は設定後の安定化と再構築を理由に最大2回で、初回の失敗も記録します。登録値・名前解決の確認をTLS通信やMagicDNS全体の保証とは説明しません。
+経路削除後の名前解決不成立は、原因を経路に断定せず動作確認未完了として扱います。検証失敗・確認不能では `DnsHealthVerificationPending` だけを保存し、次回起動時に一度、共有リース内で新しい境界とキャッシュ再構築から確認します。成功時だけフラグを解除し、保存失敗ならメモリー上も true に戻します。確認待ちによる操作禁止や旧設定の復元機構は追加しません。NRPT・hosts・証明書・TLS・プロキシ設定の削除や書換え、Tailscale の再起動、イベント消去は行いません。
    ViewModel は従来の簡潔な画面ログを維持し、通知を実行IDで関連付けます。適用後確認などの合成結果は
    成功・失敗を問わず両方の出力をファイルへ記録します。
 
@@ -108,6 +111,7 @@ IPsec・WINS の各条件付き処理は 45 秒で中断を要求します。exe
 PC 全体に影響して通信が切れるため、完了後は再起動を案内します。失敗・例外は全体の失敗としてログに残し、この処理まで同じリースを保持します。
 BBR2 は全 5 テンプレート、RACK/TLP は Compat を除く 4 テンプレートへ適用します。UDP は URO/USO のみを既定化し、
 UDP 全体の reset は行いません。TCP の既定化は不調な旧設定を除く修復工程とし、その後に RSS・ECN・timestamps・Fast Open / fallback 有効、RSC 無効を明示的に適用します。手動の既定化にはこの上書きを含めません。
+旧ACK/Nagle値の除去後、選択NICだけに`TcpAckFrequency=1`を設定し、DWORD型・値・NICのGUIDを読み戻して確認します。接続名整理より前に適用し、整理後は個別設定の一覧と選択対象も更新します。
 適用後は同じリース内で BBR2、RSS 有効・RSC 無効、Fast Open 有効と Internet の ECN・timestamps 有効、受信ウィンドウ実効値を読み戻し、
 ポリシー上書き・不完全取得を成功扱いしません。RACK/TLP は日英の既知ラベルで両方の有効状態を確認できた場合、
 再設定せず変更不要とします。未確認・無効の場合は設定コマンドの結果を保持します。Fast Open fallback・UDP などはコマンド受付結果のみです。
@@ -141,11 +145,17 @@ Windows既定値であることだけを採用理由にしません。設定が�
 ローカルのWindowsビルド26300で設定値・照会経路を確認していますが、このプロファイルでのRTT・ジッター・損失・フレーム時間の比較測定は未実施です。
 BBR2とloopback Large MTUの既存組み合わせは維持しますが、全通信やUDPゲームでの低遅延を示す測定結果はありません。
 
-RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、pacing・RTO・HyStart・PRRの新たな強制値は追加しません。
+TCP全体の`pacingprofile=always`を追加適用します。製品のおまかせ設定は選択NICの媒体で適用を分けません。送信の平滑化とキュー圧の抑制という機構を優先する方針で、BBR2を必須条件とはしません。[IETF BBR draft §4.2](https://www.ietf.org/archive/id/draft-ietf-ccwg-bbr-05.html)、[Microsoft netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)を参照してください。有線・BBR2固定のoff/always/off比較では中央値の一貫した改善はなく、Upload P95は改善側でした。この計測条件は製品の媒体制限ではなく、実測で改善が証明された設定や、すべての環境で低遅延になる設定とは説明しません。
+System32のnetshの終了値と、`int tcp dump`の`set global`行にある固定トークン`pacingprofile=always`の一意な読み戻しを確認します。保証するのは保存された構成で、各接続の実際のペーシング挙動や遅延ではありません。個別の既定化は引き続き`default`です。
+
+RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、RTO・HyStart・PRRの新たな強制値は追加しません。
 負荷・ドライバー・輻輳制御との組み合わせを確認する必要があり、低遅延に有利な共通値を確定できないためです。
-既存のACK/Nagleレジストリ調整の除去は維持します。`TcpAckFrequency=1`は即時ACKの機構を持つ候補ですが、Windows 11での有効な設定経路と対象接続を未確認です。
+旧ACK/Nagleレジストリ調整の除去後、選択NICの既存インターフェースキーへ`TcpAckFrequency`をDWORDの1で設定します。
+2026年10月24日のWindows 11ビルド26300・Wi-FiでのA/B/A2各3試行では、受信からACK送信までの時間の中央値の平均が44.665ms → 0.125ms → 44.696msとなりました。
+各段階の実再起動と設定値を照合したTCPIP層の観測で、他のNIC・Windowsビルド・ゲームやpingへの効果、上り混雑時の影響は未測定です。
+個別設定にも選択NICへの値1の適用・設定値表示・値の削除によるWindows既定への復帰を設けます。変更後はPCの再起動が必要で、設定値の表示だけでは再起動後の実動作を保証しません。
 `TcpDelAckTicks`の旧Windows向け説明やMSMQ固有の`TCPNoDelay`を一般アプリへ転用しません。
-将来ACK頻度を採用する場合は、現行OSの対応、対象テンプレート、実通信でのACK・上り混雑を確認します。[Microsoft、KB328890](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/registry-entry-control-tcp-acknowledgment-behavior)、[Set-NetTCPSetting、DelayedAckFrequency / DelayedAckTimeoutMs](https://learn.microsoft.com/en-us/powershell/module/nettcpip/set-nettcpsetting)
+テンプレートのDelayedAckFrequency / DelayedAckTimeoutMsは変更せず、インターフェースの値だけを操作します。関連する仕様資料は[Microsoft、KB328890](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/registry-entry-control-tcp-acknowledgment-behavior)、[Set-NetTCPSetting、DelayedAckFrequency / DelayedAckTimeoutMs](https://learn.microsoft.com/en-us/powershell/module/nettcpip/set-nettcpsetting)を参照してください。
 
 ### ゲーム向け NIC 設定
 
@@ -157,6 +167,8 @@ Windows専用のゲーム向けNIC設定は「おまかせ高速化設定」に�
 さらに、プロバイダー名またはPCI/USBベンダーIDからRealtek製と確認できる物理Ethernetでは、プロパティが存在して0/1をサポートする場合に `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` を扱います。これらの0/1定義はRTL8168HのINFで確認しています。
 追加の `*FlowControl` / `AdvancedEEE` は物理EthernetかつPCI `VEN_10EC` を確認できるRealtekだけ0にし、USBやプロバイダー名だけの判定では変更しません。Flow Controlは標準0/1/2/3のうち元値と0の公開対応、Advanced EEEは0/1の公開対応を必須にします。RTL8125BGの導入済みINFでFlow Controlの公開値0/3、Advanced EEEの0/1を確認しています。
 ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
+追加のA-MSDU送信（`AMSDUTx`）は、物理Wi-Fi（型付きbool true・整数71）、provider完全一致 `MediaTek, Inc.`、PCI `VEN_14C3&DEV_0616`を区切り境界まで照合したRZ616に限定してOFF（0）にします。公開列挙値0/1の両方が必要です。既存の変更前値保存・競合検知・復元・保存値読み戻しを使い、未公開項目やキーを作成しません。送信側の集約を減らす機構を優先し、一貫した遅延改善は実証していません。[Microsoft WDI transmit operations](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-transmit-operations-and-offloads)を参照してください。
+A-MSDU受信（`AMSDURx`）は、確認したRZ616ドライバーでOFFが集約待ち削減になる機構を確認できないため現値を維持し、書換え・既定化を行いません。送信側と受信側を同じ理由で無効化しません。[Microsoft WDI receive operations](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-receive-operations-and-offloads)を参照してください。
 媒体・ベンダーごとの許可リストをquery・parser・書込み・復元で照合し、EEEをWi-Fiへ、メーカー独自項目を他社へ流用しません。
 サービスの単独適用・復元APIは共有ゲートを取得します。一括適用は呼出し元が同じ共有リースを保持したまま ApplyWithinMutationLeaseAsync を呼び、ゲートを再取得せず、接続名整理より前に実行します。適用時は変更前の値をAppSettingsへ保存してから書き込み、設定値を再取得します。一括適用はNIC設定の失敗・空結果・例外も全体の失敗結果へ含めます。
 GUIDと説明で対象を照合し、再適用で元の値を上書きしません。復元は保存対象だけを扱い、外部変更との競合は上書きしません。
@@ -231,6 +243,7 @@ PerUser Setup.exe は公開対象から除外し、過去の配信物とキャ�
   hostname を標準 hostname へ置き換えません。NextDNS とカスタム設定には固定の暗号化 DNS endpoint を与えません。
 - DoH のチェック状態は OS の実状態から復元します。DoT はロケール非依存に状態取得できる API がないため、
   保存状態を実状態として表示せず、操作時だけ有効化・無効化します。
+- DoH は対象 IP の登録を一括取得し、欠落だけを追加、不整合なテンプレート・自動昇格だけを修復します。既存の UDP fallback 禁止は維持します。正しい登録は再設定しません。グローバル有効化の終了値と、対象の期待 HTTPS テンプレート・型付き bool・fallback の読み戻しを確認し、成功しない設定を表示上だけ有効にしません。登録値確認と実際の TLS 通信成功は区別します。
 - Windows の正式配布物は署名済み PerMachine MSI です。PerUser `Setup.exe` は公開せず、旧 PerUser 版を
   ユーザー書き込み可能な場所から管理者実行し続けません。移行・修復対象は検証済みの既知パスに限定します。
   ダウンロードした MSI は書換え・削除を拒否する同一ハンドルで署名検証し、そのハンドルから再解析ポイントを解決した最終パスだけを `msiexec` へ渡して終了まで保持します。

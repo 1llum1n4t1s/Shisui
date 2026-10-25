@@ -9,6 +9,7 @@ public static class WindowsGamingNetworkProfilePolicy
     public const string EnergyEfficientEthernetKeyword = "*EEE";
     public const string MediaTekLowPowerKeyword = "LowPowerEnable";
     public const string MediaTekUapsdKeyword = "UAPSDSupport";
+    public const string MediaTekAmsduTxKeyword = "AMSDUTx";
     public const string RealtekGreenEthernetKeyword = "EnableGreenEthernet";
     public const string RealtekGigaLiteKeyword = "GigaLite";
     public const string RealtekPowerSavingModeKeyword = "PowerSavingMode";
@@ -25,6 +26,7 @@ public static class WindowsGamingNetworkProfilePolicy
     public const string UdpChecksumOffloadIPv6Keyword = "*UDPChecksumOffloadIPv6";
     public const string MediaTekDriverProvider = "MediaTek, Inc.";
     public const string MediaTekPnpPrefix = "PCI\\VEN_14C3&";
+    public const string MediaTekRz616PnpPrefix = "PCI\\VEN_14C3&DEV_0616";
     public const string RealtekDriverProviderToken = "Realtek";
     public const string RealtekPciPnpPrefix = "PCI\\VEN_10EC&";
     public const string RealtekUsbPnpPrefix = "USB\\VID_0BDA&";
@@ -40,6 +42,7 @@ public static class WindowsGamingNetworkProfilePolicy
             [EnergyEfficientEthernetKeyword] = new("0", BinaryValues),
             [MediaTekLowPowerKeyword] = new("0", BinaryValues),
             [MediaTekUapsdKeyword] = new("0", BinaryValues),
+            [MediaTekAmsduTxKeyword] = new("0", BinaryValues),
             [RealtekGreenEthernetKeyword] = new("0", BinaryValues),
             [RealtekGigaLiteKeyword] = new("0", BinaryValues),
             [RealtekPowerSavingModeKeyword] = new("0", BinaryValues),
@@ -121,7 +124,10 @@ public static class WindowsGamingNetworkProfilePolicy
 
         return StandardOffloadKeywords.Concat(new[] { UdpRscKeyword }).Concat(IsVerifiedMediaTekWifi(driverProvider, pnpDeviceId)
             ? new[] { InterruptModerationKeyword, MediaTekLowPowerKeyword, MediaTekUapsdKeyword }
-            : new[] { InterruptModerationKeyword }).ToArray();
+            : new[] { InterruptModerationKeyword })
+            .Concat(IsVerifiedMediaTekRz616(driverProvider, pnpDeviceId)
+                ? new[] { MediaTekAmsduTxKeyword }
+                : Array.Empty<string>()).ToArray();
     }
 
     public static bool IsKeywordAllowed(
@@ -136,6 +142,13 @@ public static class WindowsGamingNetworkProfilePolicy
     public static bool IsVerifiedMediaTekWifi(string driverProvider, string pnpDeviceId) =>
         string.Equals(driverProvider, MediaTekDriverProvider, StringComparison.Ordinal) &&
         pnpDeviceId.StartsWith(MediaTekPnpPrefix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A-MSDU 送信設定の意味を確認した RZ616 だけを、デバイス ID の境界まで照合する。</summary>
+    public static bool IsVerifiedMediaTekRz616(string driverProvider, string pnpDeviceId) =>
+        string.Equals(driverProvider, MediaTekDriverProvider, StringComparison.Ordinal) &&
+        pnpDeviceId.StartsWith(MediaTekRz616PnpPrefix, StringComparison.OrdinalIgnoreCase) &&
+        (pnpDeviceId.Length == MediaTekRz616PnpPrefix.Length ||
+         pnpDeviceId[MediaTekRz616PnpPrefix.Length] is '&' or '\\');
 
     /// <summary>追加のRealtek項目はPCIベンダーIDが確認できる場合に限る。媒体と物理NICは呼出元で確認する。</summary>
     public static bool IsRealtekPciEthernet(string pnpDeviceId) =>

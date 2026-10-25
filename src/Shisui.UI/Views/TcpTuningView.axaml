@@ -31,6 +31,30 @@
         </StackPanel>
       </primitives:HeaderedContentControl>
 
+      <primitives:HeaderedContentControl Header="TCP ACK 頻度（TcpAckFrequency）">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="選択したアダプタの TCP ACK を受信 1 セグメントごとに返す値 1 に設定します。反映には PC の再起動が必要です。" />
+          <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
+                      IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <Button Grid.Column="1" Content="一覧を更新" Command="{Binding LoadAdaptersCommand}"
+                    Margin="8,0,0,0" IsEnabled="{Binding !IsMtuBusy}" />
+          </Grid>
+          <TextBlock Text="{Binding TcpAckFrequencyStateText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="ACK 頻度を 1 に設定" Command="{Binding EnableTcpAckFrequencyCommand}" />
+            <Button Content="ACK 頻度を既定値に戻す" Command="{Binding ResetTcpAckFrequencyCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
       <primitives:HeaderedContentControl Header="TCP 損失回復 (RACK / TLP)">
         <StackPanel Spacing="8">
           <TextBlock Classes="caption" TextWrapping="Wrap"

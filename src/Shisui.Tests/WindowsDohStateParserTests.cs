@@ -7,83 +7,39 @@ namespace Shisui.Tests;
 [TestClass]
 public class WindowsDohStateParserTests
 {
-    [TestMethod]
-    public void Parse_AllExpectedAddressesAutoUpgradeTrue_ReturnsEnabled()
-    {
-        const string sample = """
-            SERVER=1.1.1.1
-            AUTOUPGRADE=True
-            SERVER=1.0.0.1
-            AUTOUPGRADE=True
-            """;
-
-        var status = WindowsDohStateParser.Parse(sample, ["1.1.1.1", "1.0.0.1"]);
-        Assert.AreEqual(DohStatus.Enabled, status);
-    }
+    private const string Template = "https://cloudflare-dns.com/dns-query";
+    private static string Sample(string address, bool upgrade = true) =>
+        "{\"ServerAddress\":\"" + address + "\",\"DohTemplate\":\"" + Template + "\",\"AutoUpgrade\":" + (upgrade ? "true" : "false") + ",\"AllowFallbackToUdp\":false}";
 
     [TestMethod]
-    public void Parse_NoMatchingOutput_ReturnsDisabled()
-    {
-        var status = WindowsDohStateParser.Parse(string.Empty, ["1.1.1.1", "1.0.0.1"]);
-        Assert.AreEqual(DohStatus.Disabled, status);
-    }
+    public void Parse_AllExpectedAddressesAutoUpgradeTrue_ReturnsEnabled() =>
+        Assert.AreEqual(DohStatus.Enabled, WindowsDohStateParser.Parse("[" + Sample("1.1.1.1") + "," + Sample("1.0.0.1") + "]", ["1.1.1.1", "1.0.0.1"], Template));
 
     [TestMethod]
-    public void Parse_OneOfTwoAddressesRegistered_ReturnsPartial()
-    {
-        const string sample = """
-            SERVER=1.1.1.1
-            AUTOUPGRADE=True
-            """;
-
-        var status = WindowsDohStateParser.Parse(sample, ["1.1.1.1", "1.0.0.1"]);
-        Assert.AreEqual(DohStatus.Partial, status);
-    }
+    public void Parse_NoMatchingOutput_ReturnsUnknown() =>
+        Assert.AreEqual(DohStatus.Unknown, WindowsDohStateParser.Parse(string.Empty, ["1.1.1.1"], Template));
 
     [TestMethod]
-    public void Parse_AutoUpgradeFalse_DoesNotCountAsEnabled()
-    {
-        const string sample = """
-            SERVER=1.1.1.1
-            AUTOUPGRADE=False
-            """;
-
-        var status = WindowsDohStateParser.Parse(sample, ["1.1.1.1"]);
-        Assert.AreEqual(DohStatus.Disabled, status);
-    }
+    public void Parse_OneOfTwoAddressesRegistered_ReturnsUnknown() =>
+        Assert.AreEqual(DohStatus.Unknown, WindowsDohStateParser.Parse("[" + Sample("1.1.1.1") + "]", ["1.1.1.1", "1.0.0.1"], Template));
 
     [TestMethod]
-    public void Parse_NoExpectedAddresses_ReturnsUnknown()
-    {
-        var status = WindowsDohStateParser.Parse("SERVER=1.1.1.1\nAUTOUPGRADE=True", []);
-        Assert.AreEqual(DohStatus.Unknown, status);
-    }
+    public void Parse_AutoUpgradeFalse_DoesNotCountAsEnabled() =>
+        Assert.AreEqual(DohStatus.Disabled, WindowsDohStateParser.Parse("[" + Sample("1.1.1.1", false) + "]", ["1.1.1.1"], Template));
 
     [TestMethod]
-    public void Parse_HandlesCarriageReturnsFromWindowsOutput()
-    {
-        const string sample = "SERVER=1.1.1.1\r\nAUTOUPGRADE=True\r\n";
-        var status = WindowsDohStateParser.Parse(sample, ["1.1.1.1"]);
-        Assert.AreEqual(DohStatus.Enabled, status);
-    }
+    public void Parse_NoExpectedAddresses_ReturnsUnknown() =>
+        Assert.AreEqual(DohStatus.Unknown, WindowsDohStateParser.Parse("[]", [], Template));
 
     [TestMethod]
-    public void Parse_IsCaseInsensitiveForAddressMatching()
-    {
-        // IPv6 は表記ゆれ (大文字/小文字) がありうる。
-        const string sample = """
-            SERVER=2606:4700:4700::1111
-            AUTOUPGRADE=True
-            """;
-
-        var status = WindowsDohStateParser.Parse(sample, ["2606:4700:4700::1111"]);
-        Assert.AreEqual(DohStatus.Enabled, status);
-    }
+    public void Parse_HandlesCarriageReturnsFromWindowsOutput() =>
+        Assert.AreEqual(DohStatus.Enabled, WindowsDohStateParser.Parse("[" + Sample("1.1.1.1") + "]\r\n", ["1.1.1.1"], Template));
 
     [TestMethod]
-    public void Parse_GarbageOutput_DoesNotThrow_AndIsDisabled()
-    {
-        var status = WindowsDohStateParser.Parse("これは想定外の出力\n\n===", ["1.1.1.1"]);
-        Assert.AreEqual(DohStatus.Disabled, status);
-    }
+    public void Parse_IsCaseInsensitiveForAddressMatching() =>
+        Assert.AreEqual(DohStatus.Enabled, WindowsDohStateParser.Parse("[" + Sample("2606:4700:4700::AAAA") + "]", ["2606:4700:4700::aaaa"], Template));
+
+    [TestMethod]
+    public void Parse_GarbageOutput_DoesNotThrow_AndIsUnknown() =>
+        Assert.AreEqual(DohStatus.Unknown, WindowsDohStateParser.Parse("これは想定外の出力", ["1.1.1.1"], Template));
 }

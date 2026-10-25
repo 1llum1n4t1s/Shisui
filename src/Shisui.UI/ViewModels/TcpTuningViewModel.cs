@@ -18,10 +18,13 @@ public partial class TcpTuningViewModel(
 {
     private int _mtuStateRequestVersion;
     private int _tcpStateRequestVersion;
+    private int _ackFrequencyStateRequestVersion;
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(EnableTcpAckFrequencyCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetTcpAckFrequencyCommand))]
     private bool isBusy;
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsOperationRunning));
@@ -67,7 +70,12 @@ public partial class TcpTuningViewModel(
     private bool isMtuBusy;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(EnableTcpAckFrequencyCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetTcpAckFrequencyCommand))]
     private NetworkAdapterInfo? selectedAdapter;
+
+    [ObservableProperty]
+    private string tcpAckFrequencyStateText = "アダプタを選択してください";
 
     [ObservableProperty]
     private string mtuStateText = string.Empty;
@@ -87,13 +95,15 @@ public partial class TcpTuningViewModel(
         try
         {
             var adapters = await adapterService.GetAdaptersAsync();
+            var selectedId = SelectedAdapter?.Id;
             Adapters.Clear();
             foreach (var adapter in adapters)
             {
                 Adapters.Add(adapter);
             }
 
-            SelectedAdapter ??= Adapters.FirstOrDefault();
+            SelectedAdapter = Adapters.FirstOrDefault(adapter => adapter.Id == selectedId)
+                              ?? Adapters.FirstOrDefault();
         }
         finally
         {
@@ -101,7 +111,78 @@ public partial class TcpTuningViewModel(
         }
     }
 
-    partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value) => _ = RefreshMtuStateAsync(value);
+    partial void OnSelectedAdapterChanged(NetworkAdapterInfo? value)
+    {
+        _ = RefreshMtuStateAsync(value);
+        _ = RefreshTcpAckFrequencyStateAsync(value);
+    }
+
+    private bool CanSetTcpAckFrequency() => !IsBusy && SelectedAdapter is not null;
+
+    [RelayCommand(CanExecute = nameof(CanSetTcpAckFrequency))]
+    private Task EnableTcpAckFrequencyAsync() => SetTcpAckFrequencyAsync(true);
+
+    [RelayCommand(CanExecute = nameof(CanSetTcpAckFrequency))]
+    private Task ResetTcpAckFrequencyAsync() => SetTcpAckFrequencyAsync(false);
+
+    private async Task SetTcpAckFrequencyAsync(bool enabled)
+    {
+        var targetAdapter = SelectedAdapter;
+        if (targetAdapter is null)
+        {
+            StatusText = "ACK 頻度を設定するアダプタを選択してください";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            using var mutationLease = await networkMutationGate.EnterAsync();
+            var result = await tcpTuningService.SetTcpAckFrequencyAsync(targetAdapter.Id, enabled);
+            CommandExecuted?.Invoke(this, result);
+            StatusText = result.Success
+                ? $"{targetAdapter.DisplayName} の ACK 頻度を{(enabled ? "値 1 に設定しました" : "Windows 既定に戻しました")}。反映には PC の再起動が必要です"
+                : "ACK 頻度の設定または適用後確認に失敗しました。ログを確認してください";
+        }
+        catch (Exception ex)
+        {
+            CommandExecuted?.Invoke(this, new(false, "TCP ACK 頻度設定", -1, string.Empty, ex.Message));
+            StatusText = "ACK 頻度の設定に失敗しました。ログを確認してください";
+        }
+        finally
+        {
+            await RefreshTcpAckFrequencyStateAsync(SelectedAdapter);
+            IsBusy = false;
+        }
+    }
+
+    private async Task RefreshTcpAckFrequencyStateAsync(NetworkAdapterInfo? adapter)
+    {
+        var requestVersion = Interlocked.Increment(ref _ackFrequencyStateRequestVersion);
+        TcpAckFrequencyStateText = adapter is null ? "アダプタを選択してください" : "🔄 確認中…";
+        if (adapter is null)
+            return;
+
+        try
+        {
+            var state = await tcpTuningService.GetTcpAckFrequencyAsync(adapter.Id);
+            if (requestVersion != Volatile.Read(ref _ackFrequencyStateRequestVersion))
+                return;
+
+            TcpAckFrequencyStateText = state switch
+            {
+                { IsKnown: true, Value: null } => "⚪ Windows 既定（値なし）",
+                { IsKnown: true, Value: 1 } => "🟢 設定値：1（受信 1 セグメントごと）",
+                { IsKnown: true, Value: var value } => $"🟡 設定値：{value}",
+                _ => "⚪ 取得できませんでした",
+            };
+        }
+        catch
+        {
+            if (requestVersion == Volatile.Read(ref _ackFrequencyStateRequestVersion))
+                TcpAckFrequencyStateText = "⚪ 取得できませんでした";
+        }
+    }
 
     [RelayCommand]
     private async Task RevertMtuAsync()
@@ -226,7 +307,7 @@ public partial class TcpTuningViewModel(
             IsBusy = false;
         }
 
-        await LoadStateAsync();
+        await LoadTcpAndAckStateAsync();
     }
 
     [RelayCommand]
@@ -249,7 +330,7 @@ public partial class TcpTuningViewModel(
             IsBusy = false;
         }
 
-        await LoadStateAsync();
+        await LoadTcpAndAckStateAsync();
     }
 
     [RelayCommand]
@@ -258,7 +339,7 @@ public partial class TcpTuningViewModel(
         IsBusy = true;
         try
         {
-            await LoadStateAsync();
+            await LoadTcpAndAckStateAsync();
         }
         finally
         {
@@ -359,11 +440,20 @@ public partial class TcpTuningViewModel(
             IsBusy = false;
         }
 
-        await LoadStateAsync();
+        await LoadTcpAndAckStateAsync();
     }
 
     /// <summary>自動最適化タブなど、外部の設定操作後に手動調整タブの状態表示を同期する。</summary>
-    internal Task RefreshStateAfterExternalChangeAsync() => LoadStateAsync();
+    internal async Task RefreshStateAfterExternalChangeAsync(string? adapterId = null)
+    {
+        await LoadAdaptersAsync();
+        if (adapterId is not null)
+            SelectedAdapter = Adapters.FirstOrDefault(adapter => adapter.Id == adapterId);
+        await LoadTcpAndAckStateAsync();
+    }
+
+    private Task LoadTcpAndAckStateAsync() => Task.WhenAll(
+        LoadStateAsync(), RefreshTcpAckFrequencyStateAsync(SelectedAdapter));
 
     private async Task RunManyAsync(
         Func<CancellationToken, Task<IReadOnlyList<CommandExecutionResult>>> action,
@@ -390,7 +480,7 @@ public partial class TcpTuningViewModel(
             IsBusy = false;
         }
 
-        await LoadStateAsync();
+        await LoadTcpAndAckStateAsync();
     }
 
     private async Task<CommandExecutionResult> VerifyStateAsync(Func<TcpSettingsSnapshot, CommandExecutionResult> verify)

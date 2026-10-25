@@ -11,6 +11,9 @@ public sealed class AppSettings
     /// <summary>前回選択した DNS プロバイダプリセットの Id (次回起動時に復元する)。</summary>
     public string? LastSelectedPresetId { get; set; }
 
+    /// <summary>前回完了できなかった DNS の動作確認を、次回起動時に再確認する。</summary>
+    public bool DnsHealthVerificationPending { get; set; }
+
     /// <summary>カスタムプリセットの入力 IP (前回値を次回起動時に復元する)。</summary>
     public string? CustomIpv4Primary { get; set; }
 

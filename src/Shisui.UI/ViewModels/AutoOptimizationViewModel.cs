@@ -68,7 +68,7 @@ public partial class AutoOptimizationViewModel : ObservableObject
         await DnsSettings.RunOneClickOptimizationAsync();
         if (_tcpTuningViewModel is not null)
         {
-            await _tcpTuningViewModel.RefreshStateAfterExternalChangeAsync();
+            await _tcpTuningViewModel.RefreshStateAfterExternalChangeAsync(DnsSettings.SelectedAdapter?.Id);
         }
     }
 
