@@ -34,6 +34,11 @@ public static class WindowsDnsClientRepairCommandBuilder
             try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($event.ToXml())))).Replace('-','') }
             finally { $sha.Dispose() }
         }
+        function Format-DnsErrorField([string]$value,[int]$limit) {
+            $value=$value -replace '[\p{C}]',' '
+            if ($value.Length -gt $limit) { return $value.Substring(0,$limit)+'...' }
+            return $value
+        }
         function Get-Anchor {
             $items=@(Get-WinEvent -LogName System -MaxEvents 1 -ErrorAction Stop)
             if ($items.Count -ne 1 -or $null -eq $items[0].RecordId -or [long]$items[0].RecordId -le 0) { throw 'anchor' }
@@ -120,8 +125,10 @@ public static class WindowsDnsClientRepairCommandBuilder
             catch { $otherFailed=$true; Write-Output 'DNS キャッシュの再構築に失敗しました。' }
             try { Confirm-Nrpt } catch { $otherFailed=$true; Write-Output 'NRPT の現在値を検証できません。規則は変更していません。' }
             try { Confirm-Hosts } catch { $otherFailed=$true; Write-Output 'hosts の現在ファイルを検証できません。内容は変更していません。' }
+            $resolutionStage='Query'
             try {
                 $answers=@(Resolve-DnsName -Name example.com -Type A -DnsOnly -NoHostsFile -QuickTimeout -ErrorAction Stop)
+                $resolutionStage='ResponseValidation'
                 $valid=$false
                 foreach ($answer in $answers) {
                     $ip=$null
@@ -129,7 +136,14 @@ public static class WindowsDnsClientRepairCommandBuilder
                 }
                 if (-not $valid) { throw 'no A answer' }
                 Write-Output 'Windows DNS 名前解決を確認しました。'
-            } catch { $resolutionFailed=$true; Write-Output 'Windows DNS 名前解決の動作確認に失敗しました。' }
+            } catch {
+                $resolutionFailed=$true
+                Write-Output 'Windows DNS 名前解決の動作確認に失敗しました。'
+                $errorId=Format-DnsErrorField ([string]$_.FullyQualifiedErrorId) 160
+                $errorType=Format-DnsErrorField ($_.Exception.GetType().FullName) 160
+                $errorMessage=Format-DnsErrorField ($_.Exception.Message) 512
+                Write-Output ('DNS 名前解決検証: Stage='+$resolutionStage+'; FullyQualifiedErrorId='+$errorId+'; ExceptionType='+$errorType+'; Message='+$errorMessage)
+            }
             try {
                     $endAnchor=Get-Anchor
                     if ($endAnchor.Id -lt $fromAnchor.Id) { throw 'event range reversed' }
