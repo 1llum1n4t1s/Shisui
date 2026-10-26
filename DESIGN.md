@@ -18,7 +18,7 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 | `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは service、executor、ネイティブ API 実装に閉じ込める |
 | `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
 | `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
-| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、R2 公開・検証・世代整理 | ローカル署名環境と明示的なリリース操作を前提にする |
+| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、R2 公開・検証 | ローカル署名環境と明示的なリリース操作を前提にする |
 
 `Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
 `ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
@@ -256,7 +256,7 @@ metadata 公開後の失敗では退避 metadata を復元して再 purge しま
 - DoH のチェック状態は OS の実状態から復元します。DoT はロケール非依存に状態取得できる API がないため、
   保存状態を実状態として表示せず、操作時だけ有効化・無効化します。
 - DoH は対象 IP の登録を一括取得し、欠落だけを追加、不整合なテンプレート・自動昇格だけを修復します。既存の UDP fallback 禁止は維持します。正しい登録は再設定しません。グローバル有効化の終了値と、対象の期待 HTTPS テンプレート・型付き bool・fallback の読み戻しを確認し、成功しない設定を表示上だけ有効にしません。登録値確認と実際の TLS 通信成功は区別します。
-- Windows の正式配布物は署名済み PerMachine MSI です。PerUser `Setup.exe` は公開せず、旧 PerUser 版を
+- Windows の正式配布物は署名済み PerMachine MSI です。新しい PerUser `Setup.exe` は公開せず、旧配布物は「設定と更新」の保持方針に従います。旧 PerUser 版を
   ユーザー書き込み可能な場所から管理者実行し続けません。移行・修復対象は検証済みの既知パスに限定します。
   ダウンロードした MSI は書換え・削除を拒否する同一ハンドルで署名検証し、そのハンドルから再解析ポイントを解決した最終パスだけを `msiexec` へ渡して終了まで保持します。
 - 自動更新元は `https://shisui.kagayoi.com` の `releases.win.json` です。旧
