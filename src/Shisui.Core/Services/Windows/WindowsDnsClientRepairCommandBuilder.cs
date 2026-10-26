@@ -7,11 +7,20 @@ namespace Shisui.Core.Services.Windows;
 public static class WindowsDnsClientRepairCommandBuilder
 {
     public static string BuildCapture(string marker) => WindowsPowerShellArgumentEncoder.Encode(
-        Common + "\ntry { $anchor=Get-Anchor; Write-Output ('" + Literal(marker)
-        + "|BASE|' + $anchor.Id + '|' + $anchor.Hash) } catch { Write-Output 'DNS 検査開始境界を取得できません。'; exit 1 }");
+        Common + "\n" + BootCommon + "\ntry { $anchor=Get-Anchor; Write-Output ('" + Literal(marker)
+        + "|BASE|' + $anchor.Id + '|' + $anchor.Hash) } catch { Write-Output 'DNS 検査開始境界を取得できません。'; exit 1 }; "
+        + "try { Write-Output ('" + Literal(marker) + "|BOOT|' + (Get-BootFingerprint)) } catch { Write-Output '" + Literal(marker) + "|BOOT|UNKNOWN' }");
+
+    public static string BuildBootCheck(DnsClientBootFingerprint previous, string marker)
+    {
+        if (!previous.IsValid) throw new ArgumentException("起動指紋が不正です。", nameof(previous));
+        return WindowsPowerShellArgumentEncoder.Encode(BootCommon
+            + $"\ntry {{ Confirm-BootRecord {previous.GeneralRecordId} '{previous.GeneralXmlSha256}'; Confirm-BootRecord {previous.BootRecordId} '{previous.BootXmlSha256}'; "
+            + "Write-Output ('" + Literal(marker) + "|BOOT|' + (Get-BootFingerprint)) } catch { Write-Output '起動イベントの連続性または起動の組を確認できません。'; exit 1 }");
+    }
 
     public static string BuildRepair(DnsServerSet servers, long recordId, string hash,
-        bool inspectDohEvents, bool deferFailedResolution, string marker)
+        bool inspectDohEvents, string marker)
     {
         WindowsDnsCommandBuilder.ValidateServers(servers);
         if (recordId <= 0 || hash.Length != 64 || !hash.All(Uri.IsHexDigit))
@@ -20,11 +29,47 @@ public static class WindowsDnsClientRepairCommandBuilder
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => "'" + IPAddress.Parse(x!.Trim()) + "'");
         var prefix = $"\n$scopeId={recordId}; $scopeHash='{hash}'; $targets=@({string.Join(",", addresses)}); "
-            + $"$inspectDoh=${inspectDohEvents.ToString().ToLowerInvariant()}; $allowDefer=${deferFailedResolution.ToString().ToLowerInvariant()}; $marker='{Literal(marker)}';\n";
+            + $"$inspectDoh=${inspectDohEvents.ToString().ToLowerInvariant()}; $marker='{Literal(marker)}';\n";
         return WindowsPowerShellArgumentEncoder.Encode(Common + prefix + Repair);
     }
 
     private static string Literal(string value) => value.Replace("'", "''");
+
+    // 起動の読取りは Capture/BootCheck 専用。長い Repair の共有部には追加しない。
+    private const string BootCommon = """
+        $ErrorActionPreference='Stop'; $OutputEncoding=[Console]::OutputEncoding=New-Object Text.UTF8Encoding $false
+        function Get-BootHash($event) {
+            $sha=[Security.Cryptography.SHA256]::Create()
+            try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($event.ToXml())))).Replace('-','') } finally { $sha.Dispose() }
+        }
+        function Confirm-BootRecord($id,$hash) {
+            $items=@(Get-WinEvent -LogName System -FilterXPath "*[System[EventRecordID=$id]]" -MaxEvents 2 -ErrorAction Stop)
+            if ($items.Count -ne 1 -or [long]$items[0].RecordId -ne $id -or (Get-BootHash $items[0]) -cne $hash) { throw 'boot anchor changed' }
+        }
+        function Read-BootEvent($provider,$id) {
+            $items=@(Get-WinEvent -FilterHashtable @{LogName='System';ProviderName=$provider;Id=$id} -MaxEvents 1 -ErrorAction Stop)
+            if ($items.Count -ne 1) { throw 'boot event missing' }
+            [xml]$xml=$items[0].ToXml()
+            if ([string]$xml.Event.System.Provider.Name -cne $provider -or [int]$xml.Event.System.EventID -ne $id -or [long]$xml.Event.System.EventRecordID -ne [long]$items[0].RecordId) { throw 'boot event shape' }
+            return @{Event=$items[0];Xml=$xml;Id=[long]$items[0].RecordId;Hash=(Get-BootHash $items[0])}
+        }
+        function Get-BootFingerprint {
+            $general=Read-BootEvent 'Microsoft-Windows-Kernel-General' 12
+            $boot=Read-BootEvent 'Microsoft-Windows-Kernel-Boot' 27
+            # 古い 27 と新しい 12、再開・高速起動、混在したコンピューターは再起動の証拠にしない。
+            $types=@($boot.Xml.Event.EventData.Data | Where-Object { $_.Name -ceq 'BootType' })
+            $starts=@($general.Xml.Event.EventData.Data | Where-Object { $_.Name -ceq 'StartTime' })
+            $start=[DateTimeOffset]::MinValue
+            if ($general.Id -le 0 -or $boot.Id -le $general.Id -or $types.Count -ne 1 -or [string]$types[0].InnerText -cne '0' -or $starts.Count -ne 1 -or -not [DateTimeOffset]::TryParse([string]$starts[0].InnerText,[ref]$start)) { throw 'boot pair unknown' }
+            $computer=[string]$general.Xml.Event.System.Computer
+            if ([string]::IsNullOrWhiteSpace($computer) -or $computer -cne [string]$boot.Xml.Event.System.Computer) { throw 'boot computer unknown' }
+            Confirm-BootRecord $general.Id $general.Hash
+            Confirm-BootRecord $boot.Id $boot.Hash
+            $again=Read-BootEvent 'Microsoft-Windows-Kernel-General' 12
+            if ($again.Id -ne $general.Id -or $again.Hash -cne $general.Hash) { throw 'boot pair changed' }
+            return ([string]$general.Id+'|'+$general.Hash+'|'+$boot.Id+'|'+$boot.Hash)
+        }
+        """;
 
     private const string Common = """
         $ErrorActionPreference='Stop'
@@ -113,11 +158,12 @@ public static class WindowsDnsClientRepairCommandBuilder
     private const string Repair = """
         try { Confirm-Anchor $scopeId $scopeHash } catch {
             Write-Output '開始境界が消失・変更したか、System ログを読めないため検証不能です。'
-            Write-Output ($marker+'|RESULT|FAIL'); exit 1
+            Write-Output ($marker+'|RESULT|UNKNOWN'); exit 1
         }
         $fromAnchor=@{ Id=$scopeId; Hash=$scopeHash }; $coverageFailed=$false
-        for ($attempt=1;$attempt -le 2;$attempt++) {
-            Write-Output ('DNS クライアント検査 ' + $attempt + '/2')
+        $attemptLimit=2
+        for ($attempt=1;$attempt -le $attemptLimit;$attempt++) {
+            Write-Output ('DNS クライアント検査 ' + $attempt + '/' + $attemptLimit)
             $otherFailed=$coverageFailed; $resolutionFailed=$false; $endAnchor=$null
             try { Confirm-Anchor $fromAnchor.Id $fromAnchor.Hash; Confirm-Anchor $scopeId $scopeHash }
             catch { $otherFailed=$true; $coverageFailed=$true; Write-Output '検査範囲の開始境界が消失・変更したか、System ログを読めません。' }
@@ -188,13 +234,10 @@ public static class WindowsDnsClientRepairCommandBuilder
                 Write-Output '今回の現在値と記録済みイベントの検査範囲は正常です。検査後に遅れて記録されるイベント、全 MagicDNS や DoH/TLS 実通信の正常性を保証する検査ではありません。'
                 Write-Output ($marker+'|RESULT|OK'); exit 0
             }
-            if ($attempt -eq 1) { Write-Output '設定反映の安定化を 1 秒待ち、キャッシュを再構築して一度だけ再確認します。'; Start-Sleep -Milliseconds 1000; continue }
-            if (-not $otherFailed -and $resolutionFailed -and $allowDefer) {
-                Write-Output '名前解決の動作確認未完了（原因未確定、再起動後再確認）。'
-                Write-Output ($marker+'|RESULT|DEFER'); exit 1
-            }
+            if ($attempt -lt $attemptLimit) { Write-Output '設定反映の安定化を 1 秒待ち、キャッシュを再構築して一度だけ再確認します。'; Start-Sleep -Milliseconds 1000; continue }
         }
         Write-Output '現在の異常または検証不能が続いています。'
+        if ($coverageFailed) { Write-Output ($marker+'|RESULT|UNKNOWN'); exit 1 }
         Write-Output ($marker+'|RESULT|FAIL'); exit 1
         """;
 }

@@ -1,4 +1,6 @@
 namespace Shisui.Core.Models;
 
-/// <summary>DNS クライアントの検査結果。再起動後の確認待ちも成功には含めない。</summary>
-public sealed record DnsClientRepairReport(CommandExecutionResult Result, bool VerificationDeferred);
+/// <summary>Result は実行済み検査の結果。DNS 動作確認の状態は別に保持する。</summary>
+public sealed record DnsClientRepairReport(CommandExecutionResult Result, DnsClientVerificationStatus Status);
+
+public enum DnsClientVerificationStatus { Unknown, Verified, Failed }

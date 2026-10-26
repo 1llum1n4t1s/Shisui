@@ -119,7 +119,7 @@ public static class WindowsMaintenanceCommandCatalog
             "netsh", "int tcp reset"),
         new(new MaintenanceCommandDefinition("netsh-int-ip-reset", CategoryStackReset, "IP スタックをリセット", "TCP/IP 設定を初期化します。", true, true),
             "netsh", "int ip reset"),
-        new(new MaintenanceCommandDefinition("route-clear", CategoryStackReset, "ルーティングテーブルをクリア", "ホスト・ループバック・マルチキャスト以外の経路を削除します。", true, false, true),
+        new(new MaintenanceCommandDefinition("route-clear", CategoryStackReset, "ルーティングテーブルをクリア", "ホスト・ループバック・マルチキャスト以外の経路を削除します。", true, false),
             "route", "/f"),
 
         new(new MaintenanceCommandDefinition("netcfg-delete", CategoryComponent, "ネットワークコンポーネントを再検出", "ネットワーク構成を削除し、再起動後に再検出します。通信が切れ、個別設定は失われます。", true, true),

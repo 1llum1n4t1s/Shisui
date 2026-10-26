@@ -14,6 +14,11 @@ public sealed class AppSettings
     /// <summary>前回完了できなかった DNS の動作確認を、次回起動時に再確認する。</summary>
     public bool DnsHealthVerificationPending { get; set; }
 
+    /// <summary>新版の再起動待ち。指紋取得不能を旧版の pending と区別する。</summary>
+    public bool DnsHealthVerificationRequiresRestart { get; set; }
+
+    public DnsClientBootFingerprint? DnsHealthPendingBootFingerprint { get; set; }
+
     /// <summary>カスタムプリセットの入力 IP (前回値を次回起動時に復元する)。</summary>
     public string? CustomIpv4Primary { get; set; }
 

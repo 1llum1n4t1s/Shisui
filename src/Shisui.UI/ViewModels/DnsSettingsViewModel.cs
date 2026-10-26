@@ -9,7 +9,6 @@ namespace Shisui.UI.ViewModels;
 
 public partial class DnsSettingsViewModel : ObservableObject
 {
-    private const string RouteClearCommandId = "route-clear";
 
     private readonly INetworkAdapterService _adapterService;
     private readonly IDnsConfigurationService _dnsService;
@@ -125,9 +124,6 @@ public partial class DnsSettingsViewModel : ObservableObject
     /// <summary>「おまかせ高速化設定」で NetBIOS 名前・ARP・経路キャッシュもあわせてクリアするか (Windows かつサービス登録済みのときだけ)。</summary>
     public bool IsCacheMaintenanceAvailable => _maintenanceService is not null;
 
-    private bool IsRouteCleanupAvailable => _maintenanceService?.GetAvailableCommands()
-        .Any(command => command.Id == RouteClearCommandId && command.IncludeInOneClickOptimization) == true;
-
     /// <summary>一括適用する設定を、項目と変更内容だけで示す。</summary>
     public string OneClickOptimizeDescription
     {
@@ -174,8 +170,6 @@ public partial class DnsSettingsViewModel : ObservableObject
                 items.Add("WinHTTP 自動検出キャッシュ：削除");
             if (_adapterNameService is not null)
                 items.Add("切断済み NIC 登録：削除 / 接続名：連番整理");
-            if (IsRouteCleanupAvailable)
-                items.Add("ルーティングテーブル：削除");
             return string.Join(Environment.NewLine, items.Select(item => "• " + item));
         }
     }
@@ -499,12 +493,12 @@ public partial class DnsSettingsViewModel : ObservableObject
         using var diagnosticOperation = LoggerBootstrap.BeginOperation("おまかせ高速化設定", SelectedAdapter.Id);
         var results = new List<CommandExecutionResult>();
         var resultsReported = false;
-        var routeCleanupAttempted = false;
         var winsockRepairRequested = false;
         var ipStackResetRequested = false;
         var ackConfigurationRequested = false;
         DnsClientRepairBaseline? dnsBaseline = null;
         DnsClientRepairReport? dnsHealthReport = null;
+        var dnsPendingCheckpointSaved = false;
         OneClickProgressText = "適用の準備をしています";
         BeginBusyOperation();
         try
@@ -523,6 +517,32 @@ public partial class DnsSettingsViewModel : ObservableObject
                 dnsBaseline = await _dnsClientRepairService.CaptureBaselineAsync();
                 results.Add(dnsBaseline.Result);
                 EnsureCommandsFinished(results);
+                if (!dnsBaseline.Result.Success || dnsBaseline.BootFingerprint is not { IsValid: true })
+                {
+                    CommandExecuted?.Invoke(this, dnsBaseline.Result);
+                    StatusText = "DNS の検査境界または Windows 起動指紋を確認できないため、設定変更を開始しませんでした。ログを確認してください。";
+                    return;
+                }
+                var previousPending = _settingsService.Current.DnsHealthVerificationPending;
+                var previousRestart = _settingsService.Current.DnsHealthVerificationRequiresRestart;
+                var previousBoot = _settingsService.Current.DnsHealthPendingBootFingerprint;
+                var previousPresetId = _settingsService.Current.LastSelectedPresetId;
+                _settingsService.Current.DnsHealthVerificationPending = true;
+                _settingsService.Current.DnsHealthVerificationRequiresRestart = true;
+                _settingsService.Current.DnsHealthPendingBootFingerprint = dnsBaseline.BootFingerprint;
+                // 途中終了後も、今回意図した DNS のイベントを対象に再確認できるよう同時保存する。
+                _settingsService.Current.LastSelectedPresetId = DnsPresetCatalog.CloudflareStandard.Id;
+                if (!await TrySaveSelectionAsync())
+                {
+                    _settingsService.Current.DnsHealthVerificationPending = previousPending;
+                    _settingsService.Current.DnsHealthVerificationRequiresRestart = previousRestart;
+                    _settingsService.Current.DnsHealthPendingBootFingerprint = previousBoot;
+                    _settingsService.Current.LastSelectedPresetId = previousPresetId;
+                    CommandExecuted?.Invoke(this, dnsBaseline.Result);
+                    StatusText = "DNS 再確認待ちを保存できないため、ネットワーク設定変更を開始しませんでした。次回起動時の自動確認は保証できません。";
+                    return;
+                }
+                dnsPendingCheckpointSaved = true;
             }
 
             if (_ipStackResetService is not null)
@@ -554,13 +574,12 @@ public partial class DnsSettingsViewModel : ObservableObject
             var preset = DnsPresetCatalog.CloudflareStandard;
             var servers = preset.Servers;
             NetworkAdapterNameCleanupResult? adapterNameCleanupResult = null;
-            MaintenanceCommandDefinition? routeClearCommand = null;
             var oneClickMaintenanceCommands = _maintenanceService?.GetAvailableCommands()
                 .Where(c => c.IncludeInOneClickOptimization).ToArray() ?? [];
 
             // 接続状態を破棄する修復は、DHCP と希望の通信設定を適用する前に済ませる。
             foreach (var command in oneClickMaintenanceCommands.Where(c =>
-                         c.RunBeforeOneClickConfiguration && c.Id != RouteClearCommandId))
+                         c.RunBeforeOneClickConfiguration))
             {
                 OneClickProgressText = command.Label + "…";
                 CommandExecutionResult repairResult;
@@ -648,12 +667,6 @@ public partial class DnsSettingsViewModel : ObservableObject
                 // Auto-Tuning とは別系統なので、古い高速化ツールで無効化された状態をここで明示的に有効へ戻す。
                 foreach (var command in oneClickMaintenanceCommands)
                 {
-                    if (command.Id == RouteClearCommandId)
-                    {
-                        // PC 全体の通信が切れる経路消去は、ほかの設定と接続名整理を終えた最後に実行する。
-                        routeClearCommand = command;
-                        continue;
-                    }
                     if (command.RunBeforeOneClickConfiguration)
                         continue;
                     OneClickProgressText = command.Label + "…";
@@ -768,29 +781,19 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             EnsureCommandsFinished(results);
-            if (routeClearCommand is not null)
-            {
-                OneClickProgressText = "ルーティングテーブルを削除しています";
-                routeCleanupAttempted = true;
-                try
-                {
-                    results.Add(await _maintenanceService!.RunAsync(routeClearCommand.Id));
-                }
-                catch (Exception ex)
-                {
-                    results.Add(new(false, "route /f", -1, string.Empty, ex.Message));
-                    LoggerBootstrap.Log.Error("おまかせ高速化設定の経路消去に失敗しました", ex);
-                }
-            }
-
-            EnsureCommandsFinished(results);
             if (_dnsClientRepairService is not null)
             {
                 OneClickProgressText = "DNS Client のキャッシュを再構築し、動作を確認しています";
                 dnsHealthReport = await _dnsClientRepairService.RepairAndVerifyAsync(
-                    servers, dnsBaseline!, IsDohAvailable, routeCleanupAttempted);
+                    servers, dnsBaseline!, IsDohAvailable);
                 results.Add(dnsHealthReport.Result);
-                _settingsService.Current.DnsHealthVerificationPending = !dnsHealthReport.Result.Success;
+                _settingsService.Current.DnsHealthVerificationPending = !dnsHealthReport.Result.Success
+                    || dnsHealthReport.Result.RequiresOperationAbort || dnsHealthReport.Status != DnsClientVerificationStatus.Verified;
+                if (!_settingsService.Current.DnsHealthVerificationPending)
+                {
+                    _settingsService.Current.DnsHealthVerificationRequiresRestart = false;
+                    _settingsService.Current.DnsHealthPendingBootFingerprint = null;
+                }
                 EnsureCommandsFinished(results);
             }
 
@@ -808,7 +811,11 @@ public partial class DnsSettingsViewModel : ObservableObject
             OneClickProgressText = "結果を保存・確認しています";
             var settingsSaved = await TrySaveSelectionAsync();
             if (!settingsSaved && _dnsClientRepairService is not null)
+            {
                 _settingsService.Current.DnsHealthVerificationPending = true;
+                _settingsService.Current.DnsHealthVerificationRequiresRestart = true;
+                _settingsService.Current.DnsHealthPendingBootFingerprint = dnsBaseline?.BootFingerprint;
+            }
 
             var allSucceeded = results.All(r => r.Success)
                                && (adapterNameCleanupResult?.Success ?? true);
@@ -830,7 +837,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText = "一部の設定が失敗、または適用後の状態を確認できませんでした。ログを確認してください";
             }
-            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested || ackConfigurationRequested
+            if (ipStackResetRequested || winsockRepairRequested || ackConfigurationRequested
                 || (allSucceeded && (IsTcpOptimizationAvailable || _gamingNetworkProfileService is not null)))
             {
                 StatusText += " 設定の反映には PC を再起動してください";
@@ -839,12 +846,10 @@ public partial class DnsSettingsViewModel : ObservableObject
             {
                 StatusText += " アプリの設定を保存できませんでした。ログを確認してください";
             }
-            if (dnsHealthReport is not null && !dnsHealthReport.Result.Success)
+            if (dnsHealthReport is not null && dnsHealthReport.Status != DnsClientVerificationStatus.Verified)
             {
-                StatusText += dnsHealthReport.VerificationDeferred
-                    ? " DNS の動作確認は未完了で原因は未確定です。再起動後に確認してください。"
-                    : " DNS の現在状態に未解決または確認不能の項目があります。";
-                StatusText += settingsSaved ? " 次回起動時にも再確認します。" : " 再確認待ちを保存できず、次回起動時の自動確認は保証できません。";
+                StatusText += " DNS の現在状態に未解決または確認不能の項目があります。";
+                StatusText += settingsSaved ? " PC 再起動後のアプリ起動時に再確認します。" : " 再確認待ちを保存できず、次回起動時の自動確認は保証できません。";
             }
         }
         catch (Exception ex)
@@ -858,16 +863,18 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
-            if (ipStackResetRequested || routeCleanupAttempted || winsockRepairRequested || ackConfigurationRequested)
+            if (ipStackResetRequested || winsockRepairRequested || ackConfigurationRequested)
             {
                 StatusText += " PC を再起動してください";
             }
             LoggerBootstrap.Log.Error("おまかせ高速化設定に失敗しました", ex);
-            if (_dnsClientRepairService is not null)
+            if (_dnsClientRepairService is not null && dnsPendingCheckpointSaved)
             {
                 _settingsService.Current.DnsHealthVerificationPending = true;
+                _settingsService.Current.DnsHealthVerificationRequiresRestart = true;
+                _settingsService.Current.DnsHealthPendingBootFingerprint = dnsBaseline?.BootFingerprint;
                 var pendingSaved = await TrySaveSelectionAsync();
-                StatusText += pendingSaved ? " DNS の動作確認が未完了のため次回起動時にも再確認します。"
+                StatusText += pendingSaved ? " DNS の動作確認は未完了です。PC 再起動後のアプリ起動時に再確認します。"
                     : " DNS 再確認待ちを保存できず、次回起動時の自動確認は保証できません。";
             }
         }
@@ -896,20 +903,44 @@ public partial class DnsSettingsViewModel : ObservableObject
         {
             using var lease = await _networkMutationGate.EnterAsync();
             var preset = SelectedPreset;
+            DnsClientBootFingerprint? confirmedBoot = null;
+            if (_settingsService.Current.DnsHealthVerificationRequiresRestart)
+            {
+                var boot = await _dnsClientRepairService.CheckBootAsync(_settingsService.Current.DnsHealthPendingBootFingerprint);
+                CommandExecuted?.Invoke(this, boot.Result);
+                EnsureCommandsFinished([boot.Result]);
+                if (boot.State != DnsClientBootState.ConfirmedNewBoot || !boot.Result.Success)
+                {
+                    StatusText = boot.State == DnsClientBootState.SameBoot
+                        ? "同じ Windows 起動中のため DNS 問い合わせとキャッシュ再構築は実行していません。PC 再起動後まで動作確認待ちを維持します。"
+                        : "Windows の再起動を確認できないため DNS 問い合わせとキャッシュ再構築は実行していません。起動判定不能として確認待ちを維持します。";
+                    return;
+                }
+                confirmedBoot = boot.Current;
+            }
             var baseline = await _dnsClientRepairService.CaptureBaselineAsync();
             CommandExecuted?.Invoke(this, baseline.Result);
             EnsureCommandsFinished([baseline.Result]);
+            if (confirmedBoot is not null && baseline.BootFingerprint != confirmedBoot)
+            {
+                StatusText = "起動指紋が再確認中に変化したため DNS 動作確認を実行せず、確認待ちを維持します。";
+                return;
+            }
             var report = await _dnsClientRepairService.RepairAndVerifyAsync(
-                preset.Servers, baseline, preset.DohTemplate is not null && _dohService is not null, false);
+                preset.Servers, baseline, preset.DohTemplate is not null && _dohService is not null);
             CommandExecuted?.Invoke(this, report.Result);
-            if (!report.Result.Success || report.Result.RequiresOperationAbort)
+            if (!report.Result.Success || report.Result.RequiresOperationAbort || report.Status != DnsClientVerificationStatus.Verified)
             {
                 _settingsService.Current.DnsHealthVerificationPending = true;
                 StatusText = "DNS の再確認を完了できませんでした。確認待ちを維持しています。ログを確認してください。";
                 return;
             }
 
+            var previousRestart = _settingsService.Current.DnsHealthVerificationRequiresRestart;
+            var previousBoot = _settingsService.Current.DnsHealthPendingBootFingerprint;
             _settingsService.Current.DnsHealthVerificationPending = false;
+            _settingsService.Current.DnsHealthVerificationRequiresRestart = false;
+            _settingsService.Current.DnsHealthPendingBootFingerprint = null;
             if (await TrySaveSelectionAsync())
             {
                 StatusText = "DNS の現在状態を確認し、確認待ちを解除しました。";
@@ -917,7 +948,9 @@ public partial class DnsSettingsViewModel : ObservableObject
             else
             {
                 _settingsService.Current.DnsHealthVerificationPending = true;
-                StatusText = "DNS の現在状態は確認できましたが、確認待ちの解除を保存できませんでした。ログを確認してください。";
+                _settingsService.Current.DnsHealthVerificationRequiresRestart = previousRestart;
+                _settingsService.Current.DnsHealthPendingBootFingerprint = previousBoot;
+                StatusText = "DNS の現在状態は確認できましたが、確認待ちの解除を保存できませんでした。次回起動時の自動確認は保証できません。ログを確認してください。";
             }
         }
         catch (Exception ex)

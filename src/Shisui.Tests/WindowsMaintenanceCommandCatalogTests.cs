@@ -120,9 +120,9 @@ public class WindowsMaintenanceCommandCatalogTests
             "powercfg-wifi-ac-max-performance",
             "netsh-udp-uro-default",
             "netsh-udp-uso-default",
-            "route-clear",
         }, includedIds);
 
+        CollectionAssert.DoesNotContain(includedIds, "route-clear");
         CollectionAssert.DoesNotContain(includedIds, "ipconfig-registerdns");
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-flush-logbuffer");
         CollectionAssert.DoesNotContain(includedIds, "netsh-http-delete-cache");

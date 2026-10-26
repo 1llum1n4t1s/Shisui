@@ -220,7 +220,7 @@ before configuration: NetBIOS name-cache purge/reload and conditional WINS name 
 all-interface IPv4 ARP-cache flush (`netsh interface ipv4 delete arpcache`), IPv4/IPv6 destination-cache flushes,
 the IPv6 neighbor-discovery cache flush, and `netsh winsock set autotuning on` so old tweak tools cannot leave
 Winsock's independent send-buffer autotuning disabled.
-The allowlist includes `route-clear` (`route /f`), but the ordinary maintenance loop defers it until the final mutation described below.
+The allowlist excludes `route-clear` (`route /f`), which can remove default routes and interrupt connectivity; it remains available for manual maintenance.
 The allowlist also restores UDP URO and USO to `default` with two separate `netsh interface udp set global` calls,
 so an unsupported option cannot prevent the other from running. It deliberately does not run `udp reset` or force
 offload `enabled`; both default-restoration actions are individually available in the maintenance tab.
@@ -245,8 +245,8 @@ and manual batch callers stop subsequent mutations, retain the failure, and advi
 This is an explicit allowlist: dynamic DNS registration and HTTP.sys log-buffer/server-response-cache operations
 remain available in the maintenance tab but are deliberately excluded
 from one-click because their applicability depends on name-registration or HTTP-server use; one-click also
-switches to public DNS. They are evaluated separately from latency tuning. DNS cache flushing runs through the
-final DNS client verification service when available, or once through `IDnsCacheService` otherwise. Finally
+switches to public DNS. They are evaluated separately from latency tuning. With DNS client verification available,
+cache rebuilding and resolution verification occur after configuration. Without that service, cache flushing runs once through `IDnsCacheService`. Finally
 — only when `ITcpTuningService` is available (Windows, same optional-injection pattern) — restores all five TCP
 templates and any other user-configured TCP parameters with the official `netsh int tcp reset`, then deliberately
 enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
@@ -300,20 +300,24 @@ disconnected PnP network-device registration and, when possible, strips the sele
 This must run after every operation that uses the old connection name; if a rename succeeds, the new name is persisted
 before adapters are reloaded. Disabled live devices are preserved, but unplugged USB LAN and dock NIC registrations
 are intentionally included and the button description warns that Windows will redetect them when reconnected.
-After DHCP, DNS, TCP, NIC settings and device/name cleanup, one-click runs the deferred `route-clear` once as its final network-configuration mutation while retaining the same shared lease.
-This clears the PC-wide route table and interrupts connectivity; users are told to restart afterwards. Command failure or an exception is logged and makes the overall operation fail.
+After DHCP, DNS, TCP, NIC settings and device/name cleanup, one-click verifies DNS under the same shared lease without clearing the route table.
 When the optional Windows `IDnsClientRepairService` is present, one-click captures a runtime-only System event
-RecordId/XML SHA256 baseline before its first setter. It replaces the earlier cache flush with a final cache
-rebuild and current NRPT/hosts/Windows resolution/fresh-event verification after route cleanup. The first event
+RecordId/XML SHA256 baseline before its first setter. It persists pending/restart-required and a separate
+Kernel-General 12 / Kernel-Boot 27 fingerprint and intended Cloudflare preset ID before any network setter;
+capture/save failure stops setters and restores the prior in-memory selection ID. An interrupted operation can
+therefore restore the intended event target at the next startup without relying on the final selection save.
+After configuration it rebuilds the DNS cache and checks resolution, NRPT, hosts and fresh events. Actual inspection results and typed DNS verification status remain separate. The first event
 range starts at the pre-mutation baseline; retries continue from the previous captured end, including waiting gaps.
 At most two attempts allow postconfiguration stabilization, while first-attempt event IDs, record IDs and ranges
 remain visible. Lost/replaced/unreadable boundaries and unknown event schemas never establish zero new errors
 and cannot be cleared merely by a later successful probe.
-An unresolved probe after route cleanup remains a failed verification with an undetermined cause, even when
-`VerificationDeferred` requests a later check. Every failed/unknown DNS verification sets the persisted primitive
-`DnsHealthVerificationPending`; the next startup performs one new baseline/rebuild/read/probe under the shared
-mutation gate, with deferred classification disabled. Only confirmed success clears the flag. If saving that
-clear fails, memory rolls back to pending and the UI separates successful DNS checks from failed settings save.
+Resolution and inspection failures remain failures; a successful check does not prove all settings have taken effect before restart.
+At startup, saved event anchors must still match and both latest boot events must form a newer consistent pair
+(cold boot type 0) to permit a new baseline/cache rebuild/resolution check under the shared gate. SameBoot and
+Unknown do not probe. Timestamps alone do not prove reboot; missing/replaced/cleared anchors remain Unknown.
+Legacy pending without restart-required retains one startup check; new restart-required with no fingerprint is Unknown.
+Only verified DNS and successful settings save clear pending/restart/fingerprint. Save failure rolls memory back
+and the UI does not guarantee another automatic check. New boot is a precondition, not proof of DNS health.
 No pending-state UI lock or configuration snapshot/restore is introduced. Missing service/macOS retain the old
 cache-flush path. NRPT/hosts/certificates/TLS/proxy settings and Tailscale service state are never reset by this check.
 Other destructive maintenance actions (per-adapter MTU restoration and the remaining commands in the 「ファイアウォール・スタックリセット」category)
