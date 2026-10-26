@@ -9,7 +9,7 @@
 #   - D:\Dev\Secret\secrets.json に cloudflare.api_token があること
 #
 # 使い方:
-#   pwsh scripts/release-local.ps1                # フルリリース (build + sign + upload + cleanup)
+#   pwsh scripts/release-local.ps1                # フルリリース (build + sign + upload)
 #   pwsh scripts/release-local.ps1 -SkipUpload    # ビルド + 署名のみ (アップロードしない動作確認用)
 
 [CmdletBinding()]
@@ -261,11 +261,10 @@ if ($SkipUpload) {
 # ---- 1.5 現行配信メタデータの退避 ----
 Set-Location $WorkDir
 # 新しい版を公開した直後に検証が失敗した場合、固定URLのメタデータだけを直前版へ戻せるようにする。
-# 直前 manifest が参照する nupkg は後段の cleanup でも保持する。
+# 直前 manifest が参照する nupkg を含め、既存の配布物は保持する。
 New-Item -ItemType Directory -Path $RollbackDir -Force | Out-Null
 $artifactFiles = @(Get-ChildItem $ArtifactsDir -File)
-$legacySetupFiles = @($artifactFiles | Where-Object { $_.Name -like '*-Setup.exe' })
-# PerUser Setup.exe は今後公開しない。MSIの伝播確認後にR2上の旧Setupも削除する。
+# PerUser Setup.exe は今後公開しない。過去に配信されたファイルは保持する。
 $publishArtifactFiles = @($artifactFiles | Where-Object { $_.Name -notlike '*-Setup.exe' })
 $metadataFiles = @($publishArtifactFiles | Where-Object {
     $_.Name -eq 'RELEASES' -or $_.Name -like 'releases.*.json' -or $_.Name -like 'assets.*.json'
@@ -412,8 +411,7 @@ try {
     }
 
 # ---- 3. 配信確認 (manifest 完全一致リトライ方式) ----
-# 単純な HTTP 200 だと CDN/edge が古い manifest を返している間に cleanup が走り、旧 manifest を
-# 取得したクライアントが直後に消える .nupkg を取りに行って 404 する race がある。
+# 単純な HTTP 200 だけでは CDN/edge が新しい manifest を配信していることを確認できない。
 # ローカルアップロード済 manifest と完全一致するまでリトライしてから次へ進む。
     Write-Host '== 配信確認 (manifest 伝播待機) ==' -ForegroundColor Cyan
     foreach ($runtime in $Runtimes) {
@@ -440,7 +438,7 @@ try {
         Start-Sleep -Seconds 5
     }
         if (-not $matched) {
-            throw "remote manifest が $($maxAttempts * 5) 秒以内にローカルと一致しませんでした。race 回避のため cleanup を中止します: $url"
+            throw "remote manifest が $($maxAttempts * 5) 秒以内にローカルと一致しませんでした: $url"
         }
     }
 
@@ -488,7 +486,7 @@ try {
             if ($allMatched) { $matched = $true; break }
             if ($attempt -lt 18) { Start-Sleep -Seconds 5 }
         }
-        if (-not $matched) { throw "通常URLの最終成果物が一致しません。旧版清掃を中止します: $hostUrl" }
+        if (-not $matched) { throw "通常URLの最終成果物が一致しません: $hostUrl" }
         Write-Host "  ✅ $hostUrl manifest/NUPKG/MSIの全body SHA256一致"
     }
 } catch {
@@ -513,112 +511,6 @@ try {
     throw $publishError
 }
 
-# ---- 4. 旧バージョン nupkg のクリーンアップ (Aggressive 戦略) ----
-# ローカル artifacts の manifest (= 今アップロードしたものと同一) から keep set を作り、
-# R2 上の「.nupkg かつ manifest 外」だけを削除する。固定ファイル名 (Setup.exe /
-# MSI / Portable.zip / RELEASES* / assets.*.json / releases.*.json) は対象外なので安全。
-Write-Host '== 旧 nupkg クリーンアップ ==' -ForegroundColor Cyan
-$keep = @{}
-$manifests = Get-ChildItem $ArtifactsDir -Filter 'releases.*.json'
-if (-not $manifests) { throw 'artifacts に releases.*.json が見つかりません' }
-foreach ($m in $manifests) {
-    foreach ($asset in (Get-Content $m.FullName -Raw | ConvertFrom-Json).Assets) {
-        if ($asset.FileName) { $keep[$asset.FileName] = $true }
-    }
-}
-foreach ($assetName in $previousManifestAssets.Keys) {
-    $keep[$assetName] = $true
-}
-Write-Host "  保持対象 nupkg: $($keep.Count) 件 (現行 + 直前版)"
-
-$api = "https://api.cloudflare.com/client/v4/accounts/$AccountId/r2/buckets/$Bucket"
-$headers = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
-
-# MSIが配信済みになった後で、再びPerUser版を入れられないよう旧Setup.exeをR2から除去する。
-foreach ($legacySetup in $legacySetupFiles) {
-    $encoded = [uri]::EscapeDataString($legacySetup.Name)
-    try {
-        Invoke-RestMethod -Method Delete -Uri "$api/objects/$encoded" -Headers $headers -TimeoutSec 30 | Out-Null
-        Write-Host "  🗑️  旧PerUserインストーラ: $($legacySetup.Name)"
-    } catch {
-        $responseProperty = $_.Exception.PSObject.Properties['Response']
-        $statusCode = if ($responseProperty -and $responseProperty.Value) { [int]$responseProperty.Value.StatusCode } else { $null }
-        if ($statusCode -ne 404) { throw }
-    }
-}
-$legacySetupUrls = @(
-    foreach ($legacySetup in $legacySetupFiles) {
-        $url = "$BaseUrl/$($legacySetup.Name)"
-        try {
-            $null = Invoke-WebRequest -Method Head -Uri $url -TimeoutSec 30
-            $url
-        } catch {
-            $responseProperty = $_.Exception.PSObject.Properties['Response']
-            $statusCode = if ($responseProperty -and $responseProperty.Value) { [int]$responseProperty.Value.StatusCode } else { $null }
-            if ($statusCode -ne 404) { throw }
-        }
-    }
-)
-if ($legacySetupUrls.Count -gt 0) {
-    $legacyPurgeBody = [PSCustomObject]@{ files = $legacySetupUrls } | ConvertTo-Json -Compress
-    Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
-        -Headers $cfHeaders -ContentType 'application/json' -Body $legacyPurgeBody -TimeoutSec 30 | Out-Null
-}
-
-$allKeys = [System.Collections.Generic.List[string]]::new()
-$cursor = ''
-while ($true) {
-    $uri = "$api/objects?per_page=1000" + $(if ($cursor) { "&cursor=$cursor" })
-    $resp = Invoke-RestMethod -Uri $uri -Headers $headers -TimeoutSec 30
-    foreach ($obj in $resp.result) { $allKeys.Add($obj.key) }
-    $info = $resp.PSObject.Properties['result_info']
-    if (-not $info -or -not $info.Value) { break }
-    $truncated = $info.Value.PSObject.Properties['is_truncated']
-    if (-not $truncated -or -not $truncated.Value) { break }
-    $cursorProp = $info.Value.PSObject.Properties['cursor']
-    $cursor = if ($cursorProp) { $cursorProp.Value } else { '' }
-    if (-not $cursor) { break }
-}
-
-# 全プロジェクト共通の保持ポリシー: 直近 2 バージョン。
-# 旧実装は '*.nupkg' だけを削除対象にしていたため、バージョン付きの配布物
-# (zip / deb / rpm / AppImage 等) が R2 に永久に溜まっていた (Ferry で 351 個 7.2GB)。
-$KeepVersionCount = 2
-$versionPattern = '(\d+\.\d+\.\d+)'
-$allVersions = @(
-    $allKeys | ForEach-Object {
-        $m = [regex]::Match($_, $versionPattern)
-        if ($m.Success) { $m.Groups[1].Value }
-    } | Sort-Object -Property { [version]$_ } -Unique
-)
-$keepVersions = @($allVersions | Select-Object -Last $KeepVersionCount)
-Write-Host "  保持バージョン: $($keepVersions -join ', ') (全 $($allVersions.Count) 世代)"
-
-$toDelete = $allKeys | Where-Object {
-    # manifest が参照するファイルは絶対保持 (消すと自動更新が壊れる)
-    if ($keep.ContainsKey($_)) { return $false }
-    # 固定ファイル名はバージョン文字列を含まない = 毎リリース上書きなので保持
-    $m = [regex]::Match($_, $versionPattern)
-    if (-not $m.Success) { return $false }
-    return $keepVersions -notcontains $m.Groups[1].Value
-}
-if (-not $toDelete) {
-    Write-Host '  ✅ 削除対象なし'
-} else {
-    $deleted = 0; $failed = 0
-    foreach ($key in $toDelete) {
-        $encoded = [uri]::EscapeDataString($key)
-        try {
-            Invoke-RestMethod -Method Delete -Uri "$api/objects/$encoded" -Headers $headers -TimeoutSec 30 | Out-Null
-            Write-Host "  🗑️  $key"
-            $deleted++
-        } catch {
-            Write-Warning "  削除失敗: $key — $($_.Exception.Message)"
-            $failed++
-        }
-    }
-    Write-Host "  🧹 クリーンアップ: $deleted 削除 / $failed 失敗"
-    if ($failed -gt 0 -and $deleted -eq 0) { throw '旧 nupkg の削除がすべて失敗しました。API token の権限を確認してください。' }
-}
+# 旧ドメイン経由の更新を維持するため、既存の R2 オブジェクトは削除しない。
 
 Write-Host "`n🎉 リリース完了: v$version → $BaseUrl" -ForegroundColor Green
