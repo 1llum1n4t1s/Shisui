@@ -440,6 +440,27 @@ PCI vendor 10EC or USB vendor 0BDA, and `LowPowerEnable` / `UAPSDSupport` only f
 and PCI vendor 14C3). These Realtek power properties are changed only when the driver actually exposes the exact key
 with binary 0/1 values. Their binary semantics were verified against `RTL8168H.ndi.NT` in driver INF
 1168.27.50.920; the MediaTek keys were verified against the installed RZ616 driver INF (3.5.0.1349).
+  Selective Suspend uses `Get-NetAdapterPowerManagement` / `Set-NetAdapterPowerManagement` on the same physical
+  Realtek Ethernet scope, independently of any advanced-property or registry keyword. The synthetic journal key
+  `PowerManagement.SelectiveSuspend` stores API values Disabled=1 and Enabled=2; only Enabled is changed to Disabled.
+  Microsoft specifies that the other power values are undefined unless `AllowComputerToTurnOffDevice` is Enabled:
+  query and setter both require that condition. Unsupported or missing settings are skipped; query exceptions are
+  reported separately without blocking unrelated properties. GUID, description, power-management InstanceID and
+  driver identity are rechecked before writes, and existing journal, conflict and readback rules apply. Neither
+  `PnPCapabilities` is never directly changed. See the
+  [power-management CIM specification](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/netadaptercimprov/msft-netadapterpowermanagementsettingdata).
+  Physical Realtek Ethernet checks its exact PnP device's WDF key first. If it exists, only driver filename
+  `rt68cx21x64.sys` and an existing DWORD `IdleInWorkingState` of 0/1 are accepted; target 0 is stored under
+  `PowerManagement.WdfDeviceIdleEnabled`. No key or value is created or deleted and defaults are not inferred.
+  WDF errors and unknown drivers are reported without WMI fallback. Only when the WDF key is absent is the driver's
+  `root/wmi` `MSPower_DeviceEnable` instance used: a unique exact PnP instance name plus numeric suffix, boolean
+  Active=true and boolean Enable are required; the selected CIM instance is written via `Set-CimInstance` and stored
+  under `PowerManagement.DeviceIdleEnabled`. Before each write the WDF presence and driver identity are rechecked.
+  Both schemes journal the original value and driver filename; changed or missing identity and scheme changes block
+  restoration. They take priority over Selective Suspend and are never mixed with each other or its journal. The WDF
+  readback confirms saved registry configuration, not that the running driver has applied it. `PnPCapabilities` is not
+  changed. See [WDF user control](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/user-control-of-device-idle-and-wake-behavior)
+  and [the power management tab](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-and-the-power-management-tab).
 `AMSDUTx=0` additionally requires physical Wi-Fi, exact provider `MediaTek, Inc.` and PCI VEN_14C3/DEV_0616
 with a device-token boundary. Its generated query/apply/restore policy checks the original bool/integer CIM types
 before accepting the property; string attributes cannot satisfy this additional allowlist. Both published binary

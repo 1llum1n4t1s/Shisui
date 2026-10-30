@@ -135,6 +135,11 @@ public sealed class WindowsGamingNetworkProfileParserTests
     [DataRow(6, "Unknown Vendor", "PCI\\VEN_9999&DEV_0001", "EnableGreenEthernet")]
     [DataRow(6, "Unknown Vendor", "PCI\\VEN_9999&DEV_0001", "GigaLite")]
     [DataRow(71, "Realtek", "PCI\\VEN_10EC&DEV_8168&SUBSYS_012310EC&REV_15\\4&ABCDEF&0&00E5", "PowerSavingMode")]
+    [DataRow(6, "Intel", "PCI\\VEN_8086&DEV_1234", "PowerManagement.SelectiveSuspend")]
+    [DataRow(71, "Realtek", "PCI\\VEN_10EC&DEV_8168", "PowerManagement.SelectiveSuspend")]
+    [DataRow(6, "Intel", "PCI\\VEN_8086&DEV_1234", "PowerManagement.DeviceIdleEnabled")]
+    [DataRow(71, "Realtek", "PCI\\VEN_10EC&DEV_8168", "PowerManagement.DeviceIdleEnabled")]
+    [DataRow(6, "Intel", "PCI\\VEN_8086&DEV_1234", "PowerManagement.WdfDeviceIdleEnabled")]
     public void TryParse_CrossMediaOrProviderProperty_IsRejected(
         int interfaceType,
         string driverProvider,
@@ -172,11 +177,11 @@ public sealed class WindowsGamingNetworkProfileParserTests
         string pnpDeviceId = "PCI\\VEN_8086&DEV_1234") =>
         $"{{\"AdapterName\":\"Ethernet\",\"InterfaceGuid\":\"{guid}\",\"InterfaceDescription\":\"{description}\"," +
         $"\"HardwareInterface\":{hardwareInterface.ToString().ToLowerInvariant()},\"InterfaceType\":{interfaceType}," +
-        $"\"DriverProvider\":\"{driverProvider}\",\"PnPDeviceId\":\"{pnpDeviceId.Replace("\\", "\\\\", StringComparison.Ordinal)}\"," +
-        $"\"Properties\":{properties}}}";
+        $"\"DriverProvider\":\"{driverProvider}\",\"DriverFileName\":\"rt68cx21x64.sys\",\"PnPDeviceId\":\"{pnpDeviceId.Replace("\\", "\\\\", StringComparison.Ordinal)}\"," +
+        $"\"PowerManagementError\":\"\",\"DeviceIdleError\":\"\",\"Properties\":{properties}}}";
 
     private static string Properties(params string[] values) => $"[{string.Join(',', values)}]";
 
     private static string Property(string keyword, string current) =>
-        $"{{\"RegistryKeyword\":\"{keyword}\",\"RegistryValues\":[\"{current}\"],\"ValidRegistryValues\":[\"0\",\"1\"]}}";
+        $"{{\"RegistryKeyword\":\"{keyword}\",\"RegistryValues\":[\"{current}\"],\"ValidRegistryValues\":{(keyword == WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword ? "[\"1\",\"2\"]" : "[\"0\",\"1\"]")}}}";
 }

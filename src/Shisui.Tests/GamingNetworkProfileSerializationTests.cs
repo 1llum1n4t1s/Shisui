@@ -19,6 +19,7 @@ public sealed class GamingNetworkProfileSerializationTests
                 {
                     AdapterGuid = Guid.Parse("fb283a95-51d8-466b-b72f-c8d27361ca9b"),
                     AdapterDescription = "Intel Ethernet Controller",
+                    PowerManagementDriverFileName = "example.sys",
                     Properties =
                     [
                         new GamingNetworkPropertySnapshot
@@ -39,6 +40,7 @@ public sealed class GamingNetworkProfileSerializationTests
         var snapshot = restored.GamingNetworkProfileSnapshots[0];
         Assert.AreEqual(settings.GamingNetworkProfileSnapshots[0].AdapterGuid, snapshot.AdapterGuid);
         Assert.AreEqual("Intel Ethernet Controller", snapshot.AdapterDescription);
+        Assert.AreEqual("example.sys", snapshot.PowerManagementDriverFileName);
         Assert.HasCount(1, snapshot.Properties);
         Assert.AreEqual("1", snapshot.Properties[0].OriginalValue);
     }

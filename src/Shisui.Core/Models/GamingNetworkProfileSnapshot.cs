@@ -7,6 +7,8 @@ public sealed class GamingNetworkProfileSnapshot
 
     public string AdapterDescription { get; set; } = string.Empty;
 
+    public string PowerManagementDriverFileName { get; set; } = string.Empty;
+
     public List<GamingNetworkPropertySnapshot> Properties { get; set; } = [];
 }
 

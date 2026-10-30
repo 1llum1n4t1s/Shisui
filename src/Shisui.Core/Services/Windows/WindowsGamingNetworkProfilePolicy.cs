@@ -16,6 +16,10 @@ public static class WindowsGamingNetworkProfilePolicy
     public const string FlowControlKeyword = "*FlowControl";
     public const string RealtekAdvancedEeeKeyword = "AdvancedEEE";
     public const string UdpRscKeyword = "*UdpRsc";
+    public const string SelectiveSuspendKeyword = "PowerManagement.SelectiveSuspend";
+    public const string DeviceIdleEnabledKeyword = "PowerManagement.DeviceIdleEnabled";
+    public const string WdfDeviceIdleEnabledKeyword = "PowerManagement.WdfDeviceIdleEnabled";
+    public const string VerifiedWdfDriver = "rt68cx21x64.sys";
     public const string RssKeyword = "*RSS";
     public const string LsoV2IPv4Keyword = "*LsoV2IPv4";
     public const string LsoV2IPv6Keyword = "*LsoV2IPv6";
@@ -34,6 +38,7 @@ public static class WindowsGamingNetworkProfilePolicy
     private sealed record PropertyDefinition(string TargetValue, IReadOnlyList<string> KnownValues, bool StandardOffload = false);
 
     private static readonly IReadOnlyList<string> BinaryValues = Array.AsReadOnly(new[] { "0", "1" });
+    private static readonly IReadOnlyList<string> PowerManagementValues = Array.AsReadOnly(new[] { "1", "2" });
     private static readonly IReadOnlyList<string> ChecksumValues = Array.AsReadOnly(new[] { "0", "1", "2", "3" });
     private static readonly IReadOnlyDictionary<string, PropertyDefinition> PropertyDefinitions =
         new Dictionary<string, PropertyDefinition>(StringComparer.Ordinal)
@@ -49,6 +54,9 @@ public static class WindowsGamingNetworkProfilePolicy
             [FlowControlKeyword] = new("0", ChecksumValues),
             [RealtekAdvancedEeeKeyword] = new("0", BinaryValues),
             [UdpRscKeyword] = new("0", BinaryValues),
+            [SelectiveSuspendKeyword] = new("1", PowerManagementValues),
+            [DeviceIdleEnabledKeyword] = new("0", BinaryValues),
+            [WdfDeviceIdleEnabledKeyword] = new("0", BinaryValues),
             [RssKeyword] = new("1", BinaryValues, true),
             [LsoV2IPv4Keyword] = new("1", BinaryValues, true),
             [LsoV2IPv6Keyword] = new("1", BinaryValues, true),
@@ -115,6 +123,9 @@ public static class WindowsGamingNetworkProfilePolicy
                     RealtekGreenEthernetKeyword,
                     RealtekGigaLiteKeyword,
                     RealtekPowerSavingModeKeyword,
+                    SelectiveSuspendKeyword,
+                    DeviceIdleEnabledKeyword,
+                    WdfDeviceIdleEnabledKeyword,
                 }
                 : new[] { InterruptModerationKeyword, EnergyEfficientEthernetKeyword })
                 .Concat(IsRealtekPciEthernet(pnpDeviceId)

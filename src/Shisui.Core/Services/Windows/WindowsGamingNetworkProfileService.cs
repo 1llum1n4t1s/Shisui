@@ -48,6 +48,8 @@ public sealed class WindowsGamingNetworkProfileService(
             current.PnpDeviceId);
         var missing = applicableKeywords
             .Except(current.Properties.Select(property => property.RegistryKeyword), StringComparer.Ordinal)
+            .Where(keyword => !(keyword == WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword && current.Properties.Any(p => p.RegistryKeyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword)) &&
+                              !(keyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword && current.Properties.Any(p => p.RegistryKeyword == WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword)))
             .ToArray();
         var changes = current.Properties
             .Where(property => property.CurrentValue != WindowsGamingNetworkProfilePolicy.GetTargetValue(property.RegistryKeyword))
@@ -57,7 +59,7 @@ public sealed class WindowsGamingNetworkProfileService(
         {
             results.Add(Failure(
                 "ゲーム向け NIC 設定: 非対応",
-                $"この NIC では安全に確認できる対象プロパティ ({string.Join(" / ", applicableKeywords)}) が見つかりません。" +
+                $"この NIC では安全に確認できる対象プロパティ ({string.Join(" / ", applicableKeywords.Select(DisplayKeyword))}) が見つかりません。" +
                 "未知の機種を推測せず、変更していません。今回の操作による PC 再起動も不要です。"));
             return results;
         }
@@ -83,11 +85,30 @@ public sealed class WindowsGamingNetworkProfileService(
             return results;
         }
 
+        var hasSelectiveJournal = journal?.Properties.Any(p => p.RegistryKeyword == WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword) == true;
+        var hasDeviceIdleJournal = journal?.Properties.Any(p => IsDeviceIdleKeyword(p.RegistryKeyword)) == true;
+        var wantsDeviceIdle = changes.Any(p => IsDeviceIdleKeyword(p.RegistryKeyword));
+        var hasDeviceIdle = current.Properties.Any(p => IsDeviceIdleKeyword(p.RegistryKeyword));
+        var skipSelective = hasDeviceIdleJournal || !string.IsNullOrEmpty(current.DeviceIdleError) || (hasDeviceIdle && !hasSelectiveJournal);
+        var skipDeviceIdle = wantsDeviceIdle && hasSelectiveJournal;
+        if (skipDeviceIdle)
+        {
+            changes = changes.Where(p => !IsDeviceIdleKeyword(p.RegistryKeyword)).ToArray();
+            results.Add(Failure("ゲーム向け NIC 設定: 電源管理の競合",
+                "Selective Suspend の復元情報が残っているため、デバイスの電源オフ設定は変更していません。先にゲーム向け NIC 設定を復元してください。"));
+        }
+        if (skipSelective)
+        {
+            changes = changes.Where(p => p.RegistryKeyword != WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword).ToArray();
+            results.Add(Success("ゲーム向け NIC 設定: 電源管理の優先順位",
+                "デバイスの電源オフ無効化を優先し、他の電源管理値への影響がドライバー依存のため、Selective Suspend の変更は保留しました。"));
+        }
+
         if (changes.Length == 0)
         {
             results.Add(Success(
                 "ゲーム向け NIC 設定: 変更不要",
-                BuildCompletionMessage("対象プロパティは既に適用値です。設定値を確認済みです。", current, missing)));
+                BuildCompletionMessage("変更可能な対象プロパティは既に適用値です。設定値を確認済みです。", current, missing)));
             return results;
         }
 
@@ -99,6 +120,7 @@ public sealed class WindowsGamingNetworkProfileService(
             {
                 AdapterGuid = current.InterfaceGuid,
                 AdapterDescription = current.InterfaceDescription,
+                PowerManagementDriverFileName = changes.Any(p => IsDeviceIdleKeyword(p.RegistryKeyword)) ? current.DriverFileName : string.Empty,
                 Properties = changes.Select(property => new GamingNetworkPropertySnapshot
                 {
                     RegistryKeyword = property.RegistryKeyword,
@@ -122,6 +144,11 @@ public sealed class WindowsGamingNetworkProfileService(
                     journalChanged = true;
                 }
             }
+            if (changes.Any(p => IsDeviceIdleKeyword(p.RegistryKeyword)) && string.IsNullOrEmpty(journal.PowerManagementDriverFileName))
+            {
+                journal.PowerManagementDriverFileName = current.DriverFileName;
+                journalChanged = true;
+            }
         }
 
         if (journalChanged && !await TrySaveJournalAsync(beforeSave, results, "適用前の復元情報", ct))
@@ -142,7 +169,8 @@ public sealed class WindowsGamingNetworkProfileService(
                     current.PnpDeviceId,
                     change.RegistryKeyword,
                     change.CurrentValue,
-                    WindowsGamingNetworkProfilePolicy.GetTargetValue(change.RegistryKeyword)),
+                    WindowsGamingNetworkProfilePolicy.GetTargetValue(change.RegistryKeyword),
+                    current.DriverFileName),
                 ct);
             results.Add(write);
             if (!write.Success)
@@ -156,7 +184,9 @@ public sealed class WindowsGamingNetworkProfileService(
 
         var verified = await QueryAsync(current.AdapterName, "ゲーム向け NIC 設定: 適用後確認", results, ct);
         if (!HasSameIdentity(current, verified) ||
-            current.Properties.Any(expected =>
+            current.Properties.Where(expected =>
+                (!skipSelective || expected.RegistryKeyword != WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword) &&
+                (!skipDeviceIdle || !IsDeviceIdleKeyword(expected.RegistryKeyword))).Any(expected =>
                 verified!.Properties.SingleOrDefault(property => property.RegistryKeyword == expected.RegistryKeyword)?.CurrentValue !=
                 WindowsGamingNetworkProfilePolicy.GetTargetValue(expected.RegistryKeyword)))
         {
@@ -168,7 +198,7 @@ public sealed class WindowsGamingNetworkProfileService(
 
         results.Add(Success(
             "ゲーム向け NIC 設定: 適用完了",
-            BuildCompletionMessage("保存済みの復元情報と各プロパティの適用値を読み戻し確認済みです。", current, missing)));
+            BuildCompletionMessage("保存済みの復元情報と変更したプロパティの適用値を読み戻し確認済みです。", current, missing)));
         return results;
     }
 
@@ -227,7 +257,7 @@ public sealed class WindowsGamingNetworkProfileService(
             {
                 results.Add(Failure(
                     "ゲーム向け NIC 設定: 復元競合",
-                    $"{snapshot.RegistryKeyword} が現在の NIC から取得できません。復元情報を保持し、変更していません。"));
+                    $"{DisplayKeyword(snapshot.RegistryKeyword)} が現在の NIC から取得できません。復元情報を保持し、変更していません。"));
                 return results;
             }
 
@@ -241,7 +271,7 @@ public sealed class WindowsGamingNetworkProfileService(
             {
                 results.Add(Failure(
                     "ゲーム向け NIC 設定: 復元競合",
-                    $"{snapshot.RegistryKeyword} は Shisui の適用値 {targetValue} と保存値 {snapshot.OriginalValue} のどちらでもありません。外部変更を上書きしません。"));
+                    $"{DisplayKeyword(snapshot.RegistryKeyword)} は Shisui の適用値 {targetValue} と保存値 {snapshot.OriginalValue} のどちらでもありません。外部変更を上書きしません。"));
                 return results;
             }
 
@@ -261,7 +291,8 @@ public sealed class WindowsGamingNetworkProfileService(
                     current.PnpDeviceId,
                     snapshot.RegistryKeyword,
                     currentValue,
-                    snapshot.OriginalValue),
+                    snapshot.OriginalValue,
+                    current.DriverFileName),
                 ct);
             results.Add(write);
             if (!write.Success)
@@ -328,6 +359,15 @@ public sealed class WindowsGamingNetworkProfileService(
             return null;
         }
 
+        if (!string.IsNullOrEmpty(state!.PowerManagementError))
+        {
+            results.Add(Failure(operation, $"Selective Suspend の取得に失敗しました: {state.PowerManagementError}"));
+        }
+        if (!string.IsNullOrEmpty(state.DeviceIdleError))
+        {
+            results.Add(Failure(operation, $"デバイスの電源管理設定の取得に失敗しました: {state.DeviceIdleError}"));
+        }
+
         return state;
     }
 
@@ -381,6 +421,32 @@ public sealed class WindowsGamingNetworkProfileService(
             return false;
         }
 
+        if (journal.Properties.Any(p => p is not null && IsDeviceIdleKeyword(p.RegistryKeyword)) &&
+            (string.IsNullOrWhiteSpace(journal.PowerManagementDriverFileName) ||
+             !string.Equals(journal.PowerManagementDriverFileName, current.DriverFileName, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "電源管理の復元情報のドライバーファイル名を確認できないか、現在のドライバーと一致しません。変更していません。";
+            return false;
+        }
+
+        if (journal.Properties.Any(p => p?.RegistryKeyword == WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword) &&
+            journal.Properties.Any(p => p is not null && IsDeviceIdleKeyword(p.RegistryKeyword)) ||
+            journal.Properties.Any(p => p?.RegistryKeyword == WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword) &&
+            journal.Properties.Any(p => p?.RegistryKeyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword))
+        {
+            error = "依存する電源管理項目が同じ復元情報に含まれています。変更していません。";
+            return false;
+        }
+
+        var wdfCurrent = current.Properties.Any(p => p.RegistryKeyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword);
+        var wmiCurrent = current.Properties.Any(p => p.RegistryKeyword == WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword);
+        if ((wdfCurrent && journal.Properties.Any(p => p?.RegistryKeyword is WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword or WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword)) ||
+            (wmiCurrent && journal.Properties.Any(p => p?.RegistryKeyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword)))
+        {
+            error = "電源管理の方式が保存時から変わったため、復元情報を保持し、変更していません。";
+            return false;
+        }
+
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in journal.Properties)
         {
@@ -406,6 +472,9 @@ public sealed class WindowsGamingNetworkProfileService(
     private static bool IsSupportedPhysicalAdapter(GamingNetworkAdapterState state) =>
         WindowsGamingNetworkProfilePolicy.IsSupportedPhysicalAdapter(state.HardwareInterface, state.InterfaceType);
 
+    private static bool IsDeviceIdleKeyword(string keyword) =>
+        keyword is WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword or WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword;
+
     private static bool ContainsNullJournalData(IEnumerable<GamingNetworkProfileSnapshot> journals) =>
         journals.Any(snapshot => snapshot is null ||
             snapshot.Properties is null || snapshot.Properties.Any(property => property is null));
@@ -416,6 +485,7 @@ public sealed class WindowsGamingNetworkProfileService(
         expected.InterfaceType == actual.InterfaceType &&
         string.Equals(expected.InterfaceDescription, actual.InterfaceDescription, StringComparison.Ordinal) &&
         string.Equals(expected.DriverProvider, actual.DriverProvider, StringComparison.Ordinal) &&
+        string.Equals(expected.DriverFileName, actual.DriverFileName, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(expected.PnpDeviceId, actual.PnpDeviceId, StringComparison.OrdinalIgnoreCase);
 
     private static string BuildCompletionMessage(
@@ -425,18 +495,27 @@ public sealed class WindowsGamingNetworkProfileService(
     {
         var unsupported = missing.Count == 0
             ? string.Empty
-            : $" ドライバーに存在しない {string.Join(" / ", missing)} は非対応としてスキップしました。";
+            : $" 取得できないか対象条件を満たさない {string.Join(" / ", missing.Select(DisplayKeyword))} はスキップしました。";
         var powerTradeoff = state.InterfaceType == WindowsGamingNetworkProfilePolicy.WifiInterfaceType
             ? " Wi-Fi の省電力機能を無効化する設定では、消費電力の増加とバッテリー駆動時間の短縮があり得ます。"
             : string.Empty;
-        return $"{prefix}{unsupported}{powerTradeoff} -NoRestart で保存したため、PC の再起動が必要です。実際のゲーム性能・遅延は未検証です。";
+        return $"{prefix}{unsupported}{powerTradeoff} 変更した保存値を反映するには PC の再起動が必要です。稼働中の反映や実際のゲーム性能・遅延は未検証です。";
     }
+
+    private static string DisplayKeyword(string keyword) => keyword switch
+    {
+        WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword => "Selective Suspend",
+        WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword => "デバイスの電源オフ（WMI）",
+        WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword => "デバイスの電源オフ（WDF）",
+        _ => keyword,
+    };
 
     private static List<GamingNetworkProfileSnapshot> CloneJournals(IEnumerable<GamingNetworkProfileSnapshot> source) =>
         source.Select(snapshot => new GamingNetworkProfileSnapshot
         {
             AdapterGuid = snapshot.AdapterGuid,
             AdapterDescription = snapshot.AdapterDescription,
+            PowerManagementDriverFileName = snapshot.PowerManagementDriverFileName,
             Properties = snapshot.Properties?.Select(property => new GamingNetworkPropertySnapshot
             {
                 RegistryKeyword = property.RegistryKeyword,

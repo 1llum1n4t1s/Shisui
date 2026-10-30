@@ -316,7 +316,7 @@ public sealed class WindowsGamingNetworkProfileServiceTests
 
         Assert.IsTrue(results[^1].Success);
         StringAssert.Contains(results[^1].StandardOutput, "*InterruptModeration");
-        StringAssert.Contains(results[^1].StandardOutput, "非対応としてスキップ");
+        StringAssert.Contains(results[^1].StandardOutput, "対象条件を満たさない");
     }
 
     [TestMethod]
@@ -571,6 +571,219 @@ public sealed class WindowsGamingNetworkProfileServiceTests
         Assert.AreEqual(1, settings.SaveCount);
     }
 
+    [TestMethod]
+    public async Task SelectiveSuspend_ApplyAndRestore_PreservesOriginalAndReadsBack()
+    {
+        const string keyword = WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((keyword, "2")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((keyword, "1")));
+        executor.Success(RealtekEthernetState((keyword, "1")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((keyword, "2")));
+        var settings = new FakeSettingsService();
+        var service = Create(executor, settings);
+
+        var applied = await service.ApplyAsync("Ethernet");
+        Assert.IsTrue(applied.All(result => result.Success));
+        Assert.AreEqual("2", settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single().OriginalValue);
+        var restored = await service.RestoreAsync("Ethernet");
+        Assert.IsTrue(restored.All(result => result.Success));
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
+        Assert.AreEqual(2, settings.SaveCount);
+    }
+
+    [TestMethod]
+    public async Task SelectiveSuspend_QueryFailure_ReportsErrorAndProcessesOtherProperties()
+    {
+        var executor = new FakeExecutor();
+        var initial = RealtekEthernetState(("*EEE", "1"))
+            .Replace("\"PowerManagementError\":\"\"", "\"PowerManagementError\":\"query failed\"", StringComparison.Ordinal);
+        executor.Success(initial);
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState(("*EEE", "0")));
+        var settings = new FakeSettingsService();
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results.Any(result => !result.Success && result.StandardError.Contains("query failed", StringComparison.Ordinal)));
+        Assert.AreEqual(3, executor.Calls.Count);
+        Assert.AreEqual("*EEE", settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single().RegistryKeyword);
+    }
+
+    [TestMethod]
+    public async Task SelectiveSuspend_MissingDuringRestore_RetainsJournalAndDoesNotWrite()
+    {
+        const string keyword = WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState(("*EEE", "0")));
+        var settings = SettingsWithJournal("Realtek Gaming 2.5GbE Family Controller", (keyword, "2"));
+
+        var results = await Create(executor, settings).RestoreAsync("Ethernet");
+
+        Assert.IsFalse(results[^1].Success);
+        Assert.HasCount(1, executor.Calls);
+        Assert.HasCount(1, settings.Current.GamingNetworkProfileSnapshots);
+    }
+
+    [TestMethod]
+    public async Task DeviceIdle_PrioritizedOverSelectiveSuspend_AndRestoresOriginal()
+    {
+        const string device = WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword;
+        const string selective = WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((device, "1"), (selective, "2")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((device, "0")));
+        executor.Success(RealtekEthernetState((device, "0")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((device, "1")));
+        var settings = new FakeSettingsService();
+        var service = Create(executor, settings);
+
+        var applied = await service.ApplyAsync("Ethernet");
+        Assert.IsTrue(applied.All(result => result.Success));
+        var saved = settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single();
+        Assert.AreEqual(device, saved.RegistryKeyword);
+        Assert.AreEqual("1", saved.OriginalValue);
+        Assert.IsTrue(applied.Any(result => result.StandardOutput.Contains("Selective Suspend の変更は保留", StringComparison.Ordinal)));
+        var restored = await service.RestoreAsync("Ethernet");
+        Assert.IsTrue(restored.All(result => result.Success));
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
+    }
+
+    [TestMethod]
+    public async Task DeviceIdle_WithSelectiveJournal_ReportsConflictAndKeepsJournal()
+    {
+        const string device = WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword;
+        const string selective = WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((device, "1"), (selective, "1")));
+        var settings = SettingsWithJournal("Realtek Gaming 2.5GbE Family Controller", (selective, "2"));
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results.Any(result => !result.Success && result.StandardError.Contains("先にゲーム向け NIC 設定を復元", StringComparison.Ordinal)));
+        Assert.HasCount(1, executor.Calls);
+        Assert.AreEqual(selective, settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single().RegistryKeyword);
+    }
+
+    [TestMethod]
+    public async Task DeviceIdle_AlreadyDisabled_DoesNotCreateSelectiveJournal()
+    {
+        const string device = WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword;
+        const string selective = WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((device, "0"), (selective, "2")));
+        var settings = new FakeSettingsService();
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results.All(result => result.Success));
+        Assert.HasCount(1, executor.Calls);
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
+    }
+
+    [TestMethod]
+    public async Task DeviceIdle_QueryFailureDoesNotPreventOtherWrites()
+    {
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState(("*EEE", "1"))
+            .Replace("\"DeviceIdleError\":\"\"", "\"DeviceIdleError\":\"query failure\"", StringComparison.Ordinal));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState(("*EEE", "0")));
+        var settings = new FakeSettingsService();
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results.Any(result => !result.Success && result.StandardError.Contains("query failure", StringComparison.Ordinal)));
+        Assert.AreEqual("*EEE", settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single().RegistryKeyword);
+    }
+
+    [TestMethod]
+    public async Task DeviceIdle_WriteReportsSuccessButValueDoesNotChange_IsFailureAndRetainsJournal()
+    {
+        const string device = WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((device, "1")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((device, "1")));
+        var settings = new FakeSettingsService();
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsFalse(results[^1].Success);
+        StringAssert.Contains(results[^1].StandardError, "読み戻し確認できません");
+        Assert.AreEqual("1", settings.Current.GamingNetworkProfileSnapshots.Single().Properties.Single().OriginalValue);
+    }
+
+    [TestMethod]
+    public async Task WdfIdle_AlreadyZero_IsNoOpWithoutJournalAndHidesAlternateScheme()
+    {
+        const string wdf = WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((wdf, "0")));
+        var settings = new FakeSettingsService();
+
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+
+        Assert.IsTrue(results.All(result => result.Success));
+        Assert.HasCount(1, executor.Calls);
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
+        Assert.DoesNotContain("デバイスの電源オフ（WMI）", results[^1].StandardOutput);
+    }
+
+    [TestMethod]
+    public async Task WdfIdle_ApplyRestoreAndMismatch_PreservesDriverIdentity()
+    {
+        const string wdf = WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((wdf, "1")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((wdf, "0")));
+        executor.Success(RealtekEthernetState((wdf, "0")));
+        executor.Success("UPDATED");
+        executor.Success(RealtekEthernetState((wdf, "1")));
+        var settings = new FakeSettingsService();
+        var service = Create(executor, settings);
+
+        Assert.IsTrue((await service.ApplyAsync("Ethernet")).All(result => result.Success));
+        Assert.AreEqual("rt68cx21x64.sys", settings.Current.GamingNetworkProfileSnapshots.Single().PowerManagementDriverFileName);
+        Assert.IsTrue((await service.RestoreAsync("Ethernet")).All(result => result.Success));
+        Assert.IsEmpty(settings.Current.GamingNetworkProfileSnapshots);
+
+        var mismatch = new FakeExecutor();
+        mismatch.Success(RealtekEthernetState((wdf, "1")));
+        mismatch.Success("UPDATED");
+        mismatch.Success(RealtekEthernetState((wdf, "1")));
+        var failed = await Create(mismatch, settings).ApplyAsync("Ethernet");
+        Assert.IsFalse(failed[^1].Success);
+        Assert.HasCount(1, settings.Current.GamingNetworkProfileSnapshots);
+    }
+
+    [TestMethod]
+    public async Task WdfIdle_RejectsOldWmiJournalAndChangedDriver()
+    {
+        const string wdf = WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword;
+        const string wmi = WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword;
+        var executor = new FakeExecutor();
+        executor.Success(RealtekEthernetState((wdf, "0")));
+        var settings = SettingsWithJournal("Realtek Gaming 2.5GbE Family Controller", (wmi, "1"));
+        var results = await Create(executor, settings).ApplyAsync("Ethernet");
+        Assert.IsFalse(results[^1].Success);
+        StringAssert.Contains(results[^1].StandardError, "方式が保存時から変わった");
+        Assert.HasCount(1, executor.Calls);
+
+        var changed = new FakeExecutor();
+        changed.Success(RealtekEthernetState((wmi, "0")));
+        settings.Current.GamingNetworkProfileSnapshots.Single().PowerManagementDriverFileName = "old-driver.sys";
+        var restore = await Create(changed, settings).RestoreAsync("Ethernet");
+        Assert.IsFalse(restore[^1].Success);
+        StringAssert.Contains(restore[^1].StandardError, "ドライバーファイル名");
+        Assert.HasCount(1, changed.Calls);
+    }
+
     private static WindowsGamingNetworkProfileService Create(FakeExecutor executor, FakeSettingsService settings) =>
         new(executor, settings, new FakeGate());
 
@@ -601,6 +814,7 @@ public sealed class WindowsGamingNetworkProfileServiceTests
         {
             AdapterGuid = AdapterGuid,
             AdapterDescription = description,
+            PowerManagementDriverFileName = properties.Any(property => property.Keyword is WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword or WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword) ? "rt68cx21x64.sys" : string.Empty,
             Properties = properties.Select(property => new GamingNetworkPropertySnapshot
             {
                 RegistryKeyword = property.Keyword,

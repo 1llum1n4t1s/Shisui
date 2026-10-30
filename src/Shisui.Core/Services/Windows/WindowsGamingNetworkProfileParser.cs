@@ -22,9 +22,18 @@ public static class WindowsGamingNetworkProfileParser
             if (root.ValueKind != JsonValueKind.Object ||
                 !HasExactProperties(root,
                     "AdapterName", "InterfaceGuid", "InterfaceDescription",
-                    "HardwareInterface", "InterfaceType", "DriverProvider", "PnPDeviceId", "Properties"))
+                    "HardwareInterface", "InterfaceType", "DriverProvider", "DriverFileName", "PnPDeviceId", "Properties", "PowerManagementError", "DeviceIdleError"))
             {
                 error = "NIC 状態 JSON の項目が不正または重複しています。";
+                return false;
+            }
+
+            var powerError = root.GetProperty("PowerManagementError");
+            var deviceIdleError = root.GetProperty("DeviceIdleError");
+            if (powerError.ValueKind != JsonValueKind.String || deviceIdleError.ValueKind != JsonValueKind.String ||
+                root.GetProperty("DriverFileName").ValueKind != JsonValueKind.String)
+            {
+                error = "電源管理の取得結果が不正です。";
                 return false;
             }
 
@@ -72,6 +81,15 @@ public static class WindowsGamingNetworkProfileParser
                     return false;
                 }
 
+                var driverFileName = root.GetProperty("DriverFileName").GetString();
+                if ((keyword == WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword && string.IsNullOrWhiteSpace(driverFileName)) ||
+                    (keyword == WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword &&
+                     !string.Equals(driverFileName, WindowsGamingNetworkProfilePolicy.VerifiedWdfDriver, StringComparison.OrdinalIgnoreCase)))
+                {
+                    error = "電源管理プロパティのドライバーファイル名が不正です。";
+                    return false;
+                }
+
                 if (!TryGetStringArray(item, "RegistryValues", out var currentValues) || currentValues.Count != 1 ||
                     !WindowsGamingNetworkProfilePolicy.IsKnownValue(keyword, currentValues[0]) ||
                     !TryGetStringArray(item, "ValidRegistryValues", out var validValues) ||
@@ -95,7 +113,10 @@ public static class WindowsGamingNetworkProfileParser
                 interfaceType,
                 driverProvider,
                 pnpDeviceId,
-                properties);
+                properties,
+                powerError.GetString() ?? string.Empty,
+                deviceIdleError.GetString() ?? string.Empty,
+                root.GetProperty("DriverFileName").GetString() ?? string.Empty);
             return true;
         }
         catch (JsonException)
@@ -159,6 +180,9 @@ public sealed record GamingNetworkAdapterState(
     int InterfaceType,
     string DriverProvider,
     string PnpDeviceId,
-    IReadOnlyList<GamingNetworkAdapterPropertyState> Properties);
+    IReadOnlyList<GamingNetworkAdapterPropertyState> Properties,
+    string PowerManagementError = "",
+    string DeviceIdleError = "",
+    string DriverFileName = "");
 
 public sealed record GamingNetworkAdapterPropertyState(string RegistryKeyword, string CurrentValue);
