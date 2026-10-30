@@ -166,7 +166,7 @@ Windows専用のゲーム向けNIC設定は「おまかせ高速化設定」に�
 標準 `*UdpRsc` を公開し0/1に対応する物理Ethernet/Wi-Fiでは、NICのUROを0（無効）にします。OS側のUDP URO/USO既定化とは別に扱います。
 物理Ethernetの `*InterruptModeration` / `*EEE`、物理Wi-Fiの `*InterruptModeration` を、対応値を確認して無効化します。
 さらに、プロバイダー名またはPCI/USBベンダーIDからRealtek製と確認できる物理Ethernetでは、プロパティが存在して0/1をサポートする場合に `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` を扱います。これらの0/1定義はRTL8168HのINFで確認しています。
-同じRealtek物理Ethernetでは、デバイスの電源オフ設定をドライバーと保存先を確認して扱います。WDFキーが存在する場合は、実機で確認した `rt68cx21x64.sys` の既存 `IdleInWorkingState` DWORD 0/1 に限り 0 を保存します。キーや値の作成・削除、欠損値からの既定値推測、未確認ドライバーへの書込みはしません。WDFキーが存在しない場合のみ、デバイスマネージャーの電源管理タブで使われる `MSPower_DeviceEnable` を試みます。対象 PnP ID と数字のインスタンス接尾辞を完全照合し、Active と Enable が bool の単一インスタンスだけを扱います。WDF確認失敗時は WMI に切り替えず理由を報告します。どちらも元値・ドライバーファイル名の保存、競合検出、復元、保存値の読み戻しを行い、方式やドライバーが変わった復元情報は拒否します。`PnPCapabilities` は変更しません。WDFへの書込みは保存値の確認であり、稼働中の反映は確認していません。[Microsoft のWDF利用者制御](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/user-control-of-device-idle-and-wake-behavior)と[電源管理タブ仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-and-the-power-management-tab)を参照してください。
+同じRealtek物理Ethernetでは、デバイスの電源オフ設定をドライバーと保存先を確認して扱います。WDFキーが存在する場合は、実機で確認した `rt68cx21x64.sys` の既存 `IdleInWorkingState` DWORD 0/1 に限り 0 を保存します。キーや値の作成・削除、欠損値からの既定値推測、未確認ドライバーへの書込みはしません。WDFキーが存在しない場合のみ、デバイスマネージャーの電源管理タブで使われる `MSPower_DeviceEnable` を試みます。対象 PnP ID と数字のインスタンス接尾辞を完全照合し、Active と Enable が bool かつ Active=true の単一インスタンスだけを扱います。WDF確認失敗時は WMI に切り替えず理由を報告します。どちらも元値・ドライバーファイル名の保存、競合検出、復元、保存値の読み戻しを行い、方式やドライバーが変わった復元情報は拒否します。書込み直前にもWDFキーの有無とドライバーファイル名を再照合し、方式や対象の変化による誤書込みを防ぎます。`PnPCapabilities` は変更しません。WDFへの書込みは保存値の確認であり、稼働中の反映は確認していません。[Microsoft のWDF利用者制御](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/user-control-of-device-idle-and-wake-behavior)と[電源管理タブ仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-and-the-power-management-tab)を参照してください。
 Selective Suspend は詳細プロパティやレジストリ項目の有無から推測せず、電源管理APIで読み書きします。`AllowComputerToTurnOffDevice` が Enabled のときだけ、Selective Suspend の Enabled / Disabled を元値として扱います。親設定がそれ以外または取得不能なら他の電源管理値は未定義のため対象外にします。デバイスの電源オフ設定と Selective Suspend は同時に変更せず、前者を優先します。既存の Selective Suspend 復元情報がある場合は新しい電源オフ設定の変更を拒否します。方式変更が検出された場合は誤復元を避け、復元情報を保持して報告します。各経路の表示値を同一視せず、非対応はスキップし、取得エラーは別途報告します。[Microsoft の電源管理設定仕様](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/netadaptercimprov/msft-netadapterpowermanagementsettingdata)を参照してください。
 追加の `*FlowControl` / `AdvancedEEE` は物理EthernetかつPCI `VEN_10EC` を確認できるRealtekだけ0にし、USBやプロバイダー名だけの判定では変更しません。Flow Controlは標準0/1/2/3のうち元値と0の公開対応、Advanced EEEは0/1の公開対応を必須にします。RTL8125BGの導入済みINFでFlow Controlの公開値0/3、Advanced EEEの0/1を確認しています。
 ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
@@ -175,7 +175,7 @@ A-MSDU受信（`AMSDURx`）は、確認したRZ616ドライバーでOFFが集約
 媒体・ベンダーごとの許可リストをquery・parser・書込み・復元で照合し、EEEをWi-Fiへ、メーカー独自項目を他社へ流用しません。
 サービスの単独適用・復元APIは共有ゲートを取得します。一括適用は呼出し元が同じ共有リースを保持したまま ApplyWithinMutationLeaseAsync を呼び、ゲートを再取得せず、接続名整理より前に実行します。適用時は変更前の値をAppSettingsへ保存してから書き込み、設定値を再取得します。一括適用はNIC設定の失敗・空結果・例外も全体の失敗結果へ含めます。
 GUIDと説明で対象を照合し、再適用で元の値を上書きしません。復元は保存対象だけを扱い、外部変更との競合は上書きしません。
-`-NoRestart` により自動切断を避け、ドライバー設定として保存された値の読み戻しと、稼働中の反映・性能の確認を区別します。適用・復元後はPC再起動が必要です。
+詳細プロパティとSelective Suspendの変更には `-NoRestart` を指定し、WDF/WMI経路でもNICの再起動を要求しません。ドライバー設定として保存された値の読み戻しと、稼働中の反映・性能の確認を区別します。適用・復元後はPC再起動が必要です。
 NIC設定の適用処理は、仮想NIC、未知のプロパティ値、許可対象外のオフロード・リンク速度・バッファー・周波数帯・チャンネル幅・ローミングを変更しません。一括処理のTCPグローバル設定とは責務を分けます。
 
 ### ネットワーク診断
