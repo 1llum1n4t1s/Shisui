@@ -285,6 +285,10 @@ metadata 公開後の失敗では退避 metadata を復元して再 purge しま
   Windows 専用機能は macOS で stub を返さず UI ごと隠すため、利用可能範囲が明確になります。
 - **Native AOT**: JIT を含まない単独配布と起動経路を採用しています。反面、reflection 依存を避け、
   JSON source generation と実配布条件での publish 検証が必要です。
+- **サイドメニューの画像リソース**: Microsoft Fluent UI System Icons の公式カラー版を PNG として埋め込み、
+  アイコンフォントや実行時の SVG ライブラリを追加せずに表示します。原本 SVG と出典を保持し、
+  MIT ライセンスをビルド・配布出力へ同梱します。素材の対応と出典は
+  [リソースの説明](src/Shisui.UI/Resources/FluentSystemIcons/README.md)を参照してください。
 - **ロケール非依存の機械可読出力**: 表示用コマンドの文字列解析よりコマンド数や builder/parser が増えますが、
   日本語・英語 Windows と console encoding の差で状態判定が壊れることを避けます。
 - **実行時昇格**: `requireAdministrator` manifest ではなく Velopack フック後の自己昇格を選び、
