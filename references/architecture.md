@@ -549,11 +549,10 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   ネットワーク診断 / BBR2・TCP 調整 / メンテナンス (the TCP and maintenance tabs use
   `IsVisible="{Binding IsWindows}"`) / バージョン — plus a persistent
   実行ログ card fed by each tab ViewModel's `CommandExecuted` event, one `UserControl` per tab. Sidebar tab icons
-  are hand-drawn with plain Avalonia primitives (`Ellipse`/`Line`/`Path`/`Polyline`/`Rectangle`+`RotateTransform`)
-  bound to `{DynamicResource Brush.FG1}` — no icon font/package, no `PathIcon`. Before committing hand-computed
-  coordinates to XAML, preview the shape first (write it as standalone SVG, publish via the `Artifact` tool,
-  screenshot it) — a first-draft wrench icon for メンテナンス read as a magnifying glass once rendered and was
-  redrawn as an 8-tooth gear before it ever reached `MainWindow.axaml`.
+    use Microsoft Fluent UI System Icons color PNGs from `Resources/FluentSystemIcons` at 20×20, with
+    high-quality bitmap interpolation. Original SVGs and source attribution are retained alongside the PNGs;
+    the MIT license is copied to `Licenses/FluentSystemIcons.txt` in build and publish output.
+    No icon font or additional runtime package is required.
 - The optimization explanation lists each setting and its ON/OFF/reset/delete action. MainWindowViewModel aggregates running states across tabs, disables the entire content including logs, and displays a themed indeterminate progress overlay. One-click reports its current phase through OneClickProgressText and clears it in finally. User close requests are blocked during processing; programmatic and OS shutdown remain available.
   During cancellable Ping measurement, the overlay exposes the existing cancel command while normal controls stay disabled.
 - Destructive maintenance commands are visually flagged (red button via `Classes.danger="{Binding

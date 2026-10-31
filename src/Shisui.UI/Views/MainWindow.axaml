@@ -35,11 +35,9 @@
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  きらめきアイコン (自動最適化)  -->
-              <Canvas Width="16" Height="16">
-                <Path Data="M 8,1 L 9.6,6.4 L 15,8 L 9.6,9.6 L 8,15 L 6.4,9.6 L 1,8 L 6.4,6.4 Z"
-                      Fill="{DynamicResource Brush.FG1}" />
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/design_ideas.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="自動最適化" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>
@@ -48,15 +46,9 @@
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  地球儀アイコン(円+赤道線+子午線)  -->
-              <Canvas Width="16" Height="16">
-                <Ellipse Width="14" Height="14" Canvas.Left="1" Canvas.Top="1"
-                         Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" />
-                <Line StartPoint="1,8" EndPoint="15,8"
-                      Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" />
-                <Ellipse Width="6" Height="14" Canvas.Left="5" Canvas.Top="1"
-                         Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.2" />
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/globe.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="DNS 設定" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>
@@ -65,11 +57,9 @@
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  パルスアイコン(疎通診断の脈波線)  -->
-              <Canvas Width="16" Height="16">
-                <Polyline Points="1,8 4,8 6,3 8,13 10,8 15,8"
-                          Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.4" />
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/data_line.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="ネットワーク診断" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>
@@ -78,15 +68,9 @@
         <TabItem IsVisible="{Binding IsWindows}">
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  ゲージアイコン(円弧+針+軸)  -->
-              <Canvas Width="16" Height="16">
-                <Path Data="M 2,12.5 A 6,6 0 0 1 14,12.5"
-                      Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" StrokeLineCap="Round" />
-                <Line StartPoint="8,12.5" EndPoint="10.8,7.5"
-                      Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" StrokeLineCap="Round" />
-                <Ellipse Width="2.2" Height="2.2" Canvas.Left="6.9" Canvas.Top="11.4"
-                         Fill="{DynamicResource Brush.FG1}" />
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/gauge.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="BBR2 / TCP 調整" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>
@@ -95,51 +79,9 @@
         <TabItem IsVisible="{Binding IsWindows}">
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  ギアアイコン(ハブ+歯8枚)  -->
-              <Canvas Width="16" Height="16">
-                <Ellipse Width="8" Height="8" Canvas.Left="4" Canvas.Top="4"
-                         Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" />
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="0" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="45" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="90" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="135" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="180" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="225" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="270" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-                <Rectangle Width="2" Height="3.2" Canvas.Left="7" Canvas.Top="0.8" Fill="{DynamicResource Brush.FG1}">
-                  <Rectangle.RenderTransform>
-                    <RotateTransform Angle="315" CenterX="1" CenterY="7.2" />
-                  </Rectangle.RenderTransform>
-                </Rectangle>
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/toolbox.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="メンテナンス" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>
@@ -148,15 +90,9 @@
         <TabItem>
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-              <!--  インフォアイコン(円+i)  -->
-              <Canvas Width="16" Height="16">
-                <Ellipse Width="14" Height="14" Canvas.Left="1" Canvas.Top="1"
-                         Stroke="{DynamicResource Brush.FG1}" StrokeThickness="1.3" />
-                <Ellipse Width="1.6" Height="1.6" Canvas.Left="7.2" Canvas.Top="4.2"
-                         Fill="{DynamicResource Brush.FG1}" />
-                <Rectangle Width="1.6" Height="5.5" Canvas.Left="7.2" Canvas.Top="6.8"
-                           RadiusX="0.8" RadiusY="0.8" Fill="{DynamicResource Brush.FG1}" />
-              </Canvas>
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/question_circle.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
               <TextBlock Text="バージョン" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </TabItem.Header>

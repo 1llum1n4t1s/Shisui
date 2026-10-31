@@ -141,3 +141,5 @@ ICMPの応答制限による損失はゲーム通信の損失とは限りませ�
 ## ライセンス
 
 MIT License
+
+サイドメニューにはMicrosoftの[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons)のカラー版を使用しています（MIT License）。ライセンス全文は配布物の`Licenses/FluentSystemIcons.txt`に同梱しています。

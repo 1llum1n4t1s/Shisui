@@ -32,6 +32,10 @@
 
   <ItemGroup>
     <AvaloniaResource Include="icon/app.ico" />
+    <AvaloniaResource Include="Resources/FluentSystemIcons/*.png" />
+    <None Update="Resources/FluentSystemIcons/LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+          TargetPath="Licenses/FluentSystemIcons.txt" />
   </ItemGroup>
 
   <!-- Windows ビルドでアイコン/manifest 条件が誤って無効化される回帰をビルド時に検出する。 -->
