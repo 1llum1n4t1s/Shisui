@@ -100,7 +100,7 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   `verified-release-artifacts.json` evidence in the release work directory. Publish the same
   verified bytes without rebuilding or repacking. The verification scope and upload safeguards
   are documented in DESIGN; this static artifact check does not replace UI verification.
-- `vava.config.json` runs certificate precheck and the local release script through `/vava`.
+- Run the certificate precheck and local release script as documented below.
   Change versions only through `/vava`; do not hand-edit `Directory.Build.props` `<Version>`.
 - Publish signed PerMachine MSI, never the generated PerUser Setup.exe. Preserve publication ordering,
   rollback, propagation checks, and retention documented in DESIGN.
@@ -108,3 +108,12 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   The shortcut/display name is `Shisui` via `--packTitle`.
 - Preserve the legacy `shisui.nephilim.jp` update endpoint until 2027/05/31. Redirect only `/`;
   update manifests and packages must remain directly downloadable during migration.
+
+### ローカルリリースの実行
+
+リポジトリルートで事前確認を行い、失敗時は「署名証明書が見つからないよ。SimplySign Desktop を起動してトークンでログインしてから /vava を再実行してね」。公開依頼時に成功を確認してから実行する。
+
+```powershell
+pwsh -NoProfile -Command 'if (-not (Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like "CN=Open Source Developer Yuichiro Shinozaki*" -and $_.NotAfter -gt (Get-Date) })) { exit 1 }'
+if ($LASTEXITCODE -eq 0) { pwsh -NoProfile -File scripts/release-local.ps1 } else { throw '署名証明書が見つからないよ。SimplySign Desktop を起動してトークンでログインしてから /vava を再実行してね' }
+```

@@ -279,7 +279,8 @@ public static partial class WindowsPerMachineMigration
         string expectedLegacyRoot,
         string userProgramsDirectory,
         string userDesktopDirectory,
-        Action<string>? refreshStartMenu = null)
+        Action<string>? refreshStartMenu = null,
+        bool preserveLogs = false)
     {
         if (!Path.GetFullPath(legacyRoot).Equals(Path.GetFullPath(expectedLegacyRoot), StringComparison.OrdinalIgnoreCase))
         {
@@ -288,10 +289,10 @@ public static partial class WindowsPerMachineMigration
 
         // 旧ルートはユーザー書き込み可能なので、そこに残る Update.exe は実行しない。
         // 対象を既定の旧ルートへ限定し、reparse point を辿らず直接回収する。
-        for (var attempt = 0; attempt < 20 && Directory.Exists(legacyRoot); attempt++)
+        for (var attempt = 0; attempt < 20 && !IsLegacyCleanupComplete(legacyRoot, preserveLogs); attempt++)
         {
-            TryDeleteTreeWithoutFollowingReparsePoints(legacyRoot);
-            if (Directory.Exists(legacyRoot))
+            TryDeleteTreeWithoutFollowingReparsePoints(legacyRoot, preserveLogs ? "logs" : null);
+            if (!IsLegacyCleanupComplete(legacyRoot, preserveLogs))
             {
                 Thread.Sleep(300);
             }
@@ -304,7 +305,22 @@ public static partial class WindowsPerMachineMigration
         refreshStartMenu?.Invoke(userProgramsDirectory);
         TryRemoveLegacyUninstallEntry(expectedLegacyRoot);
 
-        return !Directory.Exists(legacyRoot);
+        return IsLegacyCleanupComplete(legacyRoot, preserveLogs);
+    }
+
+    private static bool IsLegacyCleanupComplete(string root, bool preserveLogs)
+    {
+        try
+        {
+            if (!Directory.Exists(root)) return true;
+            if (!preserveLogs || (File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0) return false;
+            var entries = Directory.EnumerateFileSystemEntries(root).ToArray();
+            return entries.Length == 1 && Path.GetFileName(entries[0]).Equals("logs", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static async Task CompletePendingMigrationAsync(
@@ -353,7 +369,8 @@ public static partial class WindowsPerMachineMigration
             approvedCleanupRoot,
             Environment.GetFolderPath(Environment.SpecialFolder.Programs),
             Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            WindowsLegacyStartMenuShortcutMigrator.RefreshShellStartMenu);
+            WindowsLegacyStartMenuShortcutMigrator.RefreshShellStartMenu,
+            preserveLogs: Path.GetFullPath(approvedCleanupRoot).Equals(Path.GetFullPath(expectedLegacyRoot), StringComparison.OrdinalIgnoreCase));
 
         if (cleaned)
         {
@@ -918,7 +935,7 @@ public static partial class WindowsPerMachineMigration
         }
     }
 
-    internal static void TryDeleteTreeWithoutFollowingReparsePoints(string directoryPath)
+    internal static void TryDeleteTreeWithoutFollowingReparsePoints(string directoryPath, string? preserveTopLevelEntry = null)
     {
         if (!Directory.Exists(directoryPath))
         {
@@ -953,6 +970,8 @@ public static partial class WindowsPerMachineMigration
 
         foreach (var entry in entries)
         {
+            if (preserveTopLevelEntry is not null && Path.GetFileName(entry).Equals(preserveTopLevelEntry, StringComparison.OrdinalIgnoreCase))
+                continue;
             try
             {
                 var entryAttributes = File.GetAttributes(entry);

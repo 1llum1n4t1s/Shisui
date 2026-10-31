@@ -2,7 +2,8 @@ namespace Shisui.Core.Services;
 
 /// <summary>
 /// 設定・ログの保存先を OS ごとの正しい慣習で解決する。
-/// Windows: %APPDATA%\Shisui、macOS: ~/Library/Application Support/Shisui。
+/// Windows: 設定は %APPDATA%\Shisui、ログは %LOCALAPPDATA%\Shisui\logs。
+/// macOS: ~/Library/Application Support/Shisui。
 /// </summary>
 public static class AppPaths
 {
@@ -25,5 +26,7 @@ public static class AppPaths
 
     public static string SettingsFilePath => Path.Combine(AppDataDirectory, "settings.json");
 
-    public static string LogsDirectory => Path.Combine(AppDataDirectory, "logs");
+    public static string LogsDirectory => OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppFolderName, "logs")
+        : Path.Combine(AppDataDirectory, "logs");
 }

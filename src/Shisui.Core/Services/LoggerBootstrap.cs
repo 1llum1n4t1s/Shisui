@@ -22,6 +22,13 @@ public static class LoggerBootstrap
 
     public static void Initialize()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            LegacyLogMigration.TryMigrate(Path.Combine(AppPaths.AppDataDirectory, "logs"), AppPaths.LogsDirectory);
+            LegacyLogMigration.TryMigrate(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Kagayoi", "Shisui", "logs"), AppPaths.LogsDirectory, removeEmptyParent: true);
+        }
+
         Directory.CreateDirectory(AppPaths.LogsDirectory);
 
         LogManager.Configure(builder =>

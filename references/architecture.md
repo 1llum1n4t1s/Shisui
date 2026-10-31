@@ -577,7 +577,10 @@ read-only count. This uses pnputil's proper PnP removal path rather than raw reg
   and the app is restarted. UI save failures are reported separately from completed OS changes; update preferences are
   restored when saving fails. NIC DNS read failures remain in the adapter list with a distinct status and exception log.
 - Logging: `SuperLightLogger` NuGet package (same as RealTimeTranslator), via `LoggerBootstrap`. Logs to
-  `AppPaths.LogsDirectory`.
+  `AppPaths.LogsDirectory`: `%LOCALAPPDATA%\Shisui\logs` on Windows, and `logs` under the application data directory
+  on other platforms. Legacy installation cleanup preserves the Windows log directory. Initialization moves `.log`
+  files from the old roaming and `%LOCALAPPDATA%\Kagayoi\Shisui\logs` directories without overwriting existing files;
+  locked or inaccessible files remain for a later attempt.
   Session startup records the app version, OS/build, architecture, runtime, culture and Windows elevation state.
   One-click optimization also records its operation ID and selected adapter; an async-local scope ties its
   commands and synthetic verification results together without mixing concurrent background reads.
