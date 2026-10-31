@@ -1,4 +1,4 @@
-using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services.Windows;
 
@@ -29,12 +29,5 @@ public class WindowsAdapterNameCommandBuilderTests
         StringAssert.Contains(script, "-NewName 'ゆろち''s LAN'");
         StringAssert.Contains(script, "-PassThru");
         StringAssert.Contains(script, "-Confirm:$false");
-    }
-
-    private static string DecodeScript(string arguments)
-    {
-        const string marker = "-EncodedCommand ";
-        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
-        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 }

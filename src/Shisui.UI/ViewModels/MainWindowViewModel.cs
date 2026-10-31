@@ -11,8 +11,6 @@ public partial class MainWindowViewModel : ObservableObject
 {
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
 
-    public bool IsMacOS { get; } = OperatingSystem.IsMacOS();
-
     public DnsSettingsViewModel DnsSettings { get; }
 
     /// <summary>クイック最適化と、使い込んだPC向け診断を集約したタブ。</summary>

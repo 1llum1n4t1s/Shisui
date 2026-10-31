@@ -1,4 +1,4 @@
-using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Models;
 using Shisui.Core.Services.Windows;
@@ -8,11 +8,10 @@ namespace Shisui.Tests;
 [TestClass]
 public class WindowsDohCommandBuilderTests
 {
-    private static string Decode(string args) => Encoding.Unicode.GetString(Convert.FromBase64String(args.Split(' ').Last()));
     [TestMethod]
     public void BuildEnable_Ipv4Only_RepairsThenVerifiesGlobalDoh()
     {
-        var script = Decode(WindowsDohCommandBuilder.BuildEnableArguments(new("1.1.1.1", "1.0.0.1", null, null), "https://cloudflare-dns.com/dns-query"));
+        var script = DecodeScript(WindowsDohCommandBuilder.BuildEnableArguments(new("1.1.1.1", "1.0.0.1", null, null), "https://cloudflare-dns.com/dns-query"));
         StringAssert.Contains(script, "Set-DnsClientDohServerAddress");
         StringAssert.Contains(script, "Add-DnsClientDohServerAddress");
         StringAssert.Contains(script, "dnsclient set global doh=yes");
@@ -21,13 +20,13 @@ public class WindowsDohCommandBuilderTests
     [TestMethod]
     public void BuildEnable_Ipv4AndIpv6_RegistersAllFourAddresses()
     {
-        var script = Decode(WindowsDohCommandBuilder.BuildEnableArguments(new("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"), "https://cloudflare-dns.com/dns-query"));
+        var script = DecodeScript(WindowsDohCommandBuilder.BuildEnableArguments(new("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"), "https://cloudflare-dns.com/dns-query"));
         foreach (var address in new[] { "1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001" })
             StringAssert.Contains(script, "'" + address + "'");
     }
     [TestMethod]
     public void BuildEnable_PrimaryOnly_ProducesRepairScript() =>
-        StringAssert.Contains(Decode(WindowsDohCommandBuilder.BuildEnableArguments(new("8.8.8.8", null, null, null), "https://dns.google/dns-query")), "'8.8.8.8'");
+        StringAssert.Contains(DecodeScript(WindowsDohCommandBuilder.BuildEnableArguments(new("8.8.8.8", null, null, null), "https://dns.google/dns-query")), "'8.8.8.8'");
     [TestMethod]
     public void BuildDisable_DeletesEncryptionForEachAddress_AndDoesNotTouchGlobal() =>
         CollectionAssert.AreEqual(new[] { "dnsclient delete encryption server=\"1.1.1.1\" protocol=doh", "dnsclient delete encryption server=\"1.0.0.1\" protocol=doh" }, WindowsDohCommandBuilder.BuildDisable(new("1.1.1.1", "1.0.0.1", null, null)).ToList());

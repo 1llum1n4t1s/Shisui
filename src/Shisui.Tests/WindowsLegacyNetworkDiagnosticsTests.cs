@@ -1,6 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Runtime.Versioning;
-using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
 using Shisui.Core.Services.Windows;
@@ -170,13 +170,6 @@ public class WindowsLegacyNetworkDiagnosticsTests
                 output,
                 string.Empty));
         }
-    }
-
-    private static string DecodeScript(string arguments)
-    {
-        const string marker = "-EncodedCommand ";
-        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
-        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 
     private sealed class FakeGhostAdapterService : IGhostAdapterService

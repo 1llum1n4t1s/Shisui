@@ -1,4 +1,4 @@
-using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services.Windows;
 
@@ -27,12 +27,5 @@ public class WindowsAdapterDetailsCommandBuilderTests
 
         StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'LAN[1]*',[StringComparison]::OrdinalIgnoreCase)");
         Assert.IsFalse(script.Contains("Get-NetAdapter -Name 'LAN[1]*'", StringComparison.Ordinal));
-    }
-
-    private static string DecodeScript(string arguments)
-    {
-        const string marker = "-EncodedCommand ";
-        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
-        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 }

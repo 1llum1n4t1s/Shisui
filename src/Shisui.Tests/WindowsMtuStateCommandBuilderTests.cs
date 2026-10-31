@@ -1,4 +1,4 @@
-using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services.Windows;
 
@@ -44,12 +44,5 @@ public class WindowsMtuStateCommandBuilderTests
         StringAssert.Contains(script, "[string]::Equals([string]$_.Name,'Wi-*',[StringComparison]::OrdinalIgnoreCase)");
         StringAssert.Contains(script, "-InterfaceIndex ([uint32]$a[0].ifIndex)");
         Assert.IsFalse(script.Contains("-InterfaceAlias 'Wi-*'", StringComparison.Ordinal));
-    }
-
-    private static string DecodeScript(string arguments)
-    {
-        const string marker = "-EncodedCommand ";
-        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
-        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 }

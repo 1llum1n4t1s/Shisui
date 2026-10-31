@@ -1,4 +1,5 @@
 using System.Text;
+using static Shisui.Tests.PowerShellTestHelper;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shisui.Core.Services;
 using Shisui.Core.Services.Windows;
@@ -15,7 +16,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
     {
         const string hostileName = "Ethernet';throw 'owned";
 
-        var script = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments(hostileName));
+        var script = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments(hostileName));
 
         StringAssert.Contains(script, "'Ethernet'';throw ''owned'");
         StringAssert.Contains(script, "[StringComparison]::OrdinalIgnoreCase");
@@ -37,7 +38,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
     [TestMethod]
     public void BuildSetPropertyArguments_UsesExactAllowlistedInputObjectAndNoRestart()
     {
-        var script = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+        var script = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
             "Ethernet",
             AdapterGuid,
             "Intel Ethernet Controller",
@@ -69,8 +70,8 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
 
         var generatedScripts = new[]
         {
-            Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet';throw 'owned")),
-            Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+            DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet';throw 'owned")),
+            DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
                 "Ethernet';throw 'owned",
                 AdapterGuid,
                 "Intel Ethernet Controller",
@@ -80,7 +81,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
                 WindowsGamingNetworkProfileCommandBuilder.EnergyEfficientEthernetKeyword,
                 "1",
                 "0")),
-            Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+            DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
                 "Wi-Fi';throw 'owned",
                 AdapterGuid,
                 "RZ616 Wi-Fi 6E 160MHz",
@@ -90,7 +91,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
                 WindowsGamingNetworkProfileCommandBuilder.MediaTekLowPowerKeyword,
                 "1",
                 "0")),
-            Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+            DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
                 "Ethernet';throw 'owned",
                 AdapterGuid,
                 "Realtek PCIe GbE Family Controller",
@@ -143,7 +144,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        var script = MockCommands(master, selective) + Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
+        var script = MockCommands(master, selective) + DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
         var result = await RunScript(script);
         Assert.IsTrue(result.Success, result.StandardError);
         Assert.IsTrue(WindowsGamingNetworkProfileParser.TryParse(result.StandardOutput, out var state, out var error), error);
@@ -159,7 +160,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        var write = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+        var write = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
             "Ethernet", AdapterGuid, "Realtek Controller", 6, "Realtek", "PCI\\VEN_10EC&DEV_8168\\TEST",
             WindowsGamingNetworkProfilePolicy.SelectiveSuspendKeyword, "2", "1"));
         StringAssert.Contains(write, "Set-NetAdapterPowerManagement -InputObject $pm[0] -SelectiveSuspend $setting -NoRestart");
@@ -181,7 +182,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        var query = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
+        var query = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
         var result = await RunScript(MockCommands(2, 2, wrongIdentity: true) + query);
         Assert.IsTrue(result.Success, result.StandardError);
         Assert.IsTrue(WindowsGamingNetworkProfileParser.TryParse(result.StandardOutput, out var state, out var error), error);
@@ -198,7 +199,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        var query = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
+        var query = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
         const string stub = "function Get-NetAdapterPowerManagement {[CmdletBinding()]param($Name,[switch]$IncludeHidden) ";
         foreach (var (body, hasError) in new[] { ("}", false), ("throw 'query failure'}", true) })
         {
@@ -221,7 +222,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
 
         const string valid = "[pscustomobject]@{InstanceName='PCI\\VEN_10EC&DEV_8168\\TEST_0';Active=$true;Enable=$true}";
         const string wrong = "[pscustomobject]@{InstanceName='PCI\\VEN_10EC&DEV_8168\\TESTX_0';Active=$true;Enable=$true}";
-        var query = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
+        var query = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
         foreach (var (body, present, hasError) in new[]
         {
             (valid, true, false),
@@ -252,7 +253,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
         }
 
         const string valid = "[pscustomobject]@{InstanceName='PCI\\VEN_10EC&DEV_8168\\TEST_0';Active=$true;Enable=$true}";
-        var write = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+        var write = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
             "Ethernet", AdapterGuid, "Realtek Controller", 6, "Realtek", "PCI\\VEN_10EC&DEV_8168\\TEST",
             WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword, "1", "0", "rt68cx21x64.sys"));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
@@ -263,7 +264,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
         Assert.IsFalse((await RunScript(MockCommands(2, 2) + DeviceCimMock(valid + ";" + valid) + write)).Success);
         Assert.IsFalse((await RunScript(MockCommands(2, 2) + DeviceCimMock(valid.Replace("Active=$true", "Active=$false", StringComparison.Ordinal)) + write)).Success);
         Assert.IsFalse((await RunScript(MockCommands(2, 2).Replace("DriverProvider='Realtek'", "DriverProvider='Changed'", StringComparison.Ordinal) + DeviceCimMock(valid) + write)).Success);
-        var restore = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+        var restore = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
             "Ethernet", AdapterGuid, "Realtek Controller", 6, "Realtek", "PCI\\VEN_10EC&DEV_8168\\TEST",
             WindowsGamingNetworkProfilePolicy.DeviceIdleEnabledKeyword, "0", "1", "rt68cx21x64.sys"));
         var restoreMock = DeviceCimMock(valid.Replace("Enable=$true", "Enable=$false", StringComparison.Ordinal))
@@ -279,7 +280,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        var query = Decode(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
+        var query = DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildQueryArguments("Ethernet"));
         const string rejectWmi = "function Get-CimInstance {[CmdletBinding()]param($Namespace,$ClassName) throw 'WMI must not be queried'};";
         foreach (var (kind, value, driver, present) in new[]
         {
@@ -310,7 +311,7 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
             Assert.Inconclusive("Windows PowerShell が必要です。");
         }
 
-        string Build(string key, string expected, string target) => Decode(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
+        string Build(string key, string expected, string target) => DecodeScript(WindowsGamingNetworkProfileCommandBuilder.BuildSetPropertyArguments(
             "Ethernet", AdapterGuid, "Realtek Controller", 6, "Realtek", "PCI\\VEN_10EC&DEV_8168\\TEST",
             key, expected, target, "rt68cx21x64.sys"));
         var apply = Build(WindowsGamingNetworkProfilePolicy.WdfDeviceIdleEnabledKeyword, "1", "0");
@@ -369,12 +370,5 @@ public sealed class WindowsGamingNetworkProfileCommandBuilderTests
                 "Ethernet", AdapterGuid, "Unknown", 6, "Unknown Vendor",
                 "PCI\\VEN_9999&DEV_0001",
                 "EnableGreenEthernet", "1", "0"));
-    }
-
-    private static string Decode(string arguments)
-    {
-        const string marker = "-EncodedCommand ";
-        var encoded = arguments[(arguments.IndexOf(marker, StringComparison.Ordinal) + marker.Length)..];
-        return Encoding.Unicode.GetString(Convert.FromBase64String(encoded));
     }
 }

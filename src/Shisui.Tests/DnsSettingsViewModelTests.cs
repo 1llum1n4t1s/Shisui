@@ -157,7 +157,11 @@ public sealed class DnsSettingsViewModelTests
         Assert.AreEqual(4, calls.Count(value => value.Contains("rack=enabled taillossprobe=enabled")));
         Assert.IsTrue(calls.Contains("interface udp set global uro=default"));
         Assert.IsTrue(calls.Contains("interface udp set global uso=default"));
-        Assert.AreEqual(WindowsTcpStateCommandBuilder.Arguments, calls[^2]);
+        // 末尾からの位置ではなく、設定変更後に実状態を一度取得する契約を確認する。
+        Assert.AreEqual(1, calls.Count(value => value == WindowsTcpStateCommandBuilder.Arguments));
+        Assert.IsTrue(calls.IndexOf(WindowsTcpStateCommandBuilder.Arguments)
+            > calls.FindLastIndex(value => value.Contains("rack=enabled taillossprobe=enabled")),
+            "TCP の実状態はすべての RACK / TLP 設定後に確認する必要があります。");
         Assert.AreEqual(!failLossRecovery, viewModel.StatusText.Contains("実効 Normal を確認済み"));
     }
 
