@@ -143,3 +143,7 @@ ICMPの応答制限による損失はゲーム通信の損失とは限りませ�
 MIT License
 
 サイドメニューにはMicrosoftの[Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons)のカラー版を使用しています（MIT License）。ライセンス全文は配布物の`Licenses/FluentSystemIcons.txt`に同梱しています。
+
+## R2 配布
+
+R2 への配布は PowerShell 7.2 以上と同梱 `scripts/R2Distribution.Common.ps1` を使用します。Node.js・pnpm・Wrangler は不要です。既存の Cloudflare API token を使用し、固定 URL は再検証、不変の版付き成果物は1年間キャッシュします。

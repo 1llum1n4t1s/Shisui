@@ -1,4 +1,4 @@
-# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
+﻿# release-local.ps1 — ローカル署名付き Velopack リリース (VStoVSC テンプレートから横展開)
 #
 # SimplySign (Certum クラウド署名) は Desktop 接続 + スマホトークンが必要で
 # GitHub Actions からは署名できないため、リリースは本スクリプトでローカル実行する。
@@ -50,6 +50,27 @@ function Remove-LocalWorkItem {
     }
 }
 
+# R2 への書込みは同梱の PowerShell/.NET 実装で行う。
+. (Join-Path $PSScriptRoot 'R2Distribution.Common.ps1')
+
+function Send-ReleaseR2Object {
+    param([Parameter(Mandatory)][System.IO.FileInfo]$File, [switch]$PassThru, [string]$ExpectedETag)
+    # バージョン付き成果物は不変、固定 URL とメタデータは毎回再検証する。
+    $immutable = $File.Extension -eq '.nupkg' -or $File.Name -match '\d+\.\d+\.\d+'
+    $cacheControl = if ($immutable) { 'public, max-age=31536000, immutable' } else { 'no-cache, must-revalidate' }
+    $contentType = switch ($File.Extension.ToLowerInvariant()) {
+        '.json' { 'application/json'; break }
+        '.exe' { 'application/vnd.microsoft.portable-executable'; break }
+        '.zip' { 'application/zip'; break }
+        default { if ($File.Name -like 'RELEASES*') { 'text/plain; charset=utf-8' } else { 'application/octet-stream' } }
+    }
+    $conditions = @{}
+    if ($PSBoundParameters.ContainsKey('ExpectedETag')) { $conditions.ExpectedETag = $ExpectedETag }
+    $result = Publish-R2Object @conditions -AccountId $AccountId -Bucket $Bucket -FilePath $File.FullName `
+        -ApiToken $env:CLOUDFLARE_API_TOKEN -ContentType $contentType -CacheControl $cacheControl -Immutable:$immutable
+    if ($PassThru) { return $result }
+}
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -59,7 +80,6 @@ Set-StrictMode -Version Latest
 # 更新時は公式 NuGet の安定版を確認し、-SkipUpload で署名成果物を検証してから変更する。
 $VpkVersion = '1.2.161'
 Write-Host "vpk 固定バージョン: $VpkVersion"
-$WranglerVersion = '4.149.0'        # サプライチェーン対策でバージョン固定
 $Bucket = 'shisui-updates'
 $BaseUrl = 'https://shisui.kagayoi.com'
 $AccountId = '10901bfadbf1005164774a7350082985'
@@ -171,9 +191,6 @@ $toolTemp = Join-Path $WorkDir 'tool-temp'
 New-Item -ItemType Directory -Path $toolTemp -Force | Out-Null
 $env:TEMP = $toolTemp
 $env:TMP = $toolTemp
-$env:NPM_CONFIG_CACHE = Join-Path $WorkDir 'npm-cache'
-$env:WRANGLER_LOG_PATH = Join-Path $WorkDir 'wrangler-logs'
-$env:WRANGLER_SEND_METRICS = 'false'
 [string[]]$aotToolArgs = if ($UseEnvironmentalAotTools) { @('-p:IlcUseEnvironmentalTools=true') } else { @() }
 
 # ---- 1. ビルド + 署名付きパッケージング (RID ごと) ----
@@ -306,17 +323,15 @@ foreach ($metadata in $metadataFiles) {
 Write-Host "直前版の退避: $((Get-ChildItem $RollbackDir -File).Count) メタデータ / $($previousManifestAssets.Count) nupkg"
 
 function Publish-R2Artifact {
-    param([System.IO.FileInfo]$File)
+    param([System.IO.FileInfo]$File, [switch]$PassThru)
     Write-Host "  ↑ $($File.Name)"
-    Invoke-Native "R2 put ($($File.Name))" {
-        pnpm dlx "wrangler@$WranglerVersion" r2 object put "$Bucket/$($File.Name)" --file $File.FullName --remote
-    }
+    Send-ReleaseR2Object -File $File -PassThru:$PassThru
 }
 
 # ---- 2. R2 アップロード ----
 Write-Host '== R2 アップロード ==' -ForegroundColor Cyan
 $uploaded = 0
-$publishedMetadata = [System.Collections.Generic.List[string]]::new()
+$publishedMetadata = @{}
 # メタデータの公開前に、失敗時の復元にも使う配信 zone を確定する。
 $cfHeaders = @{ Authorization = "Bearer $($env:CLOUDFLARE_API_TOKEN)" }
 $zoneName = ([uri]$BaseUrl).Host -replace '^[^.]+\.', ''
@@ -358,8 +373,8 @@ try {
     }
     # 自動更新クライアントが読む固定URLのメタデータは最後に公開する。
     foreach ($file in $metadataFiles) {
-        Publish-R2Artifact $file
-        $publishedMetadata.Add($file.Name)
+        $published = Publish-R2Artifact $file -PassThru
+        $publishedMetadata[$file.Name] = $published.ETag
         $uploaded++
     }
     Write-Host "✅ R2 アップロード完了: $uploaded ファイル"
@@ -492,13 +507,11 @@ try {
 } catch {
     $publishError = $_
     $restoredUrls = [System.Collections.Generic.List[string]]::new()
-    foreach ($name in $publishedMetadata) {
+    foreach ($name in $publishedMetadata.Keys) {
         $backup = Join-Path $RollbackDir $name
         if (Test-Path $backup) {
             Write-Warning "公開失敗のため直前版へ復元します: $name"
-            Invoke-Native "R2 rollback ($name)" {
-                pnpm dlx "wrangler@$WranglerVersion" r2 object put "$Bucket/$name" --file $backup --remote
-            }
+            Send-ReleaseR2Object -File (Get-Item -LiteralPath $backup) -ExpectedETag $publishedMetadata[$name]
             $restoredUrls.Add("$BaseUrl/$name")
         }
     }
