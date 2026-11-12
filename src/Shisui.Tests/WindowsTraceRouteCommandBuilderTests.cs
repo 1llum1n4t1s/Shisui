@@ -25,6 +25,15 @@ public class WindowsTraceRouteCommandBuilderTests
     }
 
     [TestMethod]
+    public void BuildArguments_EscapesTypographicSingleQuoteInHost()
+    {
+        // ’ (U+2019) も PowerShell の単一引用符なので、それ自身で二重化されていることを確認する。
+        var args = WindowsTraceRouteCommandBuilder.BuildArguments("evil\u2019; Remove-Item C:\\", 10);
+
+        Assert.IsTrue(args.Contains("-ComputerName 'evil\u2019\u2019; Remove-Item C:\\'"));
+    }
+
+    [TestMethod]
     public void BuildArguments_HostContainsDoubleQuote_Throws()
     {
         Assert.ThrowsExactly<ArgumentException>(() =>

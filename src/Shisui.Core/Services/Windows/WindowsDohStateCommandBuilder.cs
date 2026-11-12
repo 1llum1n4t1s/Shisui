@@ -7,13 +7,11 @@ public static class WindowsDohStateCommandBuilder
 {
     public const string FileName = "powershell";
 
-    internal static string Quote(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
-
     internal static string BuildPrelude(IReadOnlyList<string> addresses)
     {
         if (addresses.Count == 0)
             throw new ArgumentException("DNS アドレスが必要です", nameof(addresses));
-        var targets = string.Join(",", addresses.Select(address => Quote(IPAddress.Parse(address).ToString())));
+        var targets = string.Join(",", addresses.Select(address => WindowsPowerShellLiteral.Quote(IPAddress.Parse(address).ToString())));
         return "$ErrorActionPreference='Stop';" +
             "$OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);" +
             "$targets=@(" + targets + ");" +

@@ -244,7 +244,7 @@ public static class WindowsGamingNetworkProfileCommandBuilder
             throw new ArgumentException("空の値は PowerShell へ渡せません", parameterName);
         }
 
-        return $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
+        return WindowsPowerShellLiteral.Quote(value);
     }
 
     private static void ValidateKnownValue(string registryKeyword, string value, string parameterName)

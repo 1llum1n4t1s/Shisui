@@ -119,25 +119,12 @@ public static class WindowsTcpCommandBuilder
     /// <summary>指定アダプタの IPv4/IPv6 MTU を標準値の 1500 に戻す。</summary>
     public static IReadOnlyList<string> BuildRevertMtuToDefault(string adapterName)
     {
-        var name = Quote(adapterName);
+        // netsh 流の二重引用符付けは DNS / DoT / DoH と同じ WindowsDnsCommandBuilder.Quote を共有する。
+        var name = WindowsDnsCommandBuilder.Quote(adapterName);
         return
         [
             $"interface ipv4 set subinterface name={name} mtu=1500 store=persistent",
             $"interface ipv6 set subinterface name={name} mtu=1500 store=persistent",
         ];
-    }
-
-    /// <summary>
-    /// netsh は CommandLineToArgvW ではなく生コマンドラインを独自再パースするため、
-    /// スペースを含みうる値はここで netsh 流の二重引用符で囲む (WindowsDnsCommandBuilder と同じ方針)。
-    /// </summary>
-    private static string Quote(string value)
-    {
-        if (value.Contains('"'))
-        {
-            throw new ArgumentException("netsh 引数に二重引用符は使用できません。", nameof(value));
-        }
-
-        return $"\"{value}\"";
     }
 }

@@ -30,6 +30,16 @@ public class WindowsPingCommandBuilderTests
     }
 
     [TestMethod]
+    public void BuildArguments_EscapesTypographicSingleQuoteInHost()
+    {
+        // PowerShell は ’ (U+2019) も単一引用符として扱う。' だけの二重化では ’ でリテラルが閉じ、
+        // 後続がコードとして評価されるため、’ もそれ自身で二重化されていることを確認する。
+        var args = WindowsPingCommandBuilder.BuildArguments("evil\u2019; Remove-Item C:\\", 1);
+
+        Assert.IsTrue(args.Contains("$ping.Send('evil\u2019\u2019; Remove-Item C:\\',"));
+    }
+
+    [TestMethod]
     public void BuildArguments_HostContainsDoubleQuote_Throws()
     {
         // 生の " は外側の -Command "..." の引用符コンテキストを破り、後続テキストが別コマンドとして

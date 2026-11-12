@@ -33,7 +33,7 @@ public static class WindowsDnsClientRepairCommandBuilder
         return WindowsPowerShellArgumentEncoder.Encode(Common + prefix + Repair);
     }
 
-    private static string Literal(string value) => value.Replace("'", "''");
+    private static string Literal(string value) => WindowsPowerShellLiteral.Escape(value);
 
     // 起動の読取りは Capture/BootCheck 専用。長い Repair の共有部には追加しない。
     private const string BootCommon = """

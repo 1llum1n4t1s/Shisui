@@ -32,9 +32,10 @@ public static class WindowsPingCommandBuilder
                 $"ping 回数は {MinimumCount}～{MaximumCount} の範囲で指定してください。");
         }
 
-        // PowerShell のシングルクォート文字列リテラルはこの文字だけを二重化すればコマンド注入されない
-        // (変数展開・サブ式評価が一切ない純粋なリテラルのため)。
-        var safeHost = host.Replace("'", "''");
+        // PowerShell のシングルクォート文字列リテラルは変数展開・サブ式評価が一切ないため、
+        // 引用符文字を二重化すればコマンド注入されない。PowerShell は ’ など U+2018～U+201B も
+        // 単一引用符として扱うので、ASCII の ' だけでなく全種を共通ヘルパーで二重化する。
+        var safeHost = WindowsPowerShellLiteral.Escape(host);
         return "-NoProfile -NonInteractive -Command \"" +
                "$utf8=[System.Text.UTF8Encoding]::new($false);[Console]::OutputEncoding=$utf8;$OutputEncoding=$utf8;" +
                "$culture=[System.Globalization.CultureInfo]::InvariantCulture;" +

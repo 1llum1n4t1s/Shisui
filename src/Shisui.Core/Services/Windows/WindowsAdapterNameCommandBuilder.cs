@@ -17,8 +17,8 @@ public static class WindowsAdapterNameCommandBuilder
 
     public static string BuildRenameArguments(string currentName, string targetName)
     {
-        var safeCurrentName = QuotePowerShellLiteral(currentName);
-        var safeTargetName = QuotePowerShellLiteral(targetName);
+        var safeCurrentName = WindowsPowerShellLiteral.Quote(currentName);
+        var safeTargetName = WindowsPowerShellLiteral.Quote(targetName);
         var script =
             "$ProgressPreference='SilentlyContinue';$a=Get-NetAdapter -Name '*' -IncludeHidden | " +
             $"?{{[string]::Equals($_.Name,{safeCurrentName},[StringComparison]::OrdinalIgnoreCase)}};" +
@@ -27,8 +27,6 @@ public static class WindowsAdapterNameCommandBuilder
             "-PassThru -Confirm:$false -ErrorAction Stop | %{'RENAMED='+$_.Name}";
         return BuildEncodedArguments(script);
     }
-
-    private static string QuotePowerShellLiteral(string value) => $"'{value.Replace("'", "''")}'";
 
     private static string BuildEncodedArguments(string script) =>
         $"-NoProfile -NonInteractive -EncodedCommand {Convert.ToBase64String(Encoding.Unicode.GetBytes(script))}";

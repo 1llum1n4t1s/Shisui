@@ -20,7 +20,7 @@ public static class WindowsTraceRouteCommandBuilder
             throw new ArgumentException("ホスト名にダブルクオート (\") を含めることはできません。", nameof(host));
         }
 
-        var safeHost = host.Replace("'", "''");
+        var safeHost = WindowsPowerShellLiteral.Escape(host);
         return "-NoProfile -NonInteractive -Command \"" +
                $"$r=Test-NetConnection -ComputerName '{safeHost}' -TraceRoute -Hops {maxHops} " +
                "-WarningAction SilentlyContinue -ErrorAction SilentlyContinue;" +

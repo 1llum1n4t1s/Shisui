@@ -19,7 +19,7 @@ public static class WindowsDohCommandBuilder
             uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 || dohTemplate.Any(char.IsWhiteSpace) || dohTemplate.Any(char.IsControl))
             throw new ArgumentException("DoH には HTTPS テンプレートが必要です", nameof(dohTemplate));
         var script = WindowsDohStateCommandBuilder.BuildPrelude(CollectAddresses(servers)) +
-            "$expected=" + WindowsDohStateCommandBuilder.Quote(dohTemplate) + ";" +
+            "$expected=" + WindowsPowerShellLiteral.Quote(dohTemplate) + ";" +
             "function Assert-DohType($e){if($e.DohTemplate -isnot [string] -or $e.AutoUpgrade -isnot [bool] -or $e.AllowFallbackToUdp -isnot [bool]){throw 'DoH property type is invalid'}};" +
             "$all=@(Get-DnsClientDohServerAddress -ErrorAction Stop);" +
             "$plan=@(foreach($ip in $targets){$found=@(Find-Doh $all $ip);" +

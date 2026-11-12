@@ -10,7 +10,7 @@ internal static class WindowsPowerShellAdapterSelection
             throw new ArgumentException("アダプター名が必要です", nameof(adapterName));
         }
 
-        var name = adapterName.Replace("'", "''", StringComparison.Ordinal);
+        var name = WindowsPowerShellLiteral.Escape(adapterName);
         return "$a=@(Get-NetAdapter -Name '*' -IncludeHidden -ErrorAction Stop | " +
                $"Where-Object {{[string]::Equals([string]$_.Name,'{name}',[StringComparison]::OrdinalIgnoreCase)}});" +
                "if($a.Count -ne 1){throw 'Adapter resolution was not unique'};";
