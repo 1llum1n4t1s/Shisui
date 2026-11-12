@@ -33,6 +33,18 @@ public partial class DnsSettingsViewModel : ObservableObject
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
+    /// <summary>
+    /// 複数のコマンド結果を受け取り順のまま実行ログへ通知する。中断判定の前に呼ぶ箇所では、
+    /// 例外を投げる前に全結果を記録するという既存の順序をそのまま保つ。
+    /// </summary>
+    private void RaiseCommandExecuted(IEnumerable<CommandExecutionResult> results)
+    {
+        foreach (var result in results)
+        {
+            CommandExecuted?.Invoke(this, result);
+        }
+    }
+
     public bool IsWindows { get; } = OperatingSystem.IsWindows();
 
     public bool IsAdapterNameCleanupAvailable => IsWindows && _adapterNameService is not null;
@@ -399,8 +411,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             var results = (await _dnsService.ApplyAsync(adapter.Id, servers)).ToList();
             if (results.Any(result => result.RequiresOperationAbort))
             {
-                foreach (var result in results)
-                    CommandExecuted?.Invoke(this, result);
+                RaiseCommandExecuted(results);
                 throw new InvalidOperationException("DNS 設定処理の終了を確認できないため、後続の変更を中断しました。");
             }
 
@@ -414,8 +425,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                     UseDoh = dohResults.Count > 0 && dohResults.All(result => result.Success && !result.RequiresOperationAbort);
                 if (dohResults.Any(result => result.RequiresOperationAbort))
                 {
-                    foreach (var result in results)
-                        CommandExecuted?.Invoke(this, result);
+                    RaiseCommandExecuted(results);
                     throw new InvalidOperationException("DoH 設定処理の終了を確認できないため、後続の変更を中断しました。");
                 }
             }
@@ -428,10 +438,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.AddRange(dotResults);
             }
 
-            foreach (var result in results)
-            {
-                CommandExecuted?.Invoke(this, result);
-            }
+            RaiseCommandExecuted(results);
 
             _settingsService.Current.LastSelectedAdapterId = adapter.Id;
             _settingsService.Current.LastSelectedPresetId = preset.Id;
@@ -797,10 +804,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 EnsureCommandsFinished(results);
             }
 
-            foreach (var result in results)
-            {
-                CommandExecuted?.Invoke(this, result);
-            }
+            RaiseCommandExecuted(results);
             resultsReported = true;
 
             _settingsService.Current.LastSelectedAdapterId = adapterNameCleanupResult is
@@ -856,10 +860,7 @@ public partial class DnsSettingsViewModel : ObservableObject
         {
             if (!resultsReported)
             {
-                foreach (var result in results)
-                {
-                    CommandExecuted?.Invoke(this, result);
-                }
+                RaiseCommandExecuted(results);
             }
 
             StatusText = $"おまかせ高速化設定に失敗しました: {ex.Message}";
@@ -1041,10 +1042,7 @@ public partial class DnsSettingsViewModel : ObservableObject
             }
 
             var results = await _dnsService.ResetToAutomaticAsync(adapter.Id);
-            foreach (var result in results)
-            {
-                CommandExecuted?.Invoke(this, result);
-            }
+            RaiseCommandExecuted(results);
 
             var allSucceeded = results.All(result => result.Success);
             await LoadAdaptersCoreAsync();
@@ -1100,10 +1098,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                 }
             }
 
-            foreach (var commandResult in result.CommandResults)
-            {
-                CommandExecuted?.Invoke(this, commandResult);
-            }
+            RaiseCommandExecuted(result.CommandResults);
 
             AdapterNameStatusText = FormatAdapterNameCleanupStatus(result);
         }

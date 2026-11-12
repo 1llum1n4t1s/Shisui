@@ -36,7 +36,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="選択したアダプタの TCP ACK を受信 1 セグメントごとに返す値 1 に設定します。反映には PC の再起動が必要です。" />
           <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
+            <ComboBox Grid.Column="0" AutomationProperties.Name="TCP ACK 頻度の対象アダプタ" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
                       IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
                 <DataTemplate>
@@ -111,7 +111,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="受信バッファーを回線状況に合わせて調整します。通常は Normal。制限・無効化すると受信速度が下がる場合があります。" />
           <StackPanel Orientation="Horizontal" Spacing="8">
-            <ComboBox ItemsSource="{Binding AutoTuningLevels}" SelectedItem="{Binding SelectedAutoTuningLevel}" Width="180" />
+            <ComboBox ItemsSource="{Binding AutoTuningLevels}" AutomationProperties.Name="受信ウィンドウ自動調整レベル" SelectedItem="{Binding SelectedAutoTuningLevel}" Width="180" />
             <Button Content="設定" Command="{Binding SetAutoTuningLevelCommand}" IsEnabled="{Binding !IsOperationRunning}" />
           </StackPanel>
 
@@ -123,7 +123,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="選択したアダプタの IPv4 / IPv6 MTU を 1500 に戻します。" />
           <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
+            <ComboBox Grid.Column="0" AutomationProperties.Name="MTU を戻す対象アダプタ" ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
                       IsEnabled="{Binding !IsMtuBusy}" HorizontalAlignment="Stretch">
               <ComboBox.ItemTemplate>
                 <DataTemplate>
@@ -198,7 +198,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="TCP 設定の詳細をコマンド出力で確認できます。" />
           <Button Content="表示 (netsh int tcp show global)" Command="{Binding ShowGlobalStatusCommand}" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Left" />
-          <TextBox Text="{Binding GlobalStatusOutput}" IsReadOnly="True" FontFamily="Consolas,Menlo,monospace" AcceptsReturn="True" Height="160" TextWrapping="NoWrap" />
+          <TextBox Text="{Binding GlobalStatusOutput}" AutomationProperties.Name="netsh の出力" IsReadOnly="True" FontFamily="Consolas,Menlo,monospace" AcceptsReturn="True" Height="160" TextWrapping="NoWrap" />
         </StackPanel>
       </primitives:HeaderedContentControl>
 

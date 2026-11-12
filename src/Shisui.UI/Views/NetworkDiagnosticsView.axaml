@@ -15,7 +15,7 @@
           <TextBlock Classes="caption" TextWrapping="Wrap"
                      Text="IP アドレスまたはホスト名を指定します。" />
           <TextBlock Text="よく使う対象" FontWeight="SemiBold" />
-          <ComboBox ItemsSource="{Binding TargetPresets}"
+          <ComboBox ItemsSource="{Binding TargetPresets}" AutomationProperties.Name="よく使う対象"
                     SelectedItem="{Binding SelectedTargetPreset}"
                     PlaceholderText="よく使う対象から選択"
                     IsEnabled="{Binding !IsBusy}"
@@ -34,12 +34,12 @@
           <TextBlock Text="またはホストを直接入力" FontWeight="SemiBold" Margin="0,2,0,0" />
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="Ping測定回数" VerticalAlignment="Center" />
-            <ComboBox ItemsSource="{Binding PingCounts}" SelectedItem="{Binding PingCount}"
+            <ComboBox ItemsSource="{Binding PingCounts}" AutomationProperties.Name="Ping測定回数" SelectedItem="{Binding PingCount}"
                       IsEnabled="{Binding !IsBusy}" MinWidth="90" />
             <Button Content="測定を中止" Command="{Binding PingCancelCommand}" />
           </StackPanel>
           <Grid ColumnDefinitions="*,Auto,Auto">
-            <TextBox Grid.Column="0" Text="{Binding Host}" PlaceholderText="例: 1.1.1.1 または example.com"
+            <TextBox Grid.Column="0" Text="{Binding Host}" AutomationProperties.Name="ホスト" PlaceholderText="例: 1.1.1.1 または example.com"
                      IsEnabled="{Binding !IsBusy}" />
             <Button Grid.Column="1" Content="Ping" Command="{Binding PingCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />
             <Button Grid.Column="2" Content="トレースルート" Command="{Binding TraceRouteCommand}" IsEnabled="{Binding !IsBusy}" Margin="8,0,0,0" />

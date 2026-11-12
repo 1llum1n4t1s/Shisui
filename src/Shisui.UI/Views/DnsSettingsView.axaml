@@ -15,7 +15,7 @@
       <primitives:HeaderedContentControl Header="ネットワークアダプタ">
         <StackPanel Spacing="10">
           <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0"
+            <ComboBox Grid.Column="0" AutomationProperties.Name="ネットワークアダプタ"
                       ItemsSource="{Binding Adapters}"
                       SelectedItem="{Binding SelectedAdapter}"
                       IsEnabled="{Binding !IsBusy}"
@@ -53,7 +53,7 @@
 
       <primitives:HeaderedContentControl Header="DNS プロバイダ">
         <StackPanel Spacing="8">
-          <ComboBox ItemsSource="{Binding Presets}"
+          <ComboBox ItemsSource="{Binding Presets}" AutomationProperties.Name="DNS プロバイダ"
                     SelectedItem="{Binding SelectedPreset}"
                     IsEnabled="{Binding !IsBusy}"
                     HorizontalAlignment="Stretch">
@@ -71,21 +71,21 @@
             <StackPanel Orientation="Horizontal" Spacing="12">
               <StackPanel Width="220">
                 <TextBlock Text="IPv4 プライマリ" Classes="caption" />
-                <TextBox Text="{Binding CustomIpv4Primary}" PlaceholderText="例: 1.1.1.1" IsEnabled="{Binding !IsBusy}" />
+                <TextBox Text="{Binding CustomIpv4Primary}" AutomationProperties.Name="IPv4 プライマリ" PlaceholderText="例: 1.1.1.1" IsEnabled="{Binding !IsBusy}" />
               </StackPanel>
               <StackPanel Width="220">
                 <TextBlock Text="IPv4 セカンダリ" Classes="caption" />
-                <TextBox Text="{Binding CustomIpv4Secondary}" PlaceholderText="例: 1.0.0.1" IsEnabled="{Binding !IsBusy}" />
+                <TextBox Text="{Binding CustomIpv4Secondary}" AutomationProperties.Name="IPv4 セカンダリ" PlaceholderText="例: 1.0.0.1" IsEnabled="{Binding !IsBusy}" />
               </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12">
               <StackPanel Width="220">
                 <TextBlock Text="IPv6 プライマリ" Classes="caption" />
-                <TextBox Text="{Binding CustomIpv6Primary}" PlaceholderText="例: 2606:4700:4700::1111" IsEnabled="{Binding !IsBusy}" />
+                <TextBox Text="{Binding CustomIpv6Primary}" AutomationProperties.Name="IPv6 プライマリ" PlaceholderText="例: 2606:4700:4700::1111" IsEnabled="{Binding !IsBusy}" />
               </StackPanel>
               <StackPanel Width="220">
                 <TextBlock Text="IPv6 セカンダリ" Classes="caption" />
-                <TextBox Text="{Binding CustomIpv6Secondary}" PlaceholderText="例: 2606:4700:4700::1001" IsEnabled="{Binding !IsBusy}" />
+                <TextBox Text="{Binding CustomIpv6Secondary}" AutomationProperties.Name="IPv6 セカンダリ" PlaceholderText="例: 2606:4700:4700::1001" IsEnabled="{Binding !IsBusy}" />
               </StackPanel>
             </StackPanel>
           </StackPanel>

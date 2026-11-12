@@ -22,6 +22,15 @@ public partial class TcpTuningViewModel(
 
     public event EventHandler<CommandExecutionResult>? CommandExecuted;
 
+    /// <summary>複数のコマンド結果を受け取り順のまま実行ログへ通知する。</summary>
+    private void RaiseCommandExecuted(IEnumerable<CommandExecutionResult> results)
+    {
+        foreach (var result in results)
+        {
+            CommandExecuted?.Invoke(this, result);
+        }
+    }
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EnableTcpAckFrequencyCommand))]
     [NotifyCanExecuteChangedFor(nameof(ResetTcpAckFrequencyCommand))]
@@ -104,6 +113,12 @@ public partial class TcpTuningViewModel(
 
             SelectedAdapter = Adapters.FirstOrDefault(adapter => adapter.Id == selectedId)
                               ?? Adapters.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            // Initialize からの fire-and-forget、一覧更新コマンド、自動最適化後の再同期のどれから呼ばれても、
+            // 取得失敗を未観測例外や UI スレッドの未処理例外にせず、DNS タブと同じく状態表示へ出す。
+            StatusText = $"アダプタの取得に失敗しました: {ex.Message}";
         }
         finally
         {
@@ -199,10 +214,7 @@ public partial class TcpTuningViewModel(
         {
             using var mutationLease = await networkMutationGate.EnterAsync();
             var results = await tcpTuningService.RevertMtuToDefaultAsync(targetAdapter.Id);
-            foreach (var result in results)
-            {
-                CommandExecuted?.Invoke(this, result);
-            }
+            RaiseCommandExecuted(results);
 
             StatusText = results.All(r => r.Success)
                 ? $"{targetAdapter.DisplayName} の IPv4/IPv6 MTU を 1500 に戻しました"
@@ -465,10 +477,7 @@ public partial class TcpTuningViewModel(
         {
             using var mutationLease = await networkMutationGate.EnterAsync();
             var results = await action(CancellationToken.None);
-            foreach (var result in results)
-            {
-                CommandExecuted?.Invoke(this, result);
-            }
+            RaiseCommandExecuted(results);
 
             var verification = verify is null ? null : await VerifyStateAsync(verify);
             StatusText = results.All(r => r.Success) && (verification?.Success ?? true)

@@ -3,6 +3,8 @@ using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
 using Shisui.UI.ViewModels;
 
+using static Shisui.Tests.TcpSettingsSnapshotFactory;
+
 namespace Shisui.Tests;
 
 [TestClass]
@@ -154,6 +156,23 @@ public class TcpTuningViewModelTests
     }
 
     [TestMethod]
+    public async Task LoadAdaptersCommand_AdapterQueryThrows_ReportsStatusAndDoesNotThrow()
+    {
+        // 一覧取得の失敗が Initialize の fire-and-forget や UI コマンドの未処理例外にならず、
+        // DNS タブと同じく状態表示へ出ることを確認する。
+        var viewModel = new TcpTuningViewModel(
+            new FakeTcpTuningService(),
+            new ThrowingNetworkAdapterService(),
+            new FakeNetworkMutationGate());
+
+        await viewModel.LoadAdaptersCommand.ExecuteAsync(null);
+
+        StringAssert.Contains(viewModel.StatusText, "アダプタの取得に失敗しました");
+        StringAssert.Contains(viewModel.StatusText, "adapter query failed");
+        Assert.IsFalse(viewModel.IsMtuBusy);
+    }
+
+    [TestMethod]
     public async Task RevertMtuCommand_SelectionChangesWhileWaitingForGate_UsesOriginalAdapter()
     {
         var ethernet = new NetworkAdapterInfo("Ethernet", "有線LAN", null, true, [], []);
@@ -181,26 +200,6 @@ public class TcpTuningViewModelTests
 
     private static CommandExecutionResult Success() =>
         new(true, "netsh", 0, string.Empty, string.Empty);
-
-    private static TcpSettingsSnapshot CreateSnapshot(
-        Bbr2Status bbr2 = Bbr2Status.Enabled,
-        string autoTuningLevel = "Normal",
-        string autoTuningLevelGroupPolicy = "",
-        string autoTuningLevelEffective = "Local") =>
-        new(
-            bbr2,
-            new Dictionary<TcpGlobalOption, string>(),
-            autoTuningLevel,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Internet"] = "BBR2",
-                ["InternetCustom"] = "BBR2",
-                ["Datacenter"] = "BBR2",
-                ["DatacenterCustom"] = "BBR2",
-                ["Compat"] = bbr2 == Bbr2Status.Partial ? "CUBIC" : "BBR2",
-            },
-            autoTuningLevelGroupPolicy,
-            autoTuningLevelEffective);
 
     private sealed class FakeTcpTuningService : TcpTuningServiceTestStub
     {
@@ -248,6 +247,17 @@ public class TcpTuningViewModelTests
     {
         public Task<IReadOnlyList<NetworkAdapterInfo>> GetAdaptersAsync(CancellationToken ct = default) =>
             Task.FromResult(adapters ?? []);
+
+        public Task<NetworkAdapterDetails?> GetAdapterDetailsAsync(
+            string adapterId,
+            CancellationToken ct = default) =>
+            Task.FromResult<NetworkAdapterDetails?>(null);
+    }
+
+    private sealed class ThrowingNetworkAdapterService : INetworkAdapterService
+    {
+        public Task<IReadOnlyList<NetworkAdapterInfo>> GetAdaptersAsync(CancellationToken ct = default) =>
+            Task.FromException<IReadOnlyList<NetworkAdapterInfo>>(new InvalidOperationException("adapter query failed"));
 
         public Task<NetworkAdapterDetails?> GetAdapterDetailsAsync(
             string adapterId,

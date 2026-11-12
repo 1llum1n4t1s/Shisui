@@ -16,7 +16,7 @@
         <StackPanel Spacing="10">
           <TextBlock Text="対象ネットワークアダプター" FontWeight="SemiBold" />
           <Grid ColumnDefinitions="*,Auto">
-            <ComboBox Grid.Column="0"
+            <ComboBox Grid.Column="0" AutomationProperties.Name="対象ネットワークアダプター"
                       ItemsSource="{Binding DnsSettings.Adapters}"
                       SelectedItem="{Binding DnsSettings.SelectedAdapter}"
                       IsEnabled="{Binding !IsOperationRunning}"

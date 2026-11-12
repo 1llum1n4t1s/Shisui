@@ -3,6 +3,8 @@ using Shisui.Core.Interfaces;
 using Shisui.Core.Models;
 using Shisui.Core.Services;
 
+using static Shisui.Tests.TcpSettingsSnapshotFactory;
+
 namespace Shisui.Tests;
 
 [TestClass]
@@ -80,24 +82,4 @@ public class TcpSettingsVerifierTests
         Assert.IsFalse(result.Success);
         StringAssert.Contains(result.StandardError, "確認できませんでした");
     }
-
-    private static TcpSettingsSnapshot CreateSnapshot(
-        Bbr2Status bbr2 = Bbr2Status.Enabled,
-        string autoTuningLevel = "Normal",
-        string autoTuningLevelGroupPolicy = "",
-        string autoTuningLevelEffective = "Local") =>
-        new(
-            bbr2,
-            new Dictionary<TcpGlobalOption, string>(),
-            autoTuningLevel,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["Internet"] = "BBR2",
-                ["InternetCustom"] = "BBR2",
-                ["Datacenter"] = "BBR2",
-                ["DatacenterCustom"] = "BBR2",
-                ["Compat"] = bbr2 == Bbr2Status.Partial ? "CUBIC" : "BBR2",
-            },
-            autoTuningLevelGroupPolicy,
-            autoTuningLevelEffective);
 }

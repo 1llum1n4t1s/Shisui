@@ -737,7 +737,12 @@ public static partial class WindowsPerMachineMigration
     {
         Directory.CreateDirectory(AppPaths.AppDataDirectory);
         var pending = new PendingMigration(legacyRoot, parentProcessId, installedExecutable);
-        File.WriteAllText(PendingFilePath, JsonSerializer.Serialize(pending, WindowsPerMachineMigrationJsonContext.Default.PendingMigration));
+        // 強制終了などで書きかけの JSON が残ると、読込側は null 扱いになり旧プロセス ID 等を失う。
+        // 設定ファイル (SettingsService) と同じく一時ファイルへ書き切ってから同一フォルダー内で置き換える。
+        // flush はしないため停電時の完全な保証ではないが、読込失敗時は null として既存の補完経路に任せる。
+        var tempPath = PendingFilePath + ".tmp";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(pending, WindowsPerMachineMigrationJsonContext.Default.PendingMigration));
+        File.Move(tempPath, PendingFilePath, overwrite: true);
         if (installedExecutable is not null)
         {
             RegisterCleanupRunOnce(installedExecutable);
@@ -830,6 +835,8 @@ public static partial class WindowsPerMachineMigration
     private static void ClearPendingMigration()
     {
         DeleteIfExists(PendingFilePath);
+        // 置き換え前に中断された一時ファイルも、今回の保留情報と一緒に片付ける。
+        DeleteIfExists(PendingFilePath + ".tmp");
         RemoveCleanupRunOnce();
     }
 
