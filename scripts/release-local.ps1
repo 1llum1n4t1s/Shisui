@@ -157,7 +157,7 @@ if ($LASTEXITCODE -ne 0 -or $currentSha -cne $SourceGitSha) { throw '固定sourc
 $sourceChanges = @(& git status --porcelain --untracked-files=normal)
 if ($LASTEXITCODE -ne 0 -or $sourceChanges.Count -gt 0) { throw '固定sourceの配布にはクリーンなworking treeが必要です。' }
 $dotnetSdkVersion = (& dotnet --version).Trim()
-if ($LASTEXITCODE -ne 0 -or $dotnetSdkVersion -notmatch '^10\.') { throw '.NET 10 SDKが必要です。' }
+if ($LASTEXITCODE -ne 0 -or $dotnetSdkVersion -notmatch '^11\.') { throw '.NET 11 SDKが必要です。' }
 
 # SimplySign 接続確認 (証明書が見えなければ署名できないので最初に落とす)
 $cert = Get-ChildItem Cert:\CurrentUser\My |
@@ -212,7 +212,7 @@ foreach ($runtime in $Runtimes) {
     Invoke-Native "dotnet publish ($runtime)" {
         dotnet publish src/Shisui.UI/Shisui.UI.csproj -c Release -r $runtime `
             --self-contained true --no-restore -p:OS=Windows_NT -o $publishDir `
-            -p:PublishAot=true -p:TargetFramework=net10.0 "-p:SourceRevisionId=$SourceGitSha" `
+            -p:PublishAot=true -p:TargetFramework=net11.0 "-p:SourceRevisionId=$SourceGitSha" `
             "-p:InformationalVersion=$version+$SourceGitSha" -p:IncludeSourceRevisionInInformationalVersion=false `
             -p:UseArtifactsOutput=true "-p:ArtifactsPath=$BuildOutputDir" @aotToolArgs
     }
@@ -277,7 +277,7 @@ if ($SkipUpload) {
 
 # ---- 1.5 現行配信メタデータの退避 ----
 Set-Location $WorkDir
-# 新しい版を公開した直後に検証が失敗した場合、固定URLのメタデータだけを直前版へ戻せるようにする。
+# 新しい版のアップロードやキャッシュ削除が失敗した場合、固定URLのメタデータだけを直前版へ戻せるようにする。
 # 直前 manifest が参照する nupkg を含め、既存の配布物は保持する。
 New-Item -ItemType Directory -Path $RollbackDir -Force | Out-Null
 $artifactFiles = @(Get-ChildItem $ArtifactsDir -File)
@@ -380,146 +380,52 @@ try {
     Write-Host "✅ R2 アップロード完了: $uploaded ファイル"
 
     # ---- 2.5 Cloudflare エッジキャッシュのパージ ----
-    # 固定名ファイルの実物を先に照合し、古い内容が確認できた URL だけをパージする。
-    Write-Host '== Cloudflare キャッシュ確認 ==' -ForegroundColor Cyan
-    $probeDir = Join-Path $WorkDir 'cache-probe'
-    New-Item -ItemType Directory -Path $probeDir -Force | Out-Null
-    $purgeUrls = @(
-        foreach ($file in ($publishArtifactFiles | Where-Object { $_.Name -notlike '*.nupkg' })) {
-            $url = "$BaseUrl/$($file.Name)"
-            $probePath = Join-Path $probeDir $file.Name
-            Invoke-WebRequest -Uri "${url}?_=$([Guid]::NewGuid().ToString('N'))" `
-                -Headers @{ 'Cache-Control' = 'no-cache' } -OutFile $probePath -TimeoutSec 60
-            # query が別キャッシュになる設定でも、クライアントが使う固定 URL を確認する。
-            $fixedProbePath = $probePath + '.fixed'
-            Invoke-WebRequest -Uri $url -OutFile $fixedProbePath -TimeoutSec 60
-            if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -ne
-                (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -or
-                (Get-FileHash -LiteralPath $fixedProbePath -Algorithm SHA256).Hash -ne
-                (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) {
-                $url
-            }
-        }
-    )
+    Write-Host '== Cloudflare キャッシュパージ ==' -ForegroundColor Cyan
+    $purgeUrls = @($publishArtifactFiles | Where-Object { $_.Name -notlike '*.nupkg' } | ForEach-Object { "$BaseUrl/$($_.Name)" })
     if ($purgeUrls.Count -gt 0) {
         $purgeBody = [PSCustomObject]@{ files = $purgeUrls } | ConvertTo-Json -Compress
         $purgeResp = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
             -Headers $cfHeaders -ContentType 'application/json' -Body $purgeBody -TimeoutSec 30
         if (-not $purgeResp.success) { throw "Cloudflare キャッシュパージに失敗しました: $($purgeResp.errors | ConvertTo-Json -Compress)" }
-        Write-Host "  ✅ パージ: $($purgeUrls.Count) URL"
-        foreach ($file in ($publishArtifactFiles | Where-Object { "$BaseUrl/$($_.Name)" -in $purgeUrls })) {
-            $matched = $false
-            for ($attempt = 1; $attempt -le 6; $attempt++) {
-                $probePath = Join-Path $probeDir ($file.Name + '.fixed')
-                Invoke-WebRequest -Uri "$BaseUrl/$($file.Name)" -OutFile $probePath -TimeoutSec 60
-                if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -eq
-                    (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) {
-                    $matched = $true
-                    break
-                }
-                Start-Sleep -Seconds 3
-            }
-            if (-not $matched) { throw "固定 URL の配信内容が一致しません: $($file.Name)" }
-        }
-    } else {
-        Write-Host '  ✅ 配信ファイルの SHA256 一致。パージ不要'
-    }
-
-# ---- 3. 配信確認 (manifest 完全一致リトライ方式) ----
-# 単純な HTTP 200 だけでは CDN/edge が新しい manifest を配信していることを確認できない。
-# ローカルアップロード済 manifest と完全一致するまでリトライしてから次へ進む。
-    Write-Host '== 配信確認 (manifest 伝播待機) ==' -ForegroundColor Cyan
-    foreach ($runtime in $Runtimes) {
-    $channel = $RuntimeMatrix[$runtime].Channel
-    $url = "$BaseUrl/releases.$channel.json"
-    $localManifest = Get-Content (Join-Path $ArtifactsDir "releases.$channel.json") -Raw |
-        ConvertFrom-Json | ConvertTo-Json -Depth 100 -Compress
-
-    $maxAttempts = 18
-    $matched = $false
-    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        $resp = Invoke-WebRequest -Uri "${url}?_=$([Guid]::NewGuid().ToString('N'))" `
-            -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30
-        # R2 は text 系でない Content-Type で返すことがあり、その場合 .Content は byte[] になる
-        $raw = $resp.Content
-        if ($raw -is [byte[]]) { $raw = [System.Text.Encoding]::UTF8.GetString($raw) }
-        $remoteManifest = $raw | ConvertFrom-Json | ConvertTo-Json -Depth 100 -Compress
-        if ($localManifest -eq $remoteManifest) {
-            Write-Host "  ✅ $url がローカル manifest と一致 (attempt $attempt)"
-            $matched = $true
-            break
-        }
-        Write-Host "  ⚠️ remote manifest がまだ古い (attempt $attempt / $maxAttempts)、5 秒待機..."
-        Start-Sleep -Seconds 5
-    }
-        if (-not $matched) {
-            throw "remote manifest が $($maxAttempts * 5) 秒以内にローカルと一致しませんでした: $url"
-        }
-    }
-
-    # 旧PerUser版が安全に移行できるよう、固定URLのMSI本体もサイズ一致まで確認する。
-    foreach ($msi in $fixedBinaryFiles | Where-Object { $_.Extension -eq '.msi' }) {
-        $msiUrl = "$BaseUrl/$($msi.Name)"
-        $response = Invoke-WebRequest -Method Head -Uri "${msiUrl}?_=$([Guid]::NewGuid().ToString('N'))" `
-            -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 30
-        $remoteLengths = @(
-            @($response.Headers.'Content-Length') |
-                ForEach-Object { $_ -split ',' } |
-                ForEach-Object { $_.Trim() } |
-                Where-Object { $_ }
-        )
-        if ($remoteLengths.Count -eq 0) {
-            throw "remote MSI の Content-Length を取得できません: $msiUrl"
-        }
-        foreach ($remoteLengthText in $remoteLengths) {
-            $remoteLength = 0L
-            if (-not [long]::TryParse(
-                    $remoteLengthText,
-                    [Globalization.NumberStyles]::Integer,
-                    [Globalization.CultureInfo]::InvariantCulture,
-                    [ref]$remoteLength) -or
-                $remoteLength -ne $msi.Length) {
-                throw "remote MSI のサイズがローカルと一致しません: $msiUrl (remote=$remoteLengthText local=$($msi.Length))"
-            }
-        }
-        Write-Host "  ✅ $msiUrl の配信サイズ一致"
-    }
-    # 両方の通常URLを全bodyで照合する。query/headerやHEADは成功の代用にしない。
-    Write-Host '== 新旧ドメインの通常URL・全body SHA256照合 ==' -ForegroundColor Cyan
-    foreach ($hostUrl in @($BaseUrl, 'https://shisui.nephilim.jp')) {
-        $matched = $false
-        for ($attempt = 1; $attempt -le 18; $attempt++) {
-            $allMatched = $true
-            foreach ($file in @($metadataFiles + $payloadFiles + $fixedBinaryFiles)) {
-                $probePath = Join-Path $probeDir ("normal-$(([uri]$hostUrl).Host)-$($file.Name)")
-                try {
-                    Invoke-WebRequest -Uri "$hostUrl/$($file.Name)" -OutFile $probePath -TimeoutSec 60
-                    if ((Get-FileHash -LiteralPath $probePath -Algorithm SHA256).Hash -ne
-                        (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash) { $allMatched = $false }
-                } catch { $allMatched = $false }
-            }
-            if ($allMatched) { $matched = $true; break }
-            if ($attempt -lt 18) { Start-Sleep -Seconds 5 }
-        }
-        if (-not $matched) { throw "通常URLの最終成果物が一致しません: $hostUrl" }
-        Write-Host "  ✅ $hostUrl manifest/NUPKG/MSIの全body SHA256一致"
+        Write-Host "  ✅ パージ要求受理: $($purgeUrls.Count) URL"
     }
 } catch {
     $publishError = $_
+    # 1件の復元失敗で残りのメタデータ復元と再パージを止めず、元の公開失敗も失わないよう、
+    # 復元側の失敗は収集して最後に元のエラーと一緒に報告する。
+    $rollbackFailures = [System.Collections.Generic.List[string]]::new()
     $restoredUrls = [System.Collections.Generic.List[string]]::new()
-    foreach ($name in $publishedMetadata.Keys) {
+    foreach ($name in @($publishedMetadata.Keys)) {
         $backup = Join-Path $RollbackDir $name
-        if (Test-Path $backup) {
+        if (Test-Path -LiteralPath $backup) {
             Write-Warning "公開失敗のため直前版へ復元します: $name"
-            Send-ReleaseR2Object -File (Get-Item -LiteralPath $backup) -ExpectedETag $publishedMetadata[$name]
-            $restoredUrls.Add("$BaseUrl/$name")
+            try {
+                Send-ReleaseR2Object -File (Get-Item -LiteralPath $backup) -ExpectedETag $publishedMetadata[$name]
+                $restoredUrls.Add("$BaseUrl/$name")
+            } catch {
+                $rollbackFailures.Add("復元 $name — $($_.Exception.Message)")
+            }
         }
     }
 
     if ($zoneId -and $restoredUrls.Count -gt 0) {
-        $rollbackBody = "{`"files`":$(ConvertTo-Json -InputObject @($restoredUrls) -AsArray -Compress)}"
-        Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
-            -Headers $cfHeaders -ContentType 'application/json' -Body $rollbackBody -TimeoutSec 30 | Out-Null
+        try {
+            $rollbackBody = "{`"files`":$(ConvertTo-Json -InputObject @($restoredUrls) -AsArray -Compress)}"
+            $rollbackPurge = Invoke-RestMethod -Method Post -Uri "https://api.cloudflare.com/client/v4/zones/$zoneId/purge_cache" `
+                -Headers $cfHeaders -ContentType 'application/json' -Body $rollbackBody -TimeoutSec 30
+            if (-not $rollbackPurge.success) {
+                $rollbackFailures.Add("復元後のキャッシュパージ — $($rollbackPurge.errors | ConvertTo-Json -Compress)")
+            }
+        } catch {
+            $rollbackFailures.Add("復元後のキャッシュパージ — $($_.Exception.Message)")
+        }
+    }
+
+    if ($rollbackFailures.Count -gt 0) {
+        # 元の失敗に加え、直前版へ戻せていない固定URLがあることを明示して手動復旧を促す。
+        throw ("公開に失敗しました: $($publishError.Exception.Message)`n" +
+            "さらに直前版への復元で失敗があります。$RollbackDir の退避メタデータで手動復旧してください:`n  " +
+            ($rollbackFailures -join "`n  "))
     }
     throw $publishError
 }

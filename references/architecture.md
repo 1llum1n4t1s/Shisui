@@ -75,7 +75,7 @@ environment or the other. Verified on this machine (a WinExe/no-console harness 
 netsh emitted UTF-8 while the GUI's `Console.OutputEncoding` was CP932, which is exactly the mojibake case the
 old fixed-decode path produced (「繧｢繧ｯ繝・…」). CP932 Japanese byte sequences are essentially never valid
 strict UTF-8, so the try-UTF-8-then-OEM order self-detects safely. `CodePagesEncodingProvider` is registered in
-`ProcessCommandExecutor`'s static ctor (needed for `GetEncoding(932)`); it ships in the .NET 10 shared framework,
+`ProcessCommandExecutor`'s static ctor (needed for `GetEncoding(932)`); it ships in the .NET 11 shared framework,
 so **no `System.Text.Encoding.CodePages` PackageReference is needed** (adding it triggers an NU1510 prune
 warning). `DecodeConsoleOutput` is `internal` + unit-tested (`ProcessCommandExecutorDecodeTests`). Both process
 executors terminate the whole process tree both on cancellation and on other post-start exceptions, so a failed

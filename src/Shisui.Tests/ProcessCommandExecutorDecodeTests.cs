@@ -7,7 +7,7 @@ namespace Shisui.Tests;
 /// <summary>
 /// <see cref="ProcessCommandExecutor.DecodeConsoleOutput"/> のエンコーディング自動判別を検証する。
 /// netsh/ipconfig の出力が UTF-8 でも OEM コードページ (日本語 = CP932) でも正しく読めることを確認する。
-/// CP932 ケースは実行時に CodePages プロバイダが利用可能であることの検証も兼ねる (.NET 10 標準フレームワーク)。
+/// CP932 ケースは実行時に CodePages プロバイダが利用可能であることの検証も兼ねる (.NET 11 標準フレームワーク)。
 /// </summary>
 [TestClass]
 public class ProcessCommandExecutorDecodeTests

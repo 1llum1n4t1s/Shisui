@@ -11,8 +11,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($Runtime -ne 'win-x64' -or $SourceGitSha -notmatch '^[0-9a-f]{40}$' -or $DotnetSdkVersion -notmatch '^10\.') {
-    throw '配布入力は win-x64 / .NET 10 / 完全な source SHA に固定してください。'
+if ($Runtime -ne 'win-x64' -or $SourceGitSha -notmatch '^[0-9a-f]{40}$' -or $DotnetSdkVersion -notmatch '^11\.') {
+    throw '配布入力は win-x64 / .NET 11 / 完全な source SHA に固定してください。'
 }
 $root = [IO.Path]::GetFullPath($WorkDirectory)
 $artifacts = [IO.Path]::GetFullPath($ArtifactsDirectory)
@@ -128,7 +128,7 @@ if ($asset.FileName -cne $package.Name -or $asset.PackageId -cne 'Shisui' -or $a
 if ($asset.PSObject.Properties['SHA1'] -and $asset.SHA1 -ne (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA1).Hash) { throw 'manifestのSHA1が不一致です。' }
 $record = [ordered]@{
     Version = $Version; SourceGitSha = $SourceGitSha; Runtime = $Runtime; Configuration = 'Release'
-    TargetFramework = 'net10.0'; DotnetSdkVersion = $DotnetSdkVersion; PublishAot = $true; SelfContained = $true
+    TargetFramework = 'net11.0'; DotnetSdkVersion = $DotnetSdkVersion; PublishAot = $true; SelfContained = $true
     ExeProductVersion = $info.ProductVersion; ExeFileVersion = $info.FileVersion; PeMachine = 'AMD64'; ClrHeader = $false
     Signer = $SignerName; AuthenticodeStatus = 'Valid'; MsiProductVersion = $properties['ProductVersion']; MsiPlatform = 'x64'
     MsiAllUsers = $properties['ALLUSERS']; MsiInstallPerUser = $properties['MSIINSTALLPERUSER']; InstallDirectory = 'ProgramFiles64Folder\Shisui'

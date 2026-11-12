@@ -8,7 +8,7 @@
 
 Shisui は、DNS 設定、通信診断、ネットワークアダプター情報、Windows の TCP・メンテナンス操作を
 一つの Avalonia デスクトップ UI から扱うアプリです。コードは Windows と macOS を対象に
-`net10.0` で構成されていますが、署名・インストーラー・自動更新を含む正式な配布経路は Windows
+`net11.0` で構成されていますが、署名・インストーラー・自動更新を含む正式な配布経路は Windows
 win-x64 のみです。macOS 実装はコンパイルとパーサー単体テストまでで、実機検証と署名・notarization は行われていません。
 
 ## 主要コンポーネント
@@ -18,7 +18,7 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 | `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは service、executor、ネイティブ API 実装に閉じ込める |
 | `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
 | `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
-| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、R2 公開・検証 | ローカル署名環境と明示的なリリース操作を前提にする |
+| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、配布物検証、R2 公開 | ローカル署名環境と明示的なリリース操作を前提にする |
 
 `Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
 `ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
@@ -215,7 +215,7 @@ Roaming の設定フォルダーと、ログ以外の残存ファイルは保護
 起動時確認は `CheckForUpdatesOnStartup` に従い、MainWindow が確定するよう
 `Dispatcher.UIThread.Post(Background)` で遅延させます。開発・未インストール版では確認をスキップします。
 
-Windows リリースはクリーンな作業ツリーと HEAD に一致する完全な source SHA、.NET 10 SDK を前提に、
+Windows リリースはクリーンな作業ツリーと HEAD に一致する完全な source SHA、.NET 11 SDK を前提に、
 ローカルで win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
 生成、`ProgramFiles64Folder\Shisui` への Directory 表正規化、Authenticode 再署名・検証を行います。
 この正規化は旧 Velopack の `TARGETDIR\INSTALLFOLDER` 配置問題を防ぎ、移行時の
@@ -234,11 +234,7 @@ GitHub Releases は配信に使いません。
 公開は配信中 metadata の退避、版付き nupkg、固定名バイナリ、更新 metadata の順です。
 最初のアップロード前に、版付き payload の正確な R2 key を認証済み GET で照合します。
 404 のときだけ新規送信し、既存 bytes の SHA256 が一致すれば再送を省略します。不一致や照会不能では公開を停止し、同じ版を異なる内容で上書きしません。
-固定名ファイルは、キャッシュ回避クエリ付き URL とクライアントが使う固定 URL の実体を取得し、
-ローカル配布物との SHA256 一致を確認します。不一致の URL だけ Cloudflare cache purge を行い、
-固定 URL の実体が一致するまで上限付きで再確認します。さらに manifest の内容一致と固定 MSI の配信サイズを確認し、
-新旧両ドメインの通常 URL から manifest・NUPKG・MSI の全 body を取得し、ローカル最終配布物との SHA256 一致まで上限付きで確認します。
-この最終確認は HEAD やキャッシュ回避クエリの成功では代用しません。
+固定名ファイルは、R2アップロード後にCloudflare cache purgeを要求し、APIの受理を確認します。
 metadata 公開後の失敗では退避 metadata を復元して再 purge します。
 旧ドメインからの更新を維持するため、既存の版付き配布物と旧 Setup.exe は削除せず保持します。
 新しい PerUser Setup.exe は公開対象から除外します。
@@ -281,7 +277,7 @@ metadata 公開後の失敗では退避 metadata を復元して再 purge しま
 
 - **Core/UI/Tests の分離**: OS コマンドの組み立てと解析を UI から外し、実機を変更せずに大半をテストできます。
   その代わり、ViewModel はユースケースの順序と排他境界を明示的に管理します。
-- **プラットフォーム中立な `net10.0`**: 一つのモデルと UI を共有しつつ、OS 固有機能を DI で差し替えます。
+- **プラットフォーム中立な `net11.0`**: 一つのモデルと UI を共有しつつ、OS 固有機能を DI で差し替えます。
   Windows 専用機能は macOS で stub を返さず UI ごと隠すため、利用可能範囲が明確になります。
 - **Native AOT**: JIT を含まない単独配布と起動経路を採用しています。反面、reflection 依存を避け、
   JSON source generation と実配布条件での publish 検証が必要です。

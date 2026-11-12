@@ -93,7 +93,7 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   (`CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK x64 `signtool.exe`.
   `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
   `cloudflare.api_token` from the release script's configured secret source.
-- The release script requires a clean working tree (including untracked files), .NET 10 SDK,
+- The release script requires a clean working tree (including untracked files), .NET 11 SDK,
   and a full source commit SHA matching HEAD. `-SourceGitSha` defaults to HEAD; it cannot select
   another revision. These checks also apply to `-SkipUpload`.
 - Preserve the automatic post-signing `scripts/verify-release-artifacts.ps1` gate and its
@@ -103,7 +103,7 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
 - Run the certificate precheck and local release script as documented below.
   Change versions only through `/vava`; do not hand-edit `Directory.Build.props` `<Version>`.
 - Publish signed PerMachine MSI, never the generated PerUser Setup.exe. Preserve publication ordering,
-  rollback, propagation checks, and retention documented in DESIGN.
+  rollback, cache purge, and retention documented in DESIGN.
 - Keep `Shisui.UI.exe` and its assembly name: changing it breaks `avares://Shisui.UI/...` resources.
   The shortcut/display name is `Shisui` via `--packTitle`.
 - Preserve the legacy `shisui.nephilim.jp` update endpoint until 2027/05/31. Redirect only `/`;
