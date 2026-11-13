@@ -18,7 +18,7 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 | `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは service、executor、ネイティブ API 実装に閉じ込める |
 | `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
 | `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
-| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、配布物検証、R2 公開 | ローカル署名環境と明示的なリリース操作を前提にする |
+| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、配布物検証、R2 公開 | Sigilune によるクラウド署名と、明示的なリリース操作（手動起動の `release.yml` またはローカル実行）を前提にする |
 
 `Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
 `ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
@@ -218,8 +218,10 @@ Roaming の設定フォルダーと、ログ以外の残存ファイルは保護
 `Dispatcher.UIThread.Post(Background)` で遅延させます。開発・未インストール版では確認をスキップします。
 
 Windows リリースはクリーンな作業ツリーと HEAD に一致する完全な source SHA、.NET 11 SDK を前提に、
-ローカルで win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
+GitHub Actions の `release.yml`（手動起動・Environment `release`）またはローカルの同じスクリプトで、
+win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
 生成、`ProgramFiles64Folder\Shisui` への Directory 表正規化、Authenticode 再署名・検証を行います。
+署名は Sigilune が Certum のクラウド鍵で行い、補正で無効になった MSI の署名は `sigilune sign --replace` で置き換えます。
 この正規化は旧 Velopack の `TARGETDIR\INSTALLFOLDER` 配置問題を防ぎ、移行時の
 `VELOPACK_INSTALLDIR` 指定も同じ配置を補強します。更新と CLI の固定バージョンを揃え、
 MSI レイアウトの変化を署名済み配布経路で検証する理由です。
@@ -294,5 +296,7 @@ metadata 公開後の失敗では退避 metadata を復元して再 purge しま
   日本語・英語 Windows と console encoding の差で状態判定が壊れることを避けます。
 - **実行時昇格**: `requireAdministrator` manifest ではなく Velopack フック後の自己昇格を選び、
   インストーラー互換性と一度だけの UAC を両立します。
-- **ローカル署名リリース**: SimplySign の対話認証が必要なため CI では署名せず、再現可能な固定 CLI と
-  検証・ロールバックを含む `release-local.ps1` に配布責務を集約します。
+- **CI 署名リリース**: Sigilune が SimplySign Desktop なしで Certum のクラウド鍵を使えるため、手動起動の
+  `release.yml` が `release-local.ps1` を実行して署名・配信します。再現可能な固定 CLI と
+  検証・ロールバックを含む `release-local.ps1` に配布責務を集約し、ローカル実行も同じ手順で動きます。
+  TOTP 登録情報を持つ Secrets は Environment `release` のジョブだけが読みます。

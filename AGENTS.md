@@ -89,10 +89,13 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   The dialog package can be updated independently. Verify all update/package changes through
   `pwsh scripts/release-local.ps1 -SkipUpload`, including win-x64 Native AOT, MSI Directory normalization,
   re-signing, and signature checks. Preserve the explicit `vpk pack --runtime $runtime` matching publish.
-- Signing requires SimplySign Desktop to be authenticated with a valid certificate
-  (`CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK x64 `signtool.exe`.
+- Signing uses Sigilune (`scripts/Sigilune.Common.ps1`; Certum cloud key via signtool `/dlib`,
+  signer `CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK `signtool.exe`. SimplySign Desktop
+  is not used. The re-sign after MSI Directory normalization uses `sigilune sign --replace`.
+  Official releases run in `.github/workflows/release.yml` (manual, Environment `release`:
+  `SIGILUNE_EMAIL` / `SIGILUNE_TOTP_URI` / `CLOUDFLARE_API_TOKEN`); local runs need `sigilune setup`.
   `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
-  `cloudflare.api_token` from the release script's configured secret source.
+  `CLOUDFLARE_API_TOKEN`, or locally `cloudflare.api_token` from the release script's configured secret source.
 - The release script requires a clean working tree (including untracked files), .NET 11 SDK,
   and a full source commit SHA matching HEAD. `-SourceGitSha` defaults to HEAD; it cannot select
   another revision. These checks also apply to `-SkipUpload`.
@@ -100,7 +103,7 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   `verified-release-artifacts.json` evidence in the release work directory. Publish the same
   verified bytes without rebuilding or repacking. The verification scope and upload safeguards
   are documented in DESIGN; this static artifact check does not replace UI verification.
-- Run the certificate precheck and local release script as documented below.
+- Run the release workflow, or the Sigilune login precheck and local release script, as documented below.
   Change versions only through `/vava`; do not hand-edit `Directory.Build.props` `<Version>`.
 - Publish signed PerMachine MSI, never the generated PerUser Setup.exe. Preserve publication ordering,
   rollback, cache purge, and retention documented in DESIGN.
@@ -111,9 +114,16 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
 
 ### ローカルリリースの実行
 
-リポジトリルートで事前確認を行い、失敗時は「署名証明書が見つからないよ。SimplySign Desktop を起動してトークンでログインしてから /vava を再実行してね」。公開依頼時に成功を確認してから実行する。
+通常は GitHub Actions で実行する（本人の PC は不要）。`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残す。
 
 ```powershell
-pwsh -NoProfile -Command 'if (-not (Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -like "CN=Open Source Developer Yuichiro Shinozaki*" -and $_.NotAfter -gt (Get-Date) })) { exit 1 }'
-if ($LASTEXITCODE -eq 0) { pwsh -NoProfile -File scripts/release-local.ps1 } else { throw '署名証明書が見つからないよ。SimplySign Desktop を起動してトークンでログインしてから /vava を再実行してね' }
+gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref main -f skip_upload=false
+```
+
+ローカルで実行する場合は、リポジトリルートで Sigilune のクラウドログインを事前確認し、成功した場合だけ実行する。失敗時は「Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね」。ログインを自動再試行せず、署名を省略して続行しない。
+
+```powershell
+$sigilune = if ($env:SIGILUNE_EXE) { $env:SIGILUNE_EXE } else { Join-Path $env:USERPROFILE '.local\Sigilune\bin\sigilune.exe' }
+& $sigilune login
+if ($LASTEXITCODE -eq 0) { pwsh -NoProfile -File scripts/release-local.ps1 } else { throw 'Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね' }
 ```
