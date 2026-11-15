@@ -114,10 +114,10 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
 
 ### ローカルリリースの実行
 
-通常は GitHub Actions で実行する（本人の PC は不要）。`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残す。
+通常は GitHub Actions で実行する（本人の PC は不要）。`/vava` が main と `release/<version>` を push すると、`release/**` への push で `release.yml` が自動で起動する。`workflow_dispatch` は同じ `release/<version>` を指定した再実行にだけ使う（`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残せる）。main を指定した実行は、Environment `release` が `release/*` だけを許可するため拒否される。タグは使わない。
 
 ```powershell
-gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref main -f skip_upload=false
+gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref release/<version> -f skip_upload=false
 ```
 
 ローカルで実行する場合は、リポジトリルートで Sigilune のクラウドログインを事前確認し、成功した場合だけ実行する。失敗時は「Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね」。ログインを自動再試行せず、署名を省略して続行しない。
