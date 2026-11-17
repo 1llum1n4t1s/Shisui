@@ -31,7 +31,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 署名・R2 配信より前に既存のビルドと回帰テストを通す。失敗したら release job は動かない。
+  test:
+    name: テスト
+    uses: ./.github/workflows/dependency-validation.yml
+
   release:
+    needs: test
     runs-on: windows-latest
     timeout-minutes: 90
     environment: release
@@ -49,7 +55,7 @@ jobs:
         # actions/setup-dotnet@v6.1.0
         uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
-          # global.json が無いため既存の dependency-validation.yml と同じ指定にする (スクリプトは .NET 11 を要求する)。
+          # global.json が無いためテスト (dependency-validation.yml) と同じ指定にする (スクリプトは .NET 11 を要求する)。
           dotnet-version: 11.0.x
 
       - name: Sigilune を導入

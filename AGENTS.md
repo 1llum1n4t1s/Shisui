@@ -92,7 +92,9 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
 - Signing uses Sigilune (`scripts/Sigilune.Common.ps1`; Certum cloud key via signtool `/dlib`,
   signer `CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK `signtool.exe`. SimplySign Desktop
   is not used. The re-sign after MSI Directory normalization uses `sigilune sign --replace`.
-  Official releases run in `.github/workflows/release.yml` (manual, Environment `release`:
+  `.github/workflows/dependency-validation.yml` (build + `dotnet test` + R2 fixtures) runs on pushes to `main`, all PRs,
+  manual dispatch, and as the `test` job of `release.yml` (`release` job has `needs: test`, so a failing test blocks signing and delivery).
+  Official releases run in `.github/workflows/release.yml` (push to `release/**`, Environment `release`:
   `SIGILUNE_EMAIL` / `SIGILUNE_TOTP_URI` / `CLOUDFLARE_API_TOKEN`); local runs need `sigilune setup`.
   `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
   `CLOUDFLARE_API_TOKEN`, or locally `cloudflare.api_token` from the release script's configured secret source.
