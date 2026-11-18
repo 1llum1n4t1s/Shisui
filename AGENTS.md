@@ -94,7 +94,7 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
   is not used. The re-sign after MSI Directory normalization uses `sigilune sign --replace`.
   `.github/workflows/dependency-validation.yml` (build + `dotnet test` + R2 fixtures) runs on pushes to `main`, all PRs,
   manual dispatch, and as the `test` job of `release.yml` (`release` job has `needs: test`, so a failing test blocks signing and delivery).
-  Official releases run in `.github/workflows/release.yml` (push to `release/**`, Environment `release`:
+  Official releases run in `.github/workflows/release.yml` (push of a lightweight tag `v<version>` on a main commit, Environment `release`:
   `SIGILUNE_EMAIL` / `SIGILUNE_TOTP_URI` / `CLOUDFLARE_API_TOKEN`); local runs need `sigilune setup`.
   `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
   `CLOUDFLARE_API_TOKEN`, or locally `cloudflare.api_token` from the release script's configured secret source.
@@ -116,10 +116,10 @@ The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` an
 
 ### ローカルリリースの実行
 
-通常は GitHub Actions で実行する（本人の PC は不要）。`/vava` が main と `release/<version>` を push すると、`release/**` への push で `release.yml` が自動で起動する。`workflow_dispatch` は同じ `release/<version>` を指定した再実行にだけ使う（`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残せる）。main を指定した実行は、Environment `release` が `release/*` だけを許可するため拒否される。タグは使わない。
+通常は GitHub Actions で実行する（本人の PC は不要）。`/vava` が main を push したあと、その commit に軽量タグ `v<version>` を付けて push すると、`release.yml` が自動で起動する。`workflow_dispatch` は同じタグを指定した再実行にだけ使う（`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残せる）。タグ以外（main など）を指定した実行は、`release.yml` の guard job（タグであること・`v<版>` の形・軽量タグが同じ commit を指すこと・main の祖先であること・`Directory.Build.props` の版との一致）で拒否される。GitHub Release は作らない。
 
 ```powershell
-gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref release/<version> -f skip_upload=false
+gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref v<version> -f skip_upload=false
 ```
 
 ローカルで実行する場合は、リポジトリルートで Sigilune のクラウドログインを事前確認し、成功した場合だけ実行する。失敗時は「Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね」。ログインを自動再試行せず、署名を省略して続行しない。
