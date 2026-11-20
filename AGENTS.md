@@ -24,6 +24,8 @@ dotnet test Shisui.slnx --no-build --filter "FullyQualifiedName~WindowsTcpStateP
 pwsh scripts/release-local.ps1 -SkipUpload
 ```
 
+テストは `src/Shisui.Tests/AssemblyInfo.cs` の `Parallelize`（メソッド単位）で並列実行される。テストは static 状態・共有ファイル・環境変数に依存させない。
+
 No RID-locked `packages.lock.json` is used, so there is no `--no-restore` dance for local builds. The release
 script (`scripts/release-local.ps1`) does its own RID-locked self-contained publish; it does not touch a lockfile.
 Release output defaults to a unique user-Temp `Codex\Shisui\release-<id>` directory, with signed packages
