@@ -1,334 +1,53 @@
 # Shisui 設計
 
-この文書は、現在の実装から確認できる Shisui の構造、責務、境界、不変条件をまとめた設計の正本です。
-作業コマンドとエージェント向け制約は [AGENTS.md](AGENTS.md)、各機能のコマンドやパーサーの詳細は
+Shisui の構造、責務、境界、不変条件の要約です。詳細は `docs/design/` の各文書に分けています。
+作業コマンドとエージェント向け制約は [AGENTS.md](AGENTS.md)、機能別のコマンドやパーサーは
 [references/architecture.md](references/architecture.md)、利用者向け情報は [README.md](README.md) を参照してください。
 
 ## 目的と配布範囲
 
-Shisui は、DNS 設定、通信診断、ネットワークアダプター情報、Windows の TCP・メンテナンス操作を
-一つの Avalonia デスクトップ UI から扱うアプリです。コードは Windows と macOS を対象に
-`net11.0` で構成されていますが、署名・インストーラー・自動更新を含む正式な配布経路は Windows
-win-x64 のみです。macOS 実装はコンパイルとパーサー単体テストまでで、実機検証と署名・notarization は行われていません。
+DNS 設定、通信診断、アダプター情報、Windows の TCP・メンテナンス操作を一つの Avalonia UI で扱います。
+正式な配布経路は Windows win-x64 のみで、macOS は実機検証・署名未実施です。詳細は [overview.md](docs/design/overview.md)。
 
 ## 主要コンポーネント
 
-| コンポーネント | 責務 | 境界 |
-| --- | --- | --- |
-| `src/Shisui.Core` | インターフェース、モデル、設定・ログの保存先、OS 別サービス、コマンド生成・解析 | UI に依存しない。OS 呼び出しは service、executor、ネイティブ API 実装に閉じ込める |
-| `src/Shisui.UI` | Avalonia View、CommunityToolkit.Mvvm ViewModel、DI、起動・昇格・更新 UI | Core の抽象へ依存し、表示状態とユースケースの順序を管理する |
-| `src/Shisui.Tests` | builder、parser、ViewModel、移行・排他制御の単体テスト | 実機のネットワーク設定を変更するコマンドは実行しない |
-| `scripts` | Native AOT publish、Velopack MSI 生成、配置修正、署名、配布物検証、R2 公開 | Sigilune によるクラウド署名と、明示的なリリース操作（main の commit に付けた軽量タグ `v<版>` の push で起動する `release.yml` またはローカル実行）を前提にする |
-
-`Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
-`ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
-`traceroute` 実装を割り当てます。Windows 専用の TCP、メンテナンス、DoH/DoT、接続名整理、
-ゲーム向け NIC 設定、上り速度の制限、使い込んだ PC 向け診断は Windows でだけ DI 登録し、ViewModel の省略可能依存関係と UI の可視性で分離します。
+`Shisui.Core`（OS 非依存の抽象・サービス・builder/parser）、`Shisui.UI`（Avalonia・ViewModel・DI）、
+`Shisui.Tests`、`scripts`（AOT publish・署名・配布）の4つです。詳細は [architecture.md](docs/design/architecture.md)。
 
 ## データフロー
 
 ### 起動
 
-1. `Program` が Velopack の内部フックを UI、昇格、多重起動判定より先に処理します。
-2. Windows では旧スタートメニューを移行し、必要なら署名済み PerMachine MSI への移行・既知の誤配置修復を行います。
-3. `asInvoker` で開始した通常プロセスを `runas` で自己昇格してから `SingleInstanceGuard` を取得します。
-4. `App.axaml.cs` が OS に応じたサービスを DI 登録し、`MainWindowViewModel` と画面を構築します。
-
-この順序により、Velopack のフックを昇格要求で壊さず、非昇格プロセスが単一起動ロックを保持したまま
-昇格後プロセスを妨げる状態を避けます。macOS はアプリ全体を昇格せず、DNS 変更とキャッシュ消去だけを
-`osascript` 経由で管理者実行します。
-
-Release 版は UI 作成前にプロセス AppUserModelID を `velopack.Shisui` に設定し、
-インストール済みショートカットと一致させます。Debug 版はこれを省略し、
-Windows が開発版のタスクバーアイコンを製品ショートカットから解決することを避けます。
-ネットワーク変更はシステム全体に及ぶため、実行時昇格は Debug 版でも行います。
+Velopack フック、旧版移行、自己昇格、`SingleInstanceGuard`、DI 構築の順で処理します。[workflow.md](docs/design/workflow.md)
 
 ### インストール移行の信頼境界
 
-`WindowsPerMachineMigration` は旧 `%LocalAppData%\Shisui` 版を昇格する前に署名済み MSI へ移行します。
-キャンセル時は終了し、ユーザー書込み可能な旧バイナリを管理者実行し続けません。
-`ExecutableTrustVerifier` は System32 の WinVerifyTrust を使い、期待する publisher CN とチェーン全体の
-失効状態を検証します。ダウンロードした MSI は Online、ローカル実行ファイルは CacheOnly を使い、
-証明書は別のファイル読込みではなく検証済み trust chain から取得します。
-MSI の同一ハンドルを署名検証から `msiexec` 終了まで保持する条件は「重要な不変条件」に示します。
-
-信頼済み PerMachine 版は旧 `Update.exe` を実行せず、再解析ポイントを辿らない限定的な清掃を行います。
-HKLM の安定実行ファイル登録、`.msi-installed`、現在の実行場所と署名 publisher が一致する場合だけ
-旧ルートを扱います。MSI を直接入れた場合も、旧ルートに `Update.exe` や `packages` だけが残る場合も
-同じ判定を使います。ロックされた項目以外の清掃を進め、pending marker と HKCU RunOnce で残りを再試行します。
-pending marker は一時ファイルへ書き切ってから置き換え、書込み途中の中断で内容が壊れにくくします。
-読込めない marker は存在しない扱いにして既存の補完経路へ任せ、片付け時は一時ファイルも削除します。
-旧実行ファイル・パッケージ・HKCU アンインストール登録・個人用ショートカットを整理し、
-`%APPDATA%\Shisui` の設定とログは保持します。既定の旧ルートでは直下の `logs` を清掃対象から除外し、
-それだけが残った状態もインストール移行の清掃完了とします。ログの移行は後述の
-[設定と更新](#設定と更新)で扱い、ログの残存だけで pending marker や RunOnce を維持しません。
-管理者指定の独自インストール先は HKLM 登録・marker・署名の一致で受け入れ、勝手に移動しません。
-
-誤配置修復は確認済みの `C:\Shisui` と `Program Files\ゆろち\Shisui` だけを対象にし、
-同意後に固定配信元の署名済み MSI で `Program Files\Shisui` へ移します。
-MSI 実行前に正確な旧ルートを管理者書込み限定の HKLM marker へ記録し、RunOnce で清掃を引き継ぎます。
-同じ ProductCode の保守が何も変更しなければ `REINSTALL=ALL REINSTALLMODE=vamus` で再実行します。
-
-旧 `StartMenu\ゆろち\Shisui.lnk` は更新フックでルートへ移し、通常起動でも再試行します。
-既存ルートのショートカットは上書きせず、旧フォルダーは空のときだけ取り除きます。
-移動と旧 PerUser 清掃は Programs フォルダーへ再帰的な `SHChangeNotify(SHCNE_UPDATEDIR)` を送り、
-Windows Start の重複キャッシュを更新します。
+旧 PerUser 版は署名検証済みの PerMachine MSI へ移し、限定的な清掃だけを行います。[security.md](docs/design/security.md)
 
 ### ネットワーク操作
 
-自動最適化を先頭・初期表示にし、適用項目は ON/OFF・削除・既定化などの一覧で示します。処理中はタブとログを含む通常コンテンツを無効にし、進捗アニメーションと処理段階を全面表示します。キャンセル可能な Ping 測定中は、全面表示に既存の中止コマンドを公開します。各画面の実行状態とコマンド完了通知でロックを解除し、利用者の閉じる操作だけを処理中に止めます。更新・OS終了などの終了経路は妨げません。
-
-1. ViewModel が入力と選択状態を固定し、ViewModel または複合操作を担う service が変更操作の共有
-   `INetworkMutationGate` リースを取得します。
-2. Core のインターフェースを実装する service が、純粋な builder/catalog でコマンドを生成します。
-3. executor が外部プロセスを実行し、service または純粋な parser が結果をモデルへ変換します。
-   Winsock 登録の検査と WinHTTP キャッシュ操作は、専用の API 抽象を介して Windows ネイティブ API を呼びます。
-4. executor が実行時点の開始・終了、所要時間、終了コード、標準出力・標準エラーをファイルへ記録します。
-
-Windows のおまかせ設定では、最初の設定変更前に System ログの最新 RecordId と同イベント XML の SHA256 を実行中だけ保持します。別に Kernel-General 12 / Kernel-Boot 27 の RecordId・XML SHA256 の組を起動指紋として取得し、再確認待ち・再起動必須フラグとともに保存します。境界・指紋を取得できないか保存に失敗した場合はネットワーク設定変更を開始しません。設定後に DNS キャッシュの再構築と実際の名前解決、NRPT・hosts・変更前境界以降の関連イベントを検査します。失敗・確認不能は保持し、境界の消失・入替え・取得不能を新エラー0件にしません。
-次回アプリ起動時は共有リース内で保存した起動イベントも再照合します。同一指紋は SameBoot、保存した両レコードの同一性を確認でき、整合した新しい 12/27 の組が旧組より後にある場合だけ ConfirmedNewBoot、それ以外は Unknown です。古い27との混在、起動の再開・高速起動（BootType が0以外）、欠落・再利用・ログ消去・指紋取得不能を再起動の証拠にしません。時刻の差だけでも再起動と判定しません。SameBoot / Unknown は問い合わせ・キャッシュ再構築なしで確認待ちを維持します。旧版の pending のみは互換として一度確認し、新版の再起動必須・指紋欠落は Unknown と区別します。新起動確認後は新しい検査境界でキャッシュ再構築と名前解決・静的検査を最大2回行い、検査成功と解除の保存が成功した場合だけ待機を解除します。保存失敗時はメモリーも待機に戻し、次回自動確認を保証しません。NRPT・hosts・証明書・TLS・プロキシ設定の削除や書換え、Tailscale の再起動、イベント消去、旧設定の復元は行いません。
-名前解決の検証は `example.com` の A レコードを DNS のみ・hosts 不使用で問い合わせ、有効な IPv4 応答の有無を確認します。失敗時は問い合わせ（`Query`）と応答検証（`ResponseValidation`）の段階、PowerShell のエラー ID、例外型、メッセージを標準出力へ記録します。診断値の制御文字は空白に置換し、エラー ID・例外型は各160文字、メッセージは512文字を超えると切り詰めて `...` を付け、ログの行構造と出力量を制限します。
-
-ViewModel は従来の簡潔な画面ログを維持し、通知を実行IDで関連付けます。適用後確認などの合成結果は
-成功・失敗を問わず両方の出力をファイルへ記録します。
-
-共有ゲートは DNS、DoH/DoT、TCP、MTU、メンテナンス、ゲーム向け NIC 設定、NIC 詳細設定初期化、接続名整理を
-ViewModel 横断で直列化します。読み取り専用の状態取得と診断はゲートを占有しません。
-「おまかせ高速化設定」は同じリース内で IPv4/IPv6 スタックをリセットします。その後、IPsec の確立済み接続状態の破棄、条件付き Winsock リセットと WinHTTP 自動プロキシキャッシュ消去、選択 NIC の DHCP 解放・再取得、DNS、許可リスト化されたキャッシュ処理と UDP オフロード既定化・PCI Express 省電力の AC 時無効化、TCP 既定化と BBR2・RACK/TLP・RSS 有効化、低遅延を優先する RSC 無効化、選択物理 NIC のゲーム向け設定、
-切断済みデバイス整理を順番に実行し、接続名を参照する処理が終わった後にだけ名前整理を行います。
-IP 初期化は退避・復元を行わず、以前の固定 IP・静的経路・DNS や OS 全体の調整値を再適用しません。各 reset の前に対応する NSI 保存キー（IPv4 `{eb004a00-9b1a-11d4-9123-0050047759bc}\26` / IPv6 `{eb004a01-9b1a-11d4-9123-0050047759bc}\26`）の削除権限を検査します。読み書きは可能で削除だけが拒否され、所有者が Administrators、保護された正規順の Allow ACE だけの DACL で、既存権限で DACL を変更できる場合に限り、Administrators へのこのキーだけの非継承 DELETE を追加します。既存 ACE・所有者・グループ・保護状態は維持し、変更前後の権限を読み戻します。拒否 ACE・特殊 ACE・別所有者などは補完せず失敗を記録します。全ハンドルを閉じてから通常の netsh reset を実行し、キーが再生成される場合も次回は同じ検査を行います。
-Windows の reset ハンドラーは全項目の成功後も `ERROR_SUPPRESS_OUTPUT`（15017）を返し、netsh はこれを終了コード 1 に変換します。この reset だけは、終了コード 1・stderr 空・全 34 項目の成功と再起動案内が System32 の netiohlp リソースから構築した全文に一致する場合に限って完了と判定します。カテゴリ順と空のカテゴリ名も照合し、リソースの形式が未知、出力の欠落・追加、エラーがある場合は失敗のままです。生の終了コードは保持し、完了判定を別に記録します。反映には引き続き PC の再起動が必要です。それ以外の非 0 は失敗を記録して IPv6 のリセットと後続の再設定へ進み、全体を成功とは表示しません。各外部処理は 120 秒で中断を要求し、タイムアウト・例外・終了不明の場合だけ `RequiresOperationAbort` で後続の変更を停止し、再起動後のやり直しを案内します。子プロセスが終了要求を受け付けない場合も、実際の終了まで処理中状態と変更操作の排他を保持します。旧版の IP 退避情報は設定読込時の未使用フィールドとして無視し、起動時の復旧・復元ボタン・復旧待ちの操作制限は設けません。
-Wi-Fi の電源設定は現在のプランの AC 値だけを最大パフォーマンスへ変更し、DC 値を読み戻して保持を確認します。
-変更前の AC 値は電源プラン GUID ごとに AppSettings の `WifiPowerPlanSnapshots` へ保存し、再適用でも上書きせず、メンテナンスの復元操作で戻せます。
-復元時に現在値が適用値・元値のどちらでもない場合は外部変更を保護します。未確認の設定や変更中のプラン切替は成功として扱いません。
-Winsock SPI で非表示・単独 LSP を含む登録を列挙し、64 ビット OS では 32 ビット側も確認します。
-両カタログを完全に確認して全件が基底プロバイダーの場合だけリセットします。LSP があれば保護して省略し、確認不能は失敗として残します。
-手動メンテナンスの Winsock リセットは従来どおりです。条件付き修復は送信自動調整・TCP/NIC 設定より先に実行します。
-WinHTTP は `WinHttpResetAutoProxy` のキャッシュ専用フラグ `0x2000C` だけを許可し、保存済みプロキシ設定を書き換えません。
-同一サービス内で試行間隔を 30 秒以上に制限し、受付済み直後の再実行は省略、前回失敗直後の再実行は未完了として表示します。
-API の受付結果と実際のキャッシュ消去は区別し、消去の実測は行いません。
-IPsec は Main Mode・Quick Mode の両 SA の取得に成功した後、取得済みの Quick Mode、Main Mode の順に削除要求を行います。
-保存済みの IPsec 規則・認証設定には触れず、対象なし・未対応は理由付きで省略します。取得失敗や一部削除後の失敗は成功にしません。
-SA は再確立され得るため、全体が空のままであることを完了条件にはしません。
-WINS の名前再登録は DHCP 再取得後に行い、IP 有効かつ NetBIOS を無効にしていない NIC に有効な WINS 構成がある場合だけ `nbtstat -RR` を実行します。
-構成の確認失敗と対象なしを区別し、ネイティブコマンドの終了コードを保持します。
-IPsec・WINS の各条件付き処理は 45 秒で中断を要求します。executor の終了待機は「重要な不変条件」に従い、この期限は呼び出しが戻るまでの上限ではありません。タイムアウト結果の `RequiresOperationAbort` でおまかせ・手動一括の後続操作を中断し、PC 再起動を案内します。
-ルート表クリア（`route /f`）は既定経路を含めて通信を断つため、おまかせ設定の対象外です。手動メンテナンスでは引き続き選択できます。
-BBR2 は全 5 テンプレート、RACK/TLP は Compat を除く 4 テンプレートへ適用します。UDP は URO/USO のみを既定化し、
-UDP 全体の reset は行いません。TCP の既定化は不調な旧設定を除く修復工程とし、その後に RSS・ECN・timestamps・Fast Open / fallback 有効、RSC 無効を明示的に適用します。手動の既定化にはこの上書きを含めません。
-旧ACK/Nagle値の除去後、選択NICだけに`TcpAckFrequency=1`を設定し、DWORD型・値・NICのGUIDを読み戻して確認します。ただし、選択NICが現在の既定経路の回線で、その回線の計測が30日以内かつ上り容量10Mbps未満のときだけは設定を省き、除去後のWindows既定のままにします（`UplinkAckPolicy`）。回線・計測を確認できない場合は従来どおり1です。接続名整理より前に適用し、整理後は個別設定の一覧と選択対象も更新します。
-適用後は同じリース内で BBR2、RSS 有効・RSC 無効、Fast Open 有効と Internet の ECN・timestamps 有効、受信ウィンドウ実効値を読み戻し、
-ポリシー上書き・不完全取得を成功扱いしません。RACK/TLP は日英の既知ラベルで両方の有効状態を確認できた場合、
-再設定せず変更不要とします。未確認・無効の場合は設定コマンドの結果を保持します。Fast Open fallback・UDP などはコマンド受付結果のみです。
-DHCP は名前・GUID・InterfaceIndex が一致した選択 NIC に限定し、固定 IP と不明状態は解放しません。
-DHCP の利用状態が不明な場合は確認不能の失敗結果を残し、既知の対象外として成功表示しません。
-IPv4 は DHCP 有効時、IPv6 は有効な取得済み DHCPv6 リースがある場合だけ処理します。
-解放は 15 秒、更新・回復は独立した 60 秒の期限を持ち、解放の失敗・キャンセル後も更新を試みます。
-更新後は同じ NIC の DHCP 由来の有効な IP と既存デフォルトゲートウェイの回復を確認し、不明・未回復を失敗として残します。
-PCI Express は現在の電源プランのリンク状態の電源管理だけを対象に、AC 値をオフにします。
-変更前の取得に失敗した場合は書き込まず、適用後は AC 値がオフ・DC 値が変更前と同じであることを確認します。
-電源プランの切り替えや DC 値の書き込みは行いません。メンテナンス画面からも個別に実行できます。
-選択した NIC 以外の PCI Express 機器にも影響し、消費電力・発熱が増える可能性を画面に表示します。
+ViewModel が共有 `INetworkMutationGate` を取得し、service が builder で生成したコマンドを executor で実行します。[commands.md](docs/design/commands.md)
 
 ### 低遅延を優先する設定方針
 
-おまかせ高速化は、省電力・CPU負荷・最大受信速度より、通信の待機と損失回復の遅れを減らすことを優先します。
-Windows既定値であることだけを採用理由にしません。設定が受理されたこと、保存値・実効値の確認、通信相手との機能交渉、遅延の比較測定は別々に扱います。
-この方針はWindowsのTCP/IPと対応NICに適用し、すべてのゲーム・経路で改善するとの意味にはしません。
-
-| 設定 | おまかせの選択 | 根拠と適用条件 |
-| --- | --- | --- |
-| ECN | 有効 | 対応する相手・経路では、損失に代えて輻輳通知を扱える。対応ルーターのキュー制御も必要で、単独で待ち行列を解消する機能ではない。[IETF RFC 3168、2001年9月、§5–6](https://www.rfc-editor.org/rfc/rfc3168.html) |
-| timestamps | `allowed` から `enabled` | 受信接続だけでなく送信接続でも交渉する。RTT計測・PAWSを利用可能にするが、各パケットの送信待ちを直接短くする設定ではない。[Microsoft、netsh interface、tcp set global](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)、[IETF RFC 7323、2014年9月、§3–5](https://www.rfc-editor.org/rfc/rfc7323.html) |
-| Fast Open / fallback | 明示的に有効 | 対応アプリ・サーバーの初期データ付き接続では開始まで最大1 RTTを節約できる。アプリ側の利用と相手側の対応が必要。fallbackは互換性のため有効にする。[IETF RFC 7413、2014年12月、§1–4](https://www.rfc-editor.org/rfc/rfc7413.html)、[Microsoft、IPPROTO_TCP socket options、TCP_FASTOPEN](https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-tcp-socket-options) |
-| 割り込み調整・EEE・確認済み省電力 | 対応する選択NICで無効 | 割り込みの待機や低電力状態からの復帰を減らす。CPU負荷・消費電力の増加を許容する。[Microsoft、Network Adapter Performance Tuning、Low latency packet processing](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics)、[Intel、Ethernet Adapters and Devices User Guide 30.5、Other Power Options](https://edc.intel.com/content/www/us/en/design/products/ethernet/adapters-and-devices-user-guide/30.5/other-power-options/) |
-| RSS・LSOv2・チェックサム | 有効を維持 | Microsoftの低遅延向け指針もstatic offloadの有効化を挙げる。LSOは大きなTCP送信の分割であり、小さなUDPゲーム通信の待ちを直接取り除く設定ではない。[Microsoft、同Low latency節](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics) |
-| TCP RSC・対応NICのUDP URO | 無効を維持 | CPU負荷より低遅延を優先する選択。TCP RSCの無効化は低遅延用途で利益がある場合の選択肢だが、合成のためにTCP通知を次のDPCまで遅らせる実装は仕様上禁止される。常にタイマー待ちが加わるとは説明しない。UROによるゲーム遅延改善量は未実測。[Microsoft、Choosing a Network Adapter、RSC](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)、[Indicating Coalesced Segments](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/indicating-coalesced-segments)、[UDP RSC Offload](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/udp-rsc-offload) |
-| RACK/TLP・受信ウィンドウ | 組で有効・Normalを維持 | 損失検出と受信ウィンドウの不足を避ける。Experimentalや再送タイマーの短縮が通常のRTTを短くするとは判断しない。[IETF RFC 8985、2021年2月](https://www.rfc-editor.org/rfc/rfc8985.html)、[Microsoft、netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface) |
-| TCP初回再送・SYN再送 | `initialrto=1000 maxsynretransmissions=4`を1コマンドで組にし、Internetテンプレートの値を読み戻す | 接続要求が失われたときの再試行を早める。RTO単独だと接続断念が3000ms×2回の21秒から1000ms×2回の7秒に早まるため、SYN再送4回（1+2+4+8+16=31秒）と必ず組にし、断念までの時間をどちらのOS既定値（3000/2または1000/4。どちらかは未確認）以上にも保つ。実機（build 26300）で適用・読み戻し（1000/4）・元の値への復元を確認。通常のRTTを短くする設定ではなく、送信中の待ち行列にも効かない。手動の既定化は従来どおり3000/2（未変更のWindowsで既定値を確認できるまで現状維持）。遅延への効果は未測定 |
-
-資料の確認日は2026年10月23日です。MicrosoftのNIC指針はWindows Server向けのため、Windows 11の各ゲームでの効果を実証する資料とは区別します。
-ローカルのWindowsビルド26300で設定値・照会経路を確認していますが、このプロファイルでのRTT・ジッター・損失・フレーム時間の比較測定は未実施です。
-BBR2とloopback Large MTUの既存組み合わせは維持しますが、全通信やUDPゲームでの低遅延を示す測定結果はありません。
-
-TCP全体の`pacingprofile=always`を追加適用します。製品のおまかせ設定は選択NICの媒体で適用を分けません。送信の平滑化とキュー圧の抑制という機構を優先する方針で、BBR2を必須条件とはしません。[IETF BBR draft §4.2](https://www.ietf.org/archive/id/draft-ietf-ccwg-bbr-05.html)、[Microsoft netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)を参照してください。有線・BBR2固定のoff/always/off比較では中央値の一貫した改善はなく、Upload P95は改善側でした。この計測条件は製品の媒体制限ではなく、実測で改善が証明された設定や、すべての環境で低遅延になる設定とは説明しません。
-System32のnetshの終了値と、`int tcp dump`の`set global`行にある固定トークン`pacingprofile=always`の一意な読み戻しを確認します。保証するのは保存された構成で、各接続の実際のペーシング挙動や遅延ではありません。個別の既定化は引き続き`default`です。
-
-RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、HyStart・PRRの新たな強制値は追加しません。RTOは上の表の初回再送・SYN再送の組だけを例外とし、それ以外のRTO値は強制しません。
-負荷・ドライバー・輻輳制御との組み合わせを確認する必要があり、低遅延に有利な共通値を確定できないためです。
-旧ACK/Nagleレジストリ調整の除去後、選択NICの既存インターフェースキーへ`TcpAckFrequency`をDWORDの1で設定します。
-2026年10月24日のWindows 11ビルド26300・Wi-FiでのA/B/A2各3試行では、受信からACK送信までの時間の中央値の平均が44.665ms → 0.125ms → 44.696msとなりました。
-各段階の実再起動と設定値を照合したTCPIP層の観測で、他のNIC・Windowsビルド・ゲームやpingへの効果、上り混雑時の影響は未測定です。
-上りが細い回線では、即時ACKが上りを圧迫し得ます。試算として、この1台で下り90〜95Mbps中の送信（ほぼACK）は3.5〜4.7Mbpsで、上り10Mbps未満の回線なら約35〜47%に当たります。この観測は即時ACKと既定のACKの比較ではなく、ACK頻度のA/Bは未実施です。そのため、30日以内に計測済みで上り10Mbps未満と確認できた回線だけ設定を省き、確認できなければ従来の1にします。おまかせから計測・制限は起動しません。
-個別設定にも選択NICへの値1の適用・設定値表示・値の削除によるWindows既定への復帰を設けます。変更後はPCの再起動が必要で、設定値の表示だけでは再起動後の実動作を保証しません。
-`TcpDelAckTicks`の旧Windows向け説明やMSMQ固有の`TCPNoDelay`を一般アプリへ転用しません。
-テンプレートのDelayedAckFrequency / DelayedAckTimeoutMsは変更せず、インターフェースの値だけを操作します。関連する仕様資料は[Microsoft、KB328890](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/registry-entry-control-tcp-acknowledgment-behavior)、[Set-NetTCPSetting、DelayedAckFrequency / DelayedAckTimeoutMs](https://learn.microsoft.com/en-us/powershell/module/nettcpip/set-nettcpsetting)を参照してください。
-
-### ゲーム向け NIC 設定
-
-Windows専用のゲーム向けNIC設定は「おまかせ高速化設定」に含めます。画面の個別適用・復元欄は設けず、一括適用へ集約します。
-物理 Ethernet/Wi-Fi の対応する標準プロパティの RSS・LSOv2 IPv4/IPv6 を 1、IP IPv4・TCP/UDP IPv4/IPv6 のチェックサムオフロードを 3（送受信有効）にします。
-二値項目は 0/1 の両方、チェックサム項目は元値と目標値がドライバーの対応値に含まれることを確認します。受信処理や CPU 負荷への効果と、ゲーム・WAN の遅延改善は区別します。
-標準 `*UdpRsc` を公開し0/1に対応する物理Ethernet/Wi-Fiでは、NICのUROを0（無効）にします。OS側のUDP URO/USO既定化とは別に扱います。
-物理Ethernetの `*InterruptModeration` / `*EEE`、物理Wi-Fiの `*InterruptModeration` を、対応値を確認して無効化します。
-さらに、プロバイダー名またはPCI/USBベンダーIDからRealtek製と確認できる物理Ethernetでは、プロパティが存在して0/1をサポートする場合に `EnableGreenEthernet` / `GigaLite` / `PowerSavingMode` を扱います。これらの0/1定義はRTL8168HのINFで確認しています。
-同じRealtek物理Ethernetでは、デバイスの電源オフ設定をドライバーと保存先を確認して扱います。WDFキーが存在する場合は、実機で確認した `rt68cx21x64.sys` の既存 `IdleInWorkingState` DWORD 0/1 に限り 0 を保存します。キーや値の作成・削除、欠損値からの既定値推測、未確認ドライバーへの書込みはしません。WDFキーが存在しない場合のみ、デバイスマネージャーの電源管理タブで使われる `MSPower_DeviceEnable` を試みます。対象 PnP ID と数字のインスタンス接尾辞を完全照合し、Active と Enable が bool かつ Active=true の単一インスタンスだけを扱います。WDF確認失敗時は WMI に切り替えず理由を報告します。どちらも元値・ドライバーファイル名の保存、競合検出、復元、保存値の読み戻しを行い、方式やドライバーが変わった復元情報は拒否します。書込み直前にもWDFキーの有無とドライバーファイル名を再照合し、方式や対象の変化による誤書込みを防ぎます。`PnPCapabilities` は変更しません。WDFへの書込みは保存値の確認であり、稼働中の反映は確認していません。[Microsoft のWDF利用者制御](https://learn.microsoft.com/en-us/windows-hardware/drivers/wdf/user-control-of-device-idle-and-wake-behavior)と[電源管理タブ仕様](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/wmi-and-the-power-management-tab)を参照してください。
-Selective Suspend は詳細プロパティやレジストリ項目の有無から推測せず、電源管理APIで読み書きします。`AllowComputerToTurnOffDevice` が Enabled のときだけ、Selective Suspend の Enabled / Disabled を元値として扱います。親設定がそれ以外または取得不能なら他の電源管理値は未定義のため対象外にします。デバイスの電源オフ設定と Selective Suspend は同時に変更せず、前者を優先します。既存の Selective Suspend 復元情報がある場合は新しい電源オフ設定の変更を拒否します。方式変更が検出された場合は誤復元を避け、復元情報を保持して報告します。各経路の表示値を同一視せず、非対応はスキップし、取得エラーは別途報告します。[Microsoft の電源管理設定仕様](https://learn.microsoft.com/en-us/windows/win32/fwp/wmi/netadaptercimprov/msft-netadapterpowermanagementsettingdata)を参照してください。
-追加の `*FlowControl` / `AdvancedEEE` は物理EthernetかつPCI `VEN_10EC` を確認できるRealtekだけ0にし、USBやプロバイダー名だけの判定では変更しません。Flow Controlは標準0/1/2/3のうち元値と0の公開対応、Advanced EEEは0/1の公開対応を必須にします。RTL8125BGの導入済みINFでFlow Controlの公開値0/3、Advanced EEEの0/1を確認しています。
-ドライバープロバイダーとPCI vendor IDを確認できるMediaTek無線NICでは、定義を確認済みの `LowPowerEnable` / `UAPSDSupport` を扱います。
-追加のA-MSDU送信（`AMSDUTx`）は、物理Wi-Fi（型付きbool true・整数71）、provider完全一致 `MediaTek, Inc.`、PCI `VEN_14C3&DEV_0616`を区切り境界まで照合したRZ616に限定してOFF（0）にします。公開列挙値0/1の両方が必要です。既存の変更前値保存・競合検知・復元・保存値読み戻しを使い、未公開項目やキーを作成しません。送信側の集約を減らす機構を優先し、一貫した遅延改善は実証していません。[Microsoft WDI transmit operations](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-transmit-operations-and-offloads)を参照してください。
-A-MSDU受信（`AMSDURx`）は、確認したRZ616ドライバーでOFFが集約待ち削減になる機構を確認できないため現値を維持し、書換え・既定化を行いません。送信側と受信側を同じ理由で無効化しません。[Microsoft WDI receive operations](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/wdi-receive-operations-and-offloads)を参照してください。
-媒体・ベンダーごとの許可リストをquery・parser・書込み・復元で照合し、EEEをWi-Fiへ、メーカー独自項目を他社へ流用しません。
-サービスの単独適用・復元APIは共有ゲートを取得します。一括適用は呼出し元が同じ共有リースを保持したまま ApplyWithinMutationLeaseAsync を呼び、ゲートを再取得せず、接続名整理より前に実行します。適用時は変更前の値をAppSettingsへ保存してから書き込み、設定値を再取得します。一括適用はNIC設定の失敗・空結果・例外も全体の失敗結果へ含めます。
-GUIDと説明で対象を照合し、再適用で元の値を上書きしません。復元は保存対象だけを扱い、外部変更との競合は上書きしません。
-詳細プロパティとSelective Suspendの変更には `-NoRestart` を指定し、WDF/WMI経路でもNICの再起動を要求しません。ドライバー設定として保存された値の読み戻しと、稼働中の反映・性能の確認を区別します。適用・復元後はPC再起動が必要です。
-NIC設定の適用処理は、仮想NIC、未知のプロパティ値、許可対象外のオフロード・リンク速度・バッファー・周波数帯・チャンネル幅・ローミングを変更しません。一括処理のTCPグローバル設定とは責務を分けます。
+遅延と損失回復の遅れを減らすことを優先し、設定の受理・実効値・実測を区別します。[configuration.md](docs/design/configuration.md)。ゲーム向け NIC 設定は [section-04.md](docs/design/section-04.md)、電源管理は [section-05.md](docs/design/section-05.md) にあります。
 
 ### 上り速度の制限
 
-Windows 専用で、「おまかせ高速化設定」とは別の画面です。おまかせから計測・制限・解除を起動せず、利用者が個別に操作します。目的は、大きな送信中に PC 側で作られる送信の待ち行列を、回線の上り容量の手前で止めることです。ルーター・ISP 側の待ち行列は直接制御しません。
-
-- **方式**: QoS ポリシーを `ActiveStore` にだけ作ります（`ShisuiUplinkLimit` が適用用、`ShisuiUplinkTrial` が計測用）。`-Default` と `-ThrottleRateActionBitsPerSecond` を使い、PC 全体の送信合計に効きます。LAN 宛ても対象で、LAN 除外はできません。宛先・プロトコルの条件は ActiveStore に保存されず、無条件になることを実機で確認しています。永続ストアは未検証です。
-- **他ポリシーとの境界**: `Shisui*` 以外の QoS ポリシーが ActiveStore または既定ストアに 1 件でもあれば、計測・適用を拒否して名前を表示します。他のポリシーは変更・削除しません。状態を読めない場合も拒否し、「無い」とは扱いません。
-- **同時に作らない**: 試験用と適用用は Precedence が同値で競合するため同時に存在させません。計測開始時に適用用があれば値を覚えて削除し、計測を適用せずに終えたら `finally` で元の値へ復元します。計測結果を適用する場合は復元せず、新しい値を入れます。
-- **回線の識別**: 既定経路（IPv4、なければ IPv6）の InterfaceGuid とゲートウェイの MAC です。MAC を取れない場合は適用不可、既定経路が仮想 NIC の場合は計測・適用を拒否します。
-- **計測**: 測定先は `https://speed.cloudflare.com/__up` で、HTTP/1.1・4 接続・8MB の POST を繰り返します（プロキシ不使用、証明書検証は既定）。NIC 送信は `GetIPStatistics().BytesSent` を 1 秒ごとに、遅延は 1.1.1.1 への ICMP を 10Hz で取ります。手順は ① 無負荷 20 秒（NIC の送受信平均が 1Mbps を超えれば中止。標本不足・損失 5% 超・ICMP 全滅は「回線が不安定」）、② 4 接続 10 秒を最大 3 回（立ち上がり 3 秒を除いた NIC 送信の平均を 3 回取り、その最小値を容量とする。負荷時の p90 が無負荷 +15ms 以内かつ損失が +2 ポイント以内なら「変更不要」で終了）、③ 容量の 95/90/85/80/75/70% の二分探索（各 20 秒、最大 3 試行）で最速の合格値を選ぶ（合格なしは「制限しても改善しない」）、④ 「なし→あり→なし→あり」を各 10 秒で再現確認（「あり」が 2 回とも無負荷 +25ms・損失 +2 ポイント以内で、遅延の増分が直前の「なし」の半分以下）、です。③ の合格線 +15ms のすぐ内側の値は 10 秒区間の揺れで落ち得る（推定）ため、④ の許容は広げ、改善幅を必須にしています。容量から見積もった ③④ の送信量が残り予算に足りなければ、③ の前に止めます。計測中の変更コマンドへはキャンセルを渡さず、前後で判定します（途中で止めると終了を確認できず、後始末できないため）。ポリシー値は NIC 送信を設定値で割った比（試験用ポリシーで校正し、既定は 1.03、範囲 1.0〜1.10）で換算し、1kbps 単位へ切り捨てます。Windows は上限値を 8bps 単位へ切り捨てて保存するため、端数があると読み戻しが一致しません（実機確認）。
-- **打ち切り・失敗**: 総量 2GB・5 分で打ち切り、適用しません。中止・失敗・未完了の計測は、保存済みの計測を上書きしません。変更コマンドの終了を確認できない場合だけは、既存規約どおり以降の変更を止め、試験用が残り得ることを表示します。総量 2GB は、上り約 120Mbps を超える回線で制限が必要な場合、計測の途中で届く計算です。成功以外の HTTP 応答・接続失敗は測定先エラーとして全体を中止し、自動再試行しません。区間は、標本 50 未満、または NIC 送信とアプリ送信の差が 15% を超えると無効とし、1 回だけやり直して再び無効なら中止します。計測は必ず `finally` で試験用を削除（`CancellationToken.None`）し、0 件を読み戻して、失敗を画面に明示します。
-- **適用と保存の順序**: 適用は結果表示後の利用者操作だけです。設定保存（IsEnabled=true）→ 適用 → 読み戻しの順で、保存失敗なら適用せず、適用失敗なら IsEnabled=false を保存します。解除は OS 削除 → 保存で、保存失敗は OS の完了と分けて通知します。変更ゲートは ViewModel が取得し、サービスは再取得しません。
-- **再起動・回線変更**: ポリシーは再起動で消えるため、起動時に保存済みの回線と照合して再適用し、不一致・読込失敗・保存なしなら適用用を削除します。試験用は起動時に必ず削除します。起動中は `NetworkChange.NetworkAddressChanged` を数秒まとめて照合し、不一致なら解除し、保存済みの回線に戻れば再適用します。回線を一時的に特定できない場合は、3 秒間隔で 5 回まで再試行してから判断します。先に状態だけを読み、変更が必要なときだけゲートと処理中表示を使います。有効な保存がなければ、回線変更では何も実行しません。他の QoS ポリシーがあっても、回線不一致・有効な保存なしなら自名のポリシーの削除は続けます（適用だけを拒否）。終了時は計測を中止し、後始末を最大 15 秒待ちます。強制終了・電源断では、次回起動か再起動まで試験用が残り得ます。Shisui が起動していない間の回線変更は検知できません。
-- **保存形式**: `AppSettings.UplinkLimitProfiles`（回線ごとに 1 件、同一回線は上書き。旧設定は欠落＝空）。計測は 30 日を超えると「古い」と案内するだけで、自動解除しません。
-
-実機の確認結果（この 1 台・Wi-Fi・Windows 11 build 26300・夜間 1 回、BBR2・pacing=always 適用済み）:
-
-| 条件 | NIC 送信 | 負荷時 ICMP（1.1.1.1） |
-| --- | --- | --- |
-| 制限なし（4 接続・各 10 秒） | 36.8〜37.2Mbps | p50 83〜119ms / p90 161〜169ms / 損失 5〜7 件 / 約 50 件 |
-| 28Mbps（`ActiveStore`） | 28.8〜28.9Mbps（設定値の約 1.03 倍） | p50 17ms / p90 21〜25ms / 損失 2〜3 件 / 約 100 件 |
-
-UDP 60Mbps の送信は、制限ありで NIC 28.3Mbps、なしで 59.2Mbps でした。アプリ側の平滑制限では p90 が 145〜160ms から 13〜16ms に下がり、curl の間欠制限では改善しませんでした。ポリシーは作成直後から有効で、削除で戻り、再起動で消え、毎回読み戻しで残存 0 を確認しています。Windows PowerShell 5.1 でも作成・読み戻し・削除と、条件が保存されないことを確認済みです。
-
-計測サービス（`UplinkMeasurementService`）の実回線での完走（管理者、同じ 1 台・別の時刻に 1 回）: 無負荷 p90 11ms、容量 36.9Mbps、提案 35.0Mbps（95%）。④ の p90 は、なし 160 / 163ms に対し、あり 25 / 24ms、損失はすべて 0%、アプリ送信と NIC 送信の差は 2.5〜6.3%。送信 456MB・184 秒、終了後の試験用の残存 0 件。
-
-実アプリ（管理者、同じ 1 台）で、計測→適用→読み戻し→実測（上限 34.2Mbps に対し NIC 34.1Mbps、p90 24ms）→終了しても維持→再起動相当（ポリシーを外して起動し直し）の再適用→解除、計測の中止、強制終了後の起動時の試験用削除を Debug 版で確認。Native AOT 公開物（署名・MSI なし）では、計測の完走、他ポリシーがあるときの計測拒否、強制終了後の試験用削除、保存済み設定からの起動時適用、解除を確認（[この上限を適用] のクリックは Debug 版だけ）。③ の合格線 +15ms を ④ にも使っていた間は、3 回中 1 回が ④ で「改善なし」になりました。その回の ④ の区間値は記録しておらず、落ちた条件（遅延か損失か）は未確認です。変更後の 2 回は合格しましたが、変更の効果を示すものではありません。現在は ④ で不合格のとき区間ごとの p90 と損失を表示します。
-
-未検証: 署名済み MSI での動作、実際の PC 再起動後の再適用、回線を実際に切り替えたときの解除・再適用、ログオフ・更新再起動時の後始末、他の回線・時間帯・有線での効果。この結果は他の環境の改善を示しません。
+ActiveStore の QoS ポリシーで送信待ち行列を抑えます。おまかせ設定とは独立です。[section-01.md](docs/design/section-01.md)
 
 ### ネットワーク診断
 
-遅延診断は4/30/100回のICMP計測に対応し、Windowsでは全試行の成功・失敗を記録します。
-p95は成功応答のnearest-rank、ジッターは連続成功間のRTT差の絶対値の平均で、失敗をまたぐ差を含めません。
-測定はOSの経路を使い、NIC選択には紐付きません。ICMP統計はゲームの実通信や微小なNIC内遅延の保証には使いません。
+ICMP の遅延診断（4/30/100 回の計測、p95、ジッター）と、その記録方法を扱います。ICMP 統計はゲームの実通信の保証に使いません。[troubleshooting.md](docs/design/troubleshooting.md)
 
 ### 設定と更新
 
-`SettingsService` は `AppSettings` を OS 標準のアプリデータ領域へ保存します。保存は semaphore で直列化し、
-一時ファイルを書いてから置換します。設定ファイルが未作成の場合だけ、既定値で初回保存を許可します。
-不正・null JSON、アクセス拒否などの読込み失敗時は既定値で画面を開きますが、そのサービスインスタンスでの保存を停止し、原本と NIC・Wi-Fi の復元情報を保護します。問題解消後の再起動で読み直します。
-DNS 選択の保存失敗は完了済みの OS 設定変更と分けて通知し、更新確認・スキップ設定の保存失敗はメモリ上の値と表示を変更前へ戻します。
-Native AOT での実行を保証するため、JSON は
-`ShisuiJsonContext` のソース生成メタデータだけを使います。更新 URL と channel は `[JsonIgnore]` の
-読み取り専用値であり、利用者の `settings.json` から外部ホストへ差し替えられません。
-
-`AppPaths` は設定とログの保存先を分離します。Windows の設定は `%APPDATA%\Shisui\settings.json`、
-ログは `%LOCALAPPDATA%\Shisui\logs` とし、ログを Roaming の同期対象から外します。
-他の OS ではアプリデータ領域の `logs` を使います。
-`LoggerBootstrap.Initialize` はファイルログを構成する前に、Windows の旧 `%APPDATA%\Shisui\logs` と
-`%LOCALAPPDATA%\Kagayoi\Shisui\logs` から、直下の `.log` ファイルだけを移します。
-`LegacyLogMigration` は名前付き mutex を待機なしで取得し、移行元・先と親階層の再解析ポイント、
-リンクされたファイルを辿りません。同名ファイルは一意な名前へ変更し、既存ログを上書きしません。
-書込み中・アクセス不能などで移せなかったファイルは元に残し、次回起動時に再試行します。
-移行元のログフォルダーは空の場合だけ削除し、旧 Kagayoi 配下ではその直上の `Shisui` も空の場合だけ削除します。
-Roaming の設定フォルダーと、ログ以外の残存ファイルは保護します。
-
-`UpdateService` は固定配信元の `SimpleWebSource` と `UpdateManager` を構築し、
-インストール版でだけ manager を返します。確認・ダウンロード・適用 UI は
-`VelopackUpdateDialog.Avalonia` が担当し、`VersionViewModel` が owner と表示タイミングを管理します。
-日本語の `ShisuiUpdateStrings` とアクセント `#0A84FF` を使い、
-スキップ対象は `AppSettings.IgnoreUpdateTag` に保存します。手動確認は最新でも結果を表示します。
-起動時確認は `CheckForUpdatesOnStartup` に従い、MainWindow が確定するよう
-`Dispatcher.UIThread.Post(Background)` で遅延させます。開発・未インストール版では確認をスキップします。
-
-Windows リリースはクリーンな作業ツリーと HEAD に一致する完全な source SHA、.NET 11 SDK を前提に、
-GitHub Actions の `release.yml`（軽量タグ `v<版>` の push で起動・Environment `release`。guard job がタグ・commit・版を検査する）またはローカルの同じスクリプトで、
-win-x64 Native AOT publish、同じ runtime の Velopack PerMachine MSI
-生成、`ProgramFiles64Folder\Shisui` への Directory 表正規化、Authenticode 再署名・検証を行います。
-署名は Sigilune が Certum のクラウド鍵で行い、補正で無効になった MSI の署名は `sigilune sign --replace` で置き換えます。
-この正規化は旧 Velopack の `TARGETDIR\INSTALLFOLDER` 配置問題を防ぎ、移行時の
-`VELOPACK_INSTALLDIR` 指定も同じ配置を補強します。更新と CLI の固定バージョンを揃え、
-MSI レイアウトの変化を署名済み配布経路で検証する理由です。
-
-署名後の最終配布物は `verify-release-artifacts.ps1` が検証します。NUPKG 内の EXE は
-版と source SHA、署名者、AMD64 PE と CLR header 不在を照合し、nuspec の RID・channel・実行ファイル名も確認します。
-MSI は署名・版・x64・PerMachine 属性・Directory 表を、manifest は単一の完全 NUPKG の
-identity・サイズ・hash を照合します。結果は作業ディレクトリの `verified-release-artifacts.json` に保存されます。
-検証後に再ビルド・再パッケージせず、同じ bytes を公開します。これは静的な配布物検証で、アプリや MSI を起動する検証ではありません。
-
-配信元は R2 バケット `shisui-updates` の `https://shisui.kagayoi.com` です。
-channel は `win`、manifest は `releases.win.json`、移行用の固定ファイルは `Shisui-win.msi` です。
-GitHub Releases は配信に使いません。
-公開は配信中 metadata の退避、版付き nupkg、固定名バイナリ、更新 metadata の順です。
-最初のアップロード前に、版付き payload の正確な R2 key を認証済み GET で照合します。
-404 のときだけ新規送信し、既存 bytes の SHA256 が一致すれば再送を省略します。不一致や照会不能では公開を停止し、同じ版を異なる内容で上書きしません。
-固定名ファイルは、R2アップロード後にCloudflare cache purgeを要求し、APIの受理を確認します。
-metadata 公開後の失敗では退避 metadata を復元して再 purge します。
-旧ドメインからの更新を維持するため、既存の版付き配布物と旧 Setup.exe は削除せず保持します。
-新しい PerUser Setup.exe は公開対象から除外します。
-署名認証と実行コマンドは [AGENTS.md](AGENTS.md#auto-update--release) を参照してください。
+設定は一時ファイル経由で保存し、読込み失敗時は保存を止めます（[data-model.md](docs/design/data-model.md)）。署名・更新・配信は [release-process.md](docs/design/release-process.md)。
 
 ## 重要な不変条件
 
-- `ICommandExecutor` は配列ではなく整形済み引数文字列を受け取ります。`netsh` が生のコマンドラインを
-  独自解析するため、adapter 名の `name="..."` を .NET の `ArgumentList` で再エスケープしません。
-- DNS アドレスはコマンド生成前に IPv4/IPv6 として検証し、文字列引数へ埋め込む値の引用符を拒否します。
-- PowerShell スクリプトへ値を埋め込むときは、単一引用符リテラルの生成を `WindowsPowerShellLiteral` に集約します。
-  PowerShell は ASCII の `'` に加えて U+2018・U+2019・U+201A・U+201B も単一引用符として扱うため、
-  これらを各文字自身で二重化し、値中の引用符でリテラルが閉じて後続がコードとして評価されることを防ぎます。
-- PowerShell でアダプター名を扱うときは、`Get-NetAdapter -Name` のワイルドカード解釈へ直接渡さず、
-  全アダプターから大文字小文字を区別しない完全一致で一意に解決します。後続 cmdlet の `-Name` へ渡す場合も
-  ワイルドカードをエスケープし、意図しない複数アダプターの読み取り・変更を防ぎます。
-- Windows の現在値はローカライズされた `netsh` 表示を解析せず、PowerShell で固定した `KEY=VALUE`
-  または XML を解析します。標準出力は raw byte を同時に読み、厳密 UTF-8、次に OEM code page の順で復号します。
-  Fast Open は `netsh interface tcp dump` の機械可読な `set global` 行から一意な `fastopen=enabled/disabled` を取得し、
-  PowerShell で `FASTOPEN=Enabled/Disabled` へ変換します。行・値の重複、未知値、コマンド失敗は未確認とします。
-  例外として RACK/TLP の変更不要判定だけは、PowerShell に値がないため確認済みの日英ラベルを限定解析します。
-  未知の言語・不完全な出力を有効と推測せず、設定コマンドの失敗を成功へ置き換えません。
-- Windows の外部コマンドは既知のシステムコマンドだけを絶対パスへ解決し、未知の相対実行ファイルを拒否します。
-- executor のキャンセル時と開始後の例外時は子プロセスツリー全体へ終了を要求して待機します。
-  終了要求が拒否されても実際の終了まで待機し、呼び出し元の処理中状態と変更操作の排他を保持します。
-  同期ストリームで出力を読む経路では残りの標準出力・標準エラーを破棄しながら読み続け、パイプ詰まりを避けます。
-  この終了待機はキャンセル対象外なので、各 service のタイムアウトは処理が戻るまでの上限ではありません。
-  IP 初期化や条件付き修復の中断結果に対する後続操作停止・再起動案内は、各 service と呼び出し元が管理します。
-- builder、catalog、parser は OS を呼ばない純粋処理です。OS アクセスは service、executor、専用のネイティブ API 実装の責務です。
-- `INetworkMutationGate` は非再入です。複合操作は外側で一度だけ取得し、内側から再取得しません。
-- 公式 DNS プリセットの IP、DoH template、DoT host は一体の契約です。特に Cloudflare のフィルタ段階ごとの
-  hostname を標準 hostname へ置き換えません。NextDNS とカスタム設定には固定の暗号化 DNS endpoint を与えません。
-- DoH のチェック状態は OS の実状態から復元します。DoT はロケール非依存に状態取得できる API がないため、
-  保存状態を実状態として表示せず、操作時だけ有効化・無効化します。
-- DoH は対象 IP の登録を一括取得し、欠落だけを追加、不整合なテンプレート・自動昇格だけを修復します。既存の UDP fallback 禁止は維持します。正しい登録は再設定しません。グローバル有効化の終了値と、対象の期待 HTTPS テンプレート・型付き bool・fallback の読み戻しを確認し、成功しない設定を表示上だけ有効にしません。登録値確認と実際の TLS 通信成功は区別します。
-- 上り速度の制限は ActiveStore の `ShisuiUplinkLimit` / `ShisuiUplinkTrial` だけを扱い、`Shisui*` 以外の QoS ポリシーを変更・削除しません。試験用と適用用を同時に存在させず、計測後は試験用の残存 0 件を読み戻します。おまかせ高速化設定から計測・制限を起動しません。
-- Windows の正式配布物は署名済み PerMachine MSI です。新しい PerUser `Setup.exe` は公開せず、旧配布物は「設定と更新」の保持方針に従います。旧 PerUser 版を
-  ユーザー書き込み可能な場所から管理者実行し続けません。移行・修復対象は検証済みの既知パスに限定します。
-  ダウンロードした MSI は書換え・削除を拒否する同一ハンドルで署名検証し、そのハンドルから再解析ポイントを解決した最終パスだけを `msiexec` へ渡して終了まで保持します。
-- 自動更新元は `https://shisui.kagayoi.com` の `releases.win.json` です。旧
-  `shisui.nephilim.jp` は出荷済みクライアントのため期限まで配信を維持します。
+引数は整形済み文字列で渡し、builder/parser は純粋処理とし、変更ゲートは非再入、QoS は `Shisui*` だけを扱い、旧版を管理者実行しません。[section-02.md](docs/design/section-02.md)
 
 ## 採用済みの設計判断
 
-- **Core/UI/Tests の分離**: OS コマンドの組み立てと解析を UI から外し、実機を変更せずに大半をテストできます。
-  その代わり、ViewModel はユースケースの順序と排他境界を明示的に管理します。
-- **プラットフォーム中立な `net11.0`**: 一つのモデルと UI を共有しつつ、OS 固有機能を DI で差し替えます。
-  Windows 専用機能は macOS で stub を返さず UI ごと隠すため、利用可能範囲が明確になります。
-- **Native AOT**: JIT を含まない単独配布と起動経路を採用しています。反面、reflection 依存を避け、
-  JSON source generation と実配布条件での publish 検証が必要です。
-- **サイドメニューの画像リソース**: Microsoft Fluent UI System Icons の公式カラー版を PNG として埋め込み、
-  アイコンフォントや実行時の SVG ライブラリを追加せずに表示します。原本 SVG と出典を保持し、
-  MIT ライセンスをビルド・配布出力へ同梱します。素材の対応と出典は
-  [リソースの説明](src/Shisui.UI/Resources/FluentSystemIcons/README.md)を参照してください。
-- **ロケール非依存の機械可読出力**: 表示用コマンドの文字列解析よりコマンド数や builder/parser が増えますが、
-  日本語・英語 Windows と console encoding の差で状態判定が壊れることを避けます。
-- **実行時昇格**: `requireAdministrator` manifest ではなく Velopack フック後の自己昇格を選び、
-  インストーラー互換性と一度だけの UAC を両立します。
-- **CI 署名リリース**: Sigilune が SimplySign Desktop なしで Certum のクラウド鍵を使えるため、main の commit に付けた軽量タグ `v<版>` の push で起動する
-  `release.yml` が `release-local.ps1` を実行して署名・配信します。再現可能な固定 CLI と
-  検証・ロールバックを含む `release-local.ps1` に配布責務を集約し、ローカル実行も同じ手順で動きます。
-  TOTP 登録情報を持つ Secrets は Environment `release` のジョブだけが読みます。
+Core/UI/Tests 分離、`net11.0`、Native AOT、ロケール非依存出力、実行時昇格、CI 署名リリースの理由とトレードオフを [section-03.md](docs/design/section-03.md) にまとめています。

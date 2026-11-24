@@ -1,134 +1,38 @@
 # AGENTS.md
 
-This file provides guidance to coding agents working in this repository.
+Guidance for coding agents. Shisui is a Windows/macOS network configuration app
+(see [README.md](README.md), [DESIGN.md](DESIGN.md), [docs/agents/project-overview.md](docs/agents/project-overview.md)).
+**Language**: Japanese for UI, comments, commit messages, and README; this AGENTS.md is in English.
 
-## Project Overview
+## Build & Test
 
-Shisui is a Windows/macOS network configuration app. User-facing features and the supported distribution
-are documented in [README.md](README.md); structure and design boundaries are documented in [DESIGN.md](DESIGN.md).
+Before building or testing, read [docs/agents/build-test-commands.md](docs/agents/build-test-commands.md).
+Basics: `dotnet build Shisui.slnx`, then `dotnet test Shisui.slnx --no-build`.
 
-**Language**: Japanese for UI, comments, commit messages, and README. This AGENTS.md is in English.
-
-## Build & Test Commands
-
-```bash
-dotnet build Shisui.slnx
-dotnet test Shisui.slnx --no-build
-dotnet run --project src/Shisui.UI
-
-# Run a single test class / method (MSTest via VSTest filter)
-dotnet test Shisui.slnx --no-build --filter "FullyQualifiedName~WindowsDnsCommandBuilderTests"
-dotnet test Shisui.slnx --no-build --filter "FullyQualifiedName~WindowsTcpStateParserTests.Parse_AllTemplatesBbr2_ReturnsEnabled"
-
-# Local signed release (see "Auto-update & Release"). -SkipUpload = build + sign only, no cloud.
-pwsh scripts/release-local.ps1 -SkipUpload
-```
-
-テストは `src/Shisui.Tests/AssemblyInfo.cs` の `Parallelize`（メソッド単位）で並列実行される。テストは static 状態・共有ファイル・環境変数に依存させない。
-
-No RID-locked `packages.lock.json` is used, so there is no `--no-restore` dance for local builds. The release
-script (`scripts/release-local.ps1`) does its own RID-locked self-contained publish; it does not touch a lockfile.
-Release output defaults to a unique user-Temp `Codex\Shisui\release-<id>` directory, with signed packages
-under `packages` and intermediate build output under `build`. To select it explicitly, use `-WorkDirectory`
-with a path below user-Temp `Codex\Shisui`; the script rejects repository/Codex-home paths, reparse points,
-and path components named `artifacts`. Reusing an existing work directory checks the allowed temporary root and rejects links before standard filesystem cleanup. The script retains local output after completion; inspect and
-clean it through the applicable cleanup procedure once it is no longer needed. `-UseEnvironmentalAotTools`
-passes `IlcUseEnvironmentalTools=true` to publish only when using an already configured native toolchain.
-Native AOT is enabled repository-wide through `Directory.Build.props`. When adding serialized application models,
-register them in `ShisuiJsonContext`; reflection-based JSON paths can fail only at publish/runtime even when a normal
-build succeeds. Use `pwsh scripts/release-local.ps1 -SkipUpload` to verify the actual win-x64 AOT distribution path.
-
-**UI verification**: build with compiled bindings (`x:DataType`), launch the Windows app with an
-administrator token, exercise the changed UI, and inspect stdout/stderr for Avalonia binding errors.
-For debugging, start Visual Studio as administrator so runtime elevation does not detach the debugger.
-Do not remove the elevation block merely to launch a smoke test. A process that stays alive alone does
-not verify UI behavior. Startup ordering and the manifest rationale are documented in [DESIGN.md](DESIGN.md#起動).
-
-**Startup and migration constraints**: preserve `asInvoker`, process Velopack hooks before migration,
-elevation, and `SingleInstanceGuard`, and keep the product AppUserModelID disabled in Debug builds.
-When modifying installer migration or cleanup, preserve the signature/handle/path checks and bounded
-cleanup targets described in [DESIGN.md](DESIGN.md#インストール移行の信頼境界).
+- Tests run in parallel per method (`Parallelize`); never depend on static state, shared files, or environment variables.
+- Native AOT is repository-wide: register new serialized models in `ShisuiJsonContext`; verify with `pwsh scripts/release-local.ps1 -SkipUpload`.
+- **UI verification**: launch the Windows app with an administrator token, exercise the changed UI, and check stdout/stderr for Avalonia binding errors. A live process alone is not verification. Do not remove the elevation block to smoke-test ([DESIGN.md](DESIGN.md#起動)).
+- **Startup and migration**: preserve `asInvoker`, Velopack hooks before migration, elevation, and `SingleInstanceGuard`; keep the product AppUserModelID disabled in Debug. Preserve the checks in [DESIGN.md](DESIGN.md#インストール移行の信頼境界).
 
 ## Architecture
 
-現在の構造・責務・境界・不変条件の正本は [DESIGN.md](DESIGN.md)。実装領域ごとの詳細は
-[references/architecture.md](references/architecture.md)。**下の領域を触る前に必ず該当節を読む**。
-
-| 触る対象 | 読む節 |
-| --- | --- |
-| プロジェクト構成、どこに何があるか | Project Structure |
-| 外部コマンド実行（PowerShell / netsh） | Command execution model — string arguments, not `ArgumentList` |
-| DI 登録、Windows 専用機能の扱い | DI: Windows-only features are optional dependencies |
-| DNS プリセット、DoH / DoT | DNS Preset Catalog / DoH toggle / DoT toggle |
-| ワンクリック最適化 | One-click optimization |
-| ゲーム向け NIC 設定 | Gaming NIC profile |
-| 上り速度の制限（QoS ポリシー、回線計測） | Uplink speed limit |
-| 現在値の読み取り（ロケール非依存） | Reading current state is locale-independent |
-| ネットワーク診断 | Used-PC network diagnostics / Network diagnostics |
-| アダプタ一覧・詳細・ゴースト削除 | Adapter list filtering / Adapter details / Disconnected network device cleanup |
-| 画面、テーマ、コントロール | UI Framework |
-| 設定の保存、ログ | Settings & Logging |
+Before touching an area (commands, DI, DNS, optimization, NIC, uplink, diagnostics, adapters, UI, settings), read the matching section via [docs/agents/architecture.md](docs/agents/architecture.md).
 
 ## Key Conventions
 
-- **Async**: service methods use `Async` suffix, propagate `CancellationToken`.
-- **Command builders are pure functions**: no `Process`/OS calls inside `*CommandBuilder` / `*Catalog` classes —
-  keeps them unit-testable. OS access belongs to services and executors; annotate platform-specific entry points with `[SupportedOSPlatform(...)]`.
-- **Native AOT and JSON**: follow the source-generation and release-path checks in "Build & Test Commands".
-- **Settings persistence**: preserve the load-failure save block and NIC/Wi-Fi restoration snapshots described in
-  [DESIGN.md](DESIGN.md#設定と更新). When changing save callers, verify that save failures are reported
-  separately from completed OS changes and that update preferences roll back on save failure.
-- **macOS distribution**: verify on real hardware before shipping; implementation and parser tests alone
-  do not establish compatibility. The currently supported distribution is documented in DESIGN.
+- Service methods use the `Async` suffix and propagate `CancellationToken`.
+- `*CommandBuilder` / `*Catalog` are pure (no `Process`/OS calls); OS access belongs to services and executors.
+- Settings persistence ([DESIGN.md](DESIGN.md#設定と更新)): report save failures separately from completed OS changes; roll back update preferences on save failure.
+- macOS: verify on real hardware before shipping.
+
+Details: [docs/agents/key-conventions.md](docs/agents/key-conventions.md).
 
 ## Auto-update & Release
 
-The distribution and update design is documented in [DESIGN.md](DESIGN.md#設定と更新).
-The authoritative dependency versions are in `src/Shisui.UI/Shisui.UI.csproj` and
-`src/Shisui.Core/Shisui.Core.csproj`; release CLI pins are in
-`scripts/release-local.ps1`. Consult these files rather than version numbers in descriptive references.
+Design: [DESIGN.md](DESIGN.md#設定と更新). Before changing updates, packaging, signing, or workflows, read [docs/agents/auto-update-release.md](docs/agents/auto-update-release.md); to run a release, read [docs/agents/release-process.md](docs/agents/release-process.md).
 
-- Keep the direct `Velopack` package and `$VpkVersion` CLI pin in sync; neither is resolved-latest.
-  The dialog package can be updated independently. Verify all update/package changes through
-  `pwsh scripts/release-local.ps1 -SkipUpload`, including win-x64 Native AOT, MSI Directory normalization,
-  re-signing, and signature checks. Preserve the explicit `vpk pack --runtime $runtime` matching publish.
-- Signing uses Sigilune (`scripts/Sigilune.Common.ps1`; Certum cloud key via signtool `/dlib`,
-  signer `CN=Open Source Developer Yuichiro Shinozaki`) and Windows SDK `signtool.exe`. SimplySign Desktop
-  is not used. The re-sign after MSI Directory normalization uses `sigilune sign --replace`.
-  `.github/workflows/dependency-validation.yml` (build + `dotnet test` + R2 fixtures) runs on pushes to `main`, all PRs,
-  manual dispatch, and as the `test` job of `release.yml` (`release` job has `needs: test`, so a failing test blocks signing and delivery).
-  Official releases run in `.github/workflows/release.yml` (push of a lightweight tag `v<version>` on a main commit, Environment `release`:
-  `SIGILUNE_EMAIL` / `SIGILUNE_TOTP_URI` / `CLOUDFLARE_API_TOKEN`); local runs need `sigilune setup`.
-  `-SkipUpload` builds and signs without cloud writes. Upload additionally requires
-  `CLOUDFLARE_API_TOKEN`, or locally `cloudflare.api_token` from the release script's configured secret source.
-- The release script requires a clean working tree (including untracked files), .NET 11 SDK,
-  and a full source commit SHA matching HEAD. `-SourceGitSha` defaults to HEAD; it cannot select
-  another revision. These checks also apply to `-SkipUpload`.
-- Preserve the automatic post-signing `scripts/verify-release-artifacts.ps1` gate and its
-  `verified-release-artifacts.json` evidence in the release work directory. Publish the same
-  verified bytes without rebuilding or repacking. The verification scope and upload safeguards
-  are documented in DESIGN; this static artifact check does not replace UI verification.
-- Run the release workflow, or the Sigilune login precheck and local release script, as documented below.
-  Change versions only through `/vava`; do not hand-edit `Directory.Build.props` `<Version>`.
-- Publish signed PerMachine MSI, never the generated PerUser Setup.exe. Preserve publication ordering,
-  rollback, cache purge, and retention documented in DESIGN.
-- Keep `Shisui.UI.exe` and its assembly name: changing it breaks `avares://Shisui.UI/...` resources.
-  The shortcut/display name is `Shisui` via `--packTitle`.
-- Preserve the legacy `shisui.nephilim.jp` update endpoint until 2027/05/31. Redirect only `/`;
-  update manifests and packages must remain directly downloadable during migration.
-
-### ローカルリリースの実行
-
-通常は GitHub Actions で実行する（本人の PC は不要）。`/vava` が main を push したあと、その commit に軽量タグ `v<version>` を付けて push すると、`release.yml` が自動で起動する。`workflow_dispatch` は同じタグを指定した再実行にだけ使う（`skip_upload=true` でビルド・署名・検証だけを行い、成果物を Actions に残せる）。タグ以外（main など）を指定した実行は、`release.yml` の guard job（タグであること・`v<版>` の形・軽量タグが同じ commit を指すこと・main の祖先であること・`Directory.Build.props` の版との一致）で拒否される。GitHub Release は作らない。
-
-```powershell
-gh workflow run release.yml --repo 1llum1n4t1s/Shisui --ref v<version> -f skip_upload=false
-```
-
-ローカルで実行する場合は、リポジトリルートで Sigilune のクラウドログインを事前確認し、成功した場合だけ実行する。失敗時は「Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね」。ログインを自動再試行せず、署名を省略して続行しない。
-
-```powershell
-$sigilune = if ($env:SIGILUNE_EXE) { $env:SIGILUNE_EXE } else { Join-Path $env:USERPROFILE '.local\Sigilune\bin\sigilune.exe' }
-& $sigilune login
-if ($LASTEXITCODE -eq 0) { pwsh -NoProfile -File scripts/release-local.ps1 } else { throw 'Sigilune でクラウドにログインできなかったよ。sigilune status で登録を確認してから /vava を再実行してね' }
-```
+- Change versions only through `/vava`; never hand-edit `Directory.Build.props` `<Version>`.
+- Keep `Velopack` and the `$VpkVersion` pin in sync.
+- Publish the Sigilune-signed PerMachine MSI, never the PerUser Setup.exe.
+- Keep `Shisui.UI.exe` and its assembly name (`avares://Shisui.UI/...`).
+- Keep the legacy `shisui.nephilim.jp` endpoint until 2027/05/31; redirect only `/`.
