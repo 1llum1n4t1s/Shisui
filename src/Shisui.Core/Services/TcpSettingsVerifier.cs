@@ -19,6 +19,15 @@ public static class TcpSettingsVerifier
                 : $"{name} が期待する {expected} ではありません。OS・NIC の対応とポリシー設定を確認してください。");
     }
 
+    /// <summary>Internet テンプレートの初回再送 1000 ms と SYN 再送 4 回が組で読み戻せることを検証する。取得不能も失敗。</summary>
+    public static CommandExecutionResult VerifyInitialRto(TcpSettingsSnapshot snapshot)
+    {
+        var success = snapshot.InitialRto == "1000" && snapshot.MaxSynRetransmissions == "4";
+        return new(success, "TCP 初回再送適用後確認 (Internet)", success ? 0 : -1,
+            $"InitialRto={snapshot.InitialRto}, MaxSynRetransmissions={snapshot.MaxSynRetransmissions}, Expected=1000/4",
+            success ? string.Empty : "TCP 初回再送 1000 ms・SYN 再送 4 回を確認できませんでした。OS の対応とポリシー設定を確認してください。");
+    }
+
     public static CommandExecutionResult VerifyBbr2Enabled(TcpSettingsSnapshot snapshot)
     {
         var success = snapshot.Bbr2 == Bbr2Status.Enabled;

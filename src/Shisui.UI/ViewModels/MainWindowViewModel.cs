@@ -25,6 +25,14 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>Windows でのみ非 null。View 側は null を「タブ非表示」の合図として扱う。</summary>
     public MaintenanceViewModel? Maintenance { get; }
 
+    /// <summary>Windows でサービスが登録されているときだけ非 null。タブの表示は <see cref="IsUplinkLimitAvailable"/> で切り替える。</summary>
+    public UplinkLimitViewModel? UplinkLimit { get; }
+
+    public bool IsUplinkLimitAvailable => UplinkLimit is not null;
+
+    /// <summary>上り速度の計測中 (全画面ロックの中止ボタンの表示条件)。</summary>
+    public bool IsUplinkMeasuring => UplinkLimit is { IsMeasuring: true };
+
     public VersionViewModel Version { get; }
 
     public ObservableCollection<CommandLogEntry> LogEntries { get; } = [];
@@ -35,12 +43,14 @@ public partial class MainWindowViewModel : ObservableObject
         AutoOptimization.IsOperationRunning || AutoOptimization.RunQuickOptimizationCommand.IsRunning ||
         NetworkDiagnostics.IsBusy ||
         TcpTuning is { IsBusy: true } || TcpTuning is { IsMtuBusy: true } ||
+        UplinkLimit is { IsBusy: true } ||
         Maintenance?.Categories.Any(group => group.IsRunningAll || group.Items.Any(item => item.IsRunning)) == true ||
         Version.IsChecking || Version.IsSavingSettings || Version.ClearIgnoredUpdateTagCommand.IsRunning;
 
-    public string ProcessingText => string.IsNullOrWhiteSpace(DnsSettings.OneClickProgressText)
-        ? "処理が終わるまでお待ちください"
-        : DnsSettings.OneClickProgressText;
+    public string ProcessingText =>
+        !string.IsNullOrWhiteSpace(DnsSettings.OneClickProgressText) ? DnsSettings.OneClickProgressText
+        : UplinkLimit is { IsBusy: true } uplink && !string.IsNullOrWhiteSpace(uplink.ProgressText) ? uplink.ProgressText
+        : "処理が終わるまでお待ちください";
 
     public bool CanChangeNetwork => !IsProcessing;
 
@@ -50,7 +60,8 @@ public partial class MainWindowViewModel : ObservableObject
         AutoOptimizationViewModel autoOptimization,
         VersionViewModel version,
         TcpTuningViewModel? tcpTuning = null,
-        MaintenanceViewModel? maintenance = null)
+        MaintenanceViewModel? maintenance = null,
+        UplinkLimitViewModel? uplinkLimit = null)
     {
         Version = version;
 
@@ -62,6 +73,7 @@ public partial class MainWindowViewModel : ObservableObject
         AutoOptimization = autoOptimization;
         TcpTuning = tcpTuning;
         Maintenance = maintenance;
+        UplinkLimit = uplinkLimit;
 
         DnsSettings.PropertyChanged += OnOperationStateChanged;
         AutoOptimization.PropertyChanged += OnOperationStateChanged;
@@ -78,6 +90,13 @@ public partial class MainWindowViewModel : ObservableObject
             TcpTuning.PropertyChanged += OnOperationStateChanged;
             TcpTuning.CommandExecuted += OnCommandExecuted;
             TcpTuning.Initialize(); // 起動時に現在の BBR2 / TCP 設定状態を読み込む
+        }
+
+        if (UplinkLimit is not null)
+        {
+            UplinkLimit.PropertyChanged += OnOperationStateChanged;
+            UplinkLimit.CommandExecuted += OnCommandExecuted;
+            UplinkLimit.Start(); // 起動時に試験用の残骸を削除し、保存済みの上限を回線と照合する
         }
 
         if (Maintenance is not null)
@@ -108,11 +127,20 @@ public partial class MainWindowViewModel : ObservableObject
             OnPropertyChanged(nameof(CanChangeNetwork));
         }
 
-        if (e.PropertyName is null or nameof(DnsSettingsViewModel.OneClickProgressText))
+        if (e.PropertyName is null or nameof(UplinkLimitViewModel.IsMeasuring))
+        {
+            OnPropertyChanged(nameof(IsUplinkMeasuring));
+        }
+
+        if (e.PropertyName is null or nameof(DnsSettingsViewModel.OneClickProgressText) or nameof(UplinkLimitViewModel.ProgressText)
+            or nameof(DnsSettingsViewModel.IsBusy))
         {
             OnPropertyChanged(nameof(ProcessingText));
         }
     }
+
+    [RelayCommand]
+    private void CancelUplinkMeasurement() => UplinkLimit?.CancelMeasurementCommand.Execute(null);
 
     private void OnCommandExecuted(object? sender, CommandExecutionResult result)
     {

@@ -86,8 +86,48 @@ public sealed class DnsSettingsViewModelTests
             new[] { "ResetAll", "EnableBbr2", "RevertGlobalOptions", "ApplyLowLatencyGlobalOptions", "EnableTcpPacing", "RevertLegacyTweaks", "SetAutoTuningNormal", "EnableLossRecovery", "GetCurrentState" },
             tcpTuningService.Calls);
         StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "BBR2");
-        StringAssert.Contains(dnsViewModel.StatusText, "実効 Normal を確認済み");
+        StringAssert.Contains(dnsViewModel.StatusText, "SYN 再送 4 回）を確認済み");
+        StringAssert.Contains(dnsViewModel.OneClickOptimizeDescription, "TCP 接続の再送：初回 1 秒・最大 4 回");
         StringAssert.Contains(dnsViewModel.StatusText, "実状態は未検証");
+    }
+
+    [TestMethod]
+    [DataRow(5_000_000L, 1, true, true, false)] // 同じ回線・30 日以内・10 Mbps 未満: 省く
+    [DataRow(10_000_000L, 1, true, true, true)] // 10 Mbps 以上: 設定する
+    [DataRow(5_000_000L, 40, true, true, true)] // 30 日超: 設定する
+    [DataRow(5_000_000L, 1, false, true, true)] // 別の回線: 設定する
+    [DataRow(5_000_000L, 1, true, false, true)] // 状態を読めない: 設定する
+    public async Task QuickOptimization_AckFrequency_SkippedOnlyForMeasuredThinLine(
+        long capacity, int ageDays, bool sameLine, bool readable, bool expectAckCall)
+    {
+        var tcpTuningService = new RecordingTcpTuningService();
+        var settingsService = new FakeSettingsService();
+        settingsService.Current.UplinkLimitProfiles.Add(new UplinkLimitProfile
+        {
+            AdapterGuid = "{AAAAAAAA-0000-0000-0000-000000000001}",
+            GatewayMac = "AA-BB-CC-DD-EE-01",
+            MeasuredAtUtc = DateTimeOffset.UtcNow.AddDays(-ageDays),
+            CapacityBitsPerSecond = capacity,
+        });
+        var line = new UplinkLineIdentity(
+            UplinkLineStatus.Identified, Adapter.Id, "{AAAAAAAA-0000-0000-0000-000000000001}",
+            UplinkAdapterKind.Physical, sameLine ? "AA-BB-CC-DD-EE-01" : "AA-BB-CC-DD-EE-99");
+        var state = readable
+            ? new UplinkLimitState(UplinkStateReadStatus.Ok, line, null, null, [], [])
+            : UplinkLimitState.Unreadable("denied");
+        using var gate = new NetworkMutationGate();
+        var dnsViewModel = CreateViewModel(
+            new FakeDnsConfigurationService(),
+            gate,
+            settingsService,
+            tcpTuningService: tcpTuningService,
+            uplinkLimitService: new FakeUplinkLimitService(state));
+        var optimizationViewModel = new AutoOptimizationViewModel(dnsViewModel, gate);
+
+        await optimizationViewModel.RunQuickOptimizationCommand.ExecuteAsync(null);
+
+        Assert.AreEqual(expectAckCall, tcpTuningService.AckCalls.Count == 1);
+        Assert.AreEqual(expectAckCall ? 1 : 0, tcpTuningService.AckCalls.Count);
     }
 
     [TestMethod]
@@ -162,7 +202,7 @@ public sealed class DnsSettingsViewModelTests
         Assert.IsTrue(calls.IndexOf(WindowsTcpStateCommandBuilder.Arguments)
             > calls.FindLastIndex(value => value.Contains("rack=enabled taillossprobe=enabled")),
             "TCP の実状態はすべての RACK / TLP 設定後に確認する必要があります。");
-        Assert.AreEqual(!failLossRecovery, viewModel.StatusText.Contains("実効 Normal を確認済み"));
+        Assert.AreEqual(!failLossRecovery, viewModel.StatusText.Contains("SYN 再送 4 回）を確認済み"));
     }
 
     [TestMethod]
@@ -325,7 +365,8 @@ public sealed class DnsSettingsViewModelTests
         ITcpTuningService? tcpTuningService = null,
         INetworkMaintenanceService? maintenanceService = null,
         INetworkAdapterService? adapterService = null,
-        IDohConfigurationService? dohService = null) =>
+        IDohConfigurationService? dohService = null,
+        IUplinkLimitService? uplinkLimitService = null) =>
         new(
             adapterService ?? new FakeNetworkAdapterService(),
             dnsService,
@@ -336,7 +377,19 @@ public sealed class DnsSettingsViewModelTests
             dohService: dohService,
             tcpTuningService: tcpTuningService,
             maintenanceService: maintenanceService,
-            adapterNameService: adapterNameService);
+            adapterNameService: adapterNameService,
+            uplinkLimitService: uplinkLimitService);
+
+    private sealed class FakeUplinkLimitService(UplinkLimitState state) : IUplinkLimitService
+    {
+        public Task<UplinkLimitState> GetStateAsync(CancellationToken ct = default) => Task.FromResult(state);
+        public Task<UplinkLimitOperationResult> ApplyLimitAsync(long bitsPerSecond, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UplinkLimitOperationResult> RemoveLimitAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UplinkLimitOperationResult> ApplyTrialAsync(long bitsPerSecond, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UplinkLimitOperationResult> RemoveTrialAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UplinkLimitOperationResult> BeginMeasurementAsync(CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<UplinkLimitOperationResult> EndMeasurementAsync(long? restoreLimitBitsPerSecond, CancellationToken ct = default) => throw new NotSupportedException();
+    }
 
     private sealed class FakeNetworkAdapterService : INetworkAdapterService
     {
@@ -489,8 +542,18 @@ public sealed class DnsSettingsViewModelTests
                 [TcpGlobalOption.EcnCapability] = "Enabled",
                 [TcpGlobalOption.Timestamps] = "Enabled",
                 [TcpGlobalOption.FastOpen] = "Enabled",
-            }, "Normal", AutoTuningLevelEffective: "Local");
+            }, "Normal", AutoTuningLevelEffective: "Local", InitialRto: "1000", MaxSynRetransmissions: "4");
         public bool ThrowOnRead { get; init; }
+
+        /// <summary>SetTcpAckFrequency の呼び出し (Calls の順序検証を変えないよう別に記録する)。</summary>
+        public List<string> AckCalls { get; } = [];
+
+        public override Task<CommandExecutionResult> SetTcpAckFrequencyAsync(
+            string adapterId, bool enabled, CancellationToken ct = default)
+        {
+            AckCalls.Add($"{adapterId}:{enabled}");
+            return Task.FromResult(Success());
+        }
 
         public override Task<TcpSettingsSnapshot> GetCurrentStateAsync(CancellationToken ct = default)
         {
@@ -584,7 +647,7 @@ public sealed class DnsSettingsViewModelTests
             var output = arguments switch
             {
                 var value when value == WindowsTcpStateCommandBuilder.Arguments =>
-                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled\nECN=Enabled\nTIMESTAMPS=Enabled\nFASTOPEN=Enabled",
+                    "CC=Internet|BBR2\nCC=InternetCustom|BBR2\nCC=Datacenter|BBR2\nCC=DatacenterCustom|BBR2\nCC=Compat|BBR2\nAUTOTUNE=Normal\nAUTOTUNE_SOURCE=Local\nAUTOTUNE_POLICY=NotConfigured\nRSS=Enabled\nRSC=Disabled\nECN=Enabled\nTIMESTAMPS=Enabled\nFASTOPEN=Enabled\nINITIALRTO=1000\nMAXSYNRETRANSMISSIONS=4",
                 var value when value == WindowsTcpAckFrequencyCommandBuilder.BuildSetArguments(Adapter.Id, true) =>
                     "TCPACKFREQUENCY=DWORD:1\r\n",
                 var value when value == WindowsTcpPacingCommandBuilder.BuildEnableArguments() =>

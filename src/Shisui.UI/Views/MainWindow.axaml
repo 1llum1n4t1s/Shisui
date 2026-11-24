@@ -76,6 +76,17 @@
           </TabItem.Header>
           <views:TcpTuningView DataContext="{Binding TcpTuning}" />
         </TabItem>
+        <TabItem IsVisible="{Binding IsUplinkLimitAvailable}">
+          <TabItem.Header>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Image Width="20" Height="20" VerticalAlignment="Center"
+                     Source="avares://Shisui.UI/Resources/FluentSystemIcons/data_line.png"
+                     RenderOptions.BitmapInterpolationMode="HighQuality" />
+              <TextBlock Text="上り速度の制限" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </TabItem.Header>
+          <views:UplinkLimitView DataContext="{Binding UplinkLimit}" />
+        </TabItem>
         <TabItem IsVisible="{Binding IsWindows}">
           <TabItem.Header>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -164,6 +175,10 @@
                   IsVisible="{Binding NetworkDiagnostics.PingCommand.IsRunning}"
                   IsEnabled="{Binding NetworkDiagnostics.PingCommand.CanBeCanceled}"
                   Command="{Binding NetworkDiagnostics.PingCancelCommand}" />
+          <Button Content="計測を中止" HorizontalAlignment="Center"
+                  AutomationProperties.Name="上り速度の計測を中止"
+                  IsVisible="{Binding IsUplinkMeasuring}"
+                  Command="{Binding CancelUplinkMeasurementCommand}" />
         </StackPanel>
       </Border>
     </Border>

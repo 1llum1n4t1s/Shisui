@@ -43,6 +43,9 @@ public sealed class AppSettings
     /// <summary>電源プランごとの Wi-Fi AC 設定の元の値。再適用で上書きしない。</summary>
     public List<WifiPowerPlanSnapshot> WifiPowerPlanSnapshots { get; set; } = [];
 
+    /// <summary>回線ごとの上り速度計測結果と適用する上限。旧 settings.json では欠落し、空として読む。</summary>
+    public List<UplinkLimitProfile> UplinkLimitProfiles { get; set; } = [];
+
     /// <summary>
     /// Velopack 自動更新の配信元。Cloudflare R2 (カスタムドメイン) をハードコード固定する。
     /// <see cref="JsonIgnore"/> なので settings.json から書き換え不可 (悪意ある第三者ホストへの誘導を防ぐ)。

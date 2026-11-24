@@ -79,6 +79,8 @@ public static class WindowsTcpCommandBuilder
         BuildSetGlobalOption(TcpGlobalOption.Timestamps, true),
         BuildSetGlobalOption(TcpGlobalOption.FastOpen, true),
         "int tcp set global fastopenfallback=enabled",
+        // 接続要求の初回再送を 1 秒へ。RTO だけ短くすると断念が早まるため、SYN 再送 4 回 (1+2+4+8+16=31 秒) と必ず 1 コマンドで組にする。
+        "int tcp set global initialrto=1000 maxsynretransmissions=4",
     ];
 
     public static string BuildSetGlobalOption(TcpGlobalOption option, bool enabled)

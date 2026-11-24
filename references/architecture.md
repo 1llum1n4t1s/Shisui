@@ -252,7 +252,11 @@ templates and any other user-configured TCP parameters with the official `netsh 
 enables BBR2 for all five templates and runs explicit fallback resets for common tweak-tool targets (RSS, RSC, ECN, timestamps,
 initial RTO, non-SACK resiliency, SYN retries, Fast Open/fallback, HyStart, PRR, pacing, and force-window-scaling),
 then calls `ApplyLowLatencyGlobalOptionsAsync` to explicitly enable global RSS, ECN, timestamps, Fast Open and
-Fast Open fallback, and disable global RSC through six commands. These overrides prioritize latency; their effects
+Fast Open fallback, disable global RSC, and set `initialrto=1000 maxsynretransmissions=4` through seven commands
+(`WindowsTcpCommandBuilder`; the RTO and SYN-retry values must stay in one command because a shorter RTO alone
+shortens the give-up time from 21 s to 7 s, while 1+2+4+8+16 = 31 s is at least either candidate OS default,
+3000/2 or 1000/4, which is unconfirmed). `TcpSettingsVerifier.VerifyInitialRto` reads the Internet template back and
+requires exactly 1000/4. Manual reset keeps 3000/2. These overrides prioritize latency; their effects
 depend on the peer, network path and application.
 `EnableTcpPacingAsync` then sets PC-wide TCP `pacingprofile=always`, regardless of the selected adapter's medium.
 The wired off/always/off measurement conditions do not restrict product applicability.
@@ -269,7 +273,10 @@ allows disabling it for low-latency workloads that benefit; that Server guidance
 for every Windows 11 game. The one-click policy prioritizes latency, and includes the selected NIC gaming profile before device/name cleanup. Individual NIC apply/restore operations remain available. It
 removes only the per-interface legacy tweak values `TcpAckFrequency`, `TCPNoDelay`, and `TcpDelAckTicks` from
 `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\<GUID>` before applying `TcpAckFrequency=1`
-as a DWORD to the selected NIC only. `SetTcpAckFrequencyAsync` resolves the connection name exactly and uniquely,
+as a DWORD to the selected NIC only, unless `UplinkAckPolicy.ShouldSkipImmediateAck` says to leave the Windows default:
+the selected adapter must be the identified current default-route line, its saved `UplinkLimitProfile` must be at most
+30 days old, and its NIC-based capacity must be below 10 Mbps. Any missing, unreadable or stale input keeps the value 1.
+One-click never starts a measurement. `SetTcpAckFrequencyAsync` resolves the connection name exactly and uniquely,
 opens only the existing OS-provided interface GUID key, and checks the stored type/value and NIC identity after mutation.
 `GetTcpAckFrequencyAsync` distinguishes an absent value (Windows default) from an unreadable or unsupported value (Unknown)
 using strict ASCII markers. This is stored configuration; a restart is required to change runtime ACK behavior.
@@ -533,6 +540,42 @@ instance via `pnputil /remove-device "<InstanceId>"`. It is a shared backend, no
 `WindowsNetworkAdapterNameService` removes every returned registration as the first phase of the DNS-tab
 「接続名の連番を整理」 action, while `WindowsLegacyNetworkDiagnosticsService` reuses the same enumeration for its
 read-only count. This uses pnputil's proper PnP removal path rather than raw registry edits.
+
+### Uplink speed limit (`IUplinkLimitService`, Windows)
+
+A separate tab from one-click; nothing in one-click starts a measurement or limit. Design boundaries and the
+measured results are in [DESIGN.md](../DESIGN.md#上り速度の制限); this section covers the implementation.
+
+- `WindowsUplinkLimitCommandBuilder` (pure, `-EncodedCommand`, only numbers and constant policy names embedded) and
+  `WindowsUplinkLimitService` (optional DI dependency, `= null`). Policies live in `ActiveStore` only:
+  `ShisuiUplinkLimit` (applied) and `ShisuiUplinkTrial` (measurement), created with `-Default` and
+  `-ThrottleRateActionBitsPerSecond`. Reads need administrator rights, names come back lower-cased and are compared
+  case-insensitively, and output is English-fixed `KEY=VALUE`. Conditions (destination/protocol) are not persisted
+  in ActiveStore, so a LAN exclusion cannot be expressed.
+- `GetStateAsync` returns `UplinkLimitState` (line identity, both Shisui policies, other policy names from ActiveStore and
+  the default store). Unreadable state is never treated as "no policy". Any non-`Shisui*` policy makes writes return
+  `RejectedOtherPolicies`; other policies are never modified. Rates are limited to 1 Mbps–10 Gbps.
+- Line identity is the default route's InterfaceGuid plus the gateway MAC (IPv4, else IPv6). No MAC means not
+  applicable; a virtual NIC is rejected.
+- Trial and limit policies never coexist: `ApplyTrialAsync` refuses while a limit exists, `BeginMeasurementAsync`
+  removes both and returns the previous limit value, and `EndMeasurementAsync(restore)` (called from `finally` with
+  `CancellationToken.None`) removes the trial, confirms zero remain, and restores the limit when asked. Every write is
+  read back. The mutation gate is acquired by the ViewModel, never by the service.
+- `UplinkLimitMath` holds the pure statistics and verdicts (nearest-rank p90, loss, warm-up discard, pass condition
+  p90 <= idle + 15 ms and loss <= idle + 2 points, binary search over 95/90/85/80/75/70 % of capacity, the
+  none/limit/none/limit reproduction check (limit runs within idle + 25 ms and at most half of the added delay of the preceding
+  unlimited run; the +15 ms line alone failed once in three runs, cause unrecorded), NIC-to-policy ratio calibrated into 1.0–1.10, default 1.03,
+  policy values floored to 1 kbps because Windows stores the rate floored to 8 bps).
+  `IUplinkLoadProbe` / `UplinkLoadProbe` produce raw per-second NIC bytes, app bytes and ICMP samples;
+  `UplinkMeasurementService` orchestrates the phases and returns `UplinkMeasurementReport`. It never applies the result.
+  Budget: 2 GB or 5 minutes, then `LimitReached` (also before search when the estimate cannot fit). Cancellation is never passed
+  into mutating commands; it is checked around them. Only completed outcomes overwrite the saved measurement. Non-success HTTP responses and connection failures are `TargetError` with no retry.
+- Persistence is `AppSettings.UplinkLimitProfiles` (one per line, registered in `ShisuiJsonContext`; absent in old
+  settings means empty). Apply order is save (`IsEnabled=true`) → apply → read back; failure to apply saves
+  `IsEnabled=false`; removal is OS delete → save, reporting save failure separately. At startup the saved profile is
+  reconciled with the current line and reapplied, otherwise the limit is deleted and any trial leftover is always
+  deleted. `NetworkChange.NetworkAddressChanged` is debounced and rechecked inside the gate; a mismatch removes the
+  limit, and returning to a saved, enabled line reapplies it. A temporarily unidentified line is retried first. Line changes while Shisui is not running cannot be detected.
 
 ### UI Framework
 

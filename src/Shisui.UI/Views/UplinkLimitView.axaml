@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Shisui.UI.ViewModels"
+             xmlns:primitives="using:Avalonia.Controls.Primitives"
+             x:Class="Shisui.UI.Views.UplinkLimitView"
+             x:DataType="vm:UplinkLimitViewModel">
+
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="8,0">
+      <TextBlock Classes="h1" Text="上り速度の制限" />
+
+      <!--  常時表示の注意  -->
+      <Border Classes="card" Background="{DynamicResource Brush.ContainerAlt}">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{x:Static vm:UplinkLimitViewModel.PolicyScopeNotice}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{x:Static vm:UplinkLimitViewModel.RebootNotice}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{x:Static vm:UplinkLimitViewModel.MonitoringNotice}" />
+        </StackPanel>
+      </Border>
+
+      <primitives:HeaderedContentControl Header="現在の状態">
+        <StackPanel Spacing="8">
+          <TextBlock Text="{Binding LineText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding LimitStateText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding SavedMeasurementText}" TextWrapping="Wrap" Classes="caption" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="現在値を更新" Command="{Binding RefreshCommand}"
+                    AutomationProperties.Name="上り速度制限の現在値を更新" />
+            <Button Content="解除" Command="{Binding RemoveLimitCommand}"
+                    AutomationProperties.Name="適用中の上り速度制限を解除" />
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="計測">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" TextWrapping="Wrap"
+                     Text="無負荷の遅延を測ったあと、上りを使い切った状態と、上限をかけた状態を比べて、遅延が悪化しない上限を探します。計測中は試験用の上限を一時的にかけ、終わると必ず削除します。" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{x:Static vm:UplinkLimitViewModel.MeasurementEstimate}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{x:Static vm:UplinkLimitViewModel.ForcedTerminationNotice}" />
+          <CheckBox Content="通信量と時間を確認しました" IsChecked="{Binding CostAcknowledged}"
+                    AutomationProperties.Name="計測の通信量と時間を確認した" />
+          <Button Content="計測を開始" Classes="accent" Command="{Binding StartMeasurementCommand}"
+                  HorizontalAlignment="Left" AutomationProperties.Name="上り速度の計測を開始" />
+          <TextBlock Text="{Binding StatusText}" Classes="caption" TextWrapping="Wrap" />
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+
+      <primitives:HeaderedContentControl Header="結果" IsVisible="{Binding HasResult}">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="2*,*,*,*">
+            <TextBlock Grid.Column="0" Classes="caption" Text="区間" />
+            <TextBlock Grid.Column="1" Classes="caption" Text="p90 遅延" />
+            <TextBlock Grid.Column="2" Classes="caption" Text="損失" />
+            <TextBlock Grid.Column="3" Classes="caption" Text="上り (平均)" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding ResultRows}" AutomationProperties.Name="計測結果の表">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:UplinkResultRow">
+                <Grid ColumnDefinitions="2*,*,*,*" Margin="0,2">
+                  <TextBlock Grid.Column="0" Text="{Binding Label}" TextWrapping="Wrap" />
+                  <TextBlock Grid.Column="1" Text="{Binding RttP90}" />
+                  <TextBlock Grid.Column="2" Text="{Binding Loss}" />
+                  <TextBlock Grid.Column="3" Text="{Binding Throughput}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="{Binding VerdictText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+          <Border IsVisible="{Binding HasCleanupWarning}" CornerRadius="8" Padding="12,8"
+                  Background="{DynamicResource Brush.ContainerAlt}">
+            <TextBlock Text="{Binding CleanupWarningText}" TextWrapping="Wrap" Foreground="#FF3B30"
+                       AutomationProperties.Name="後始末の警告" />
+          </Border>
+          <StackPanel IsVisible="{Binding HasProposal}" Spacing="8">
+            <TextBlock Text="{Binding ProposalText}" TextWrapping="Wrap" />
+            <Button Content="この上限を適用" Classes="accent" Command="{Binding ApplyProposalCommand}"
+                    HorizontalAlignment="Left" AutomationProperties.Name="提案された上限を適用" />
+            <Button Content="{Binding PreviousLimitButtonText}" Command="{Binding RestorePreviousLimitCommand}"
+                    IsVisible="{Binding HasPreviousLimit}"
+                    HorizontalAlignment="Left" AutomationProperties.Name="計測前の上限へ戻す" />
+          </StackPanel>
+        </StackPanel>
+      </primitives:HeaderedContentControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

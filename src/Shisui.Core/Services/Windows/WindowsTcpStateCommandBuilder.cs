@@ -40,6 +40,8 @@ public static class WindowsTcpStateCommandBuilder
         "'AUTOTUNE='+$t.AutoTuningLevelLocal;" +
         "'AUTOTUNE_POLICY='+$t.AutoTuningLevelGroupPolicy;" +
         "'AUTOTUNE_SOURCE='+$t.AutoTuningLevelEffective;" +
+        "'INITIALRTO='+$t.InitialRto;" +
+        "'MAXSYNRETRANSMISSIONS='+$t.MaxSynRetransmissions;" +
         "Get-NetTCPSetting -SettingName Internet,InternetCustom,Datacenter,DatacenterCustom,Compat|%{'CC='+$_.SettingName+'|'+$_.CongestionProvider}" +
         "\"";
 }

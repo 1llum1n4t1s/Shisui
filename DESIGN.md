@@ -23,7 +23,7 @@ win-x64 のみです。macOS 実装はコンパイルとパーサー単体テス
 `Shisui.Core` は、プラットフォーム共通のインターフェースに Windows の `netsh`、PowerShell、
 `ipconfig`、`pnputil` 実装と、macOS の `networksetup`、`dscacheutil`、`ifconfig`、`ping`、
 `traceroute` 実装を割り当てます。Windows 専用の TCP、メンテナンス、DoH/DoT、接続名整理、
-ゲーム向け NIC 設定、使い込んだ PC 向け診断は Windows でだけ DI 登録し、ViewModel の省略可能依存関係と UI の可視性で分離します。
+ゲーム向け NIC 設定、上り速度の制限、使い込んだ PC 向け診断は Windows でだけ DI 登録し、ViewModel の省略可能依存関係と UI の可視性で分離します。
 
 ## データフロー
 
@@ -116,7 +116,7 @@ IPsec・WINS の各条件付き処理は 45 秒で中断を要求します。exe
 ルート表クリア（`route /f`）は既定経路を含めて通信を断つため、おまかせ設定の対象外です。手動メンテナンスでは引き続き選択できます。
 BBR2 は全 5 テンプレート、RACK/TLP は Compat を除く 4 テンプレートへ適用します。UDP は URO/USO のみを既定化し、
 UDP 全体の reset は行いません。TCP の既定化は不調な旧設定を除く修復工程とし、その後に RSS・ECN・timestamps・Fast Open / fallback 有効、RSC 無効を明示的に適用します。手動の既定化にはこの上書きを含めません。
-旧ACK/Nagle値の除去後、選択NICだけに`TcpAckFrequency=1`を設定し、DWORD型・値・NICのGUIDを読み戻して確認します。接続名整理より前に適用し、整理後は個別設定の一覧と選択対象も更新します。
+旧ACK/Nagle値の除去後、選択NICだけに`TcpAckFrequency=1`を設定し、DWORD型・値・NICのGUIDを読み戻して確認します。ただし、選択NICが現在の既定経路の回線で、その回線の計測が30日以内かつ上り容量10Mbps未満のときだけは設定を省き、除去後のWindows既定のままにします（`UplinkAckPolicy`）。回線・計測を確認できない場合は従来どおり1です。接続名整理より前に適用し、整理後は個別設定の一覧と選択対象も更新します。
 適用後は同じリース内で BBR2、RSS 有効・RSC 無効、Fast Open 有効と Internet の ECN・timestamps 有効、受信ウィンドウ実効値を読み戻し、
 ポリシー上書き・不完全取得を成功扱いしません。RACK/TLP は日英の既知ラベルで両方の有効状態を確認できた場合、
 再設定せず変更不要とします。未確認・無効の場合は設定コマンドの結果を保持します。Fast Open fallback・UDP などはコマンド受付結果のみです。
@@ -145,6 +145,7 @@ Windows既定値であることだけを採用理由にしません。設定が�
 | RSS・LSOv2・チェックサム | 有効を維持 | Microsoftの低遅延向け指針もstatic offloadの有効化を挙げる。LSOは大きなTCP送信の分割であり、小さなUDPゲーム通信の待ちを直接取り除く設定ではない。[Microsoft、同Low latency節](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-performance-tuning-nics) |
 | TCP RSC・対応NICのUDP URO | 無効を維持 | CPU負荷より低遅延を優先する選択。TCP RSCの無効化は低遅延用途で利益がある場合の選択肢だが、合成のためにTCP通知を次のDPCまで遅らせる実装は仕様上禁止される。常にタイマー待ちが加わるとは説明しない。UROによるゲーム遅延改善量は未実測。[Microsoft、Choosing a Network Adapter、RSC](https://learn.microsoft.com/en-us/windows-server/networking/technologies/network-subsystem/net-sub-choose-nic#receive-segment-coalescing-rsc)、[Indicating Coalesced Segments](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/indicating-coalesced-segments)、[UDP RSC Offload](https://learn.microsoft.com/en-us/windows-hardware/drivers/network/udp-rsc-offload) |
 | RACK/TLP・受信ウィンドウ | 組で有効・Normalを維持 | 損失検出と受信ウィンドウの不足を避ける。Experimentalや再送タイマーの短縮が通常のRTTを短くするとは判断しない。[IETF RFC 8985、2021年2月](https://www.rfc-editor.org/rfc/rfc8985.html)、[Microsoft、netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface) |
+| TCP初回再送・SYN再送 | `initialrto=1000 maxsynretransmissions=4`を1コマンドで組にし、Internetテンプレートの値を読み戻す | 接続要求が失われたときの再試行を早める。RTO単独だと接続断念が3000ms×2回の21秒から1000ms×2回の7秒に早まるため、SYN再送4回（1+2+4+8+16=31秒）と必ず組にし、断念までの時間をどちらのOS既定値（3000/2または1000/4。どちらかは未確認）以上にも保つ。実機（build 26300）で適用・読み戻し（1000/4）・元の値への復元を確認。通常のRTTを短くする設定ではなく、送信中の待ち行列にも効かない。手動の既定化は従来どおり3000/2（未変更のWindowsで既定値を確認できるまで現状維持）。遅延への効果は未測定 |
 
 資料の確認日は2026年10月23日です。MicrosoftのNIC指針はWindows Server向けのため、Windows 11の各ゲームでの効果を実証する資料とは区別します。
 ローカルのWindowsビルド26300で設定値・照会経路を確認していますが、このプロファイルでのRTT・ジッター・損失・フレーム時間の比較測定は未実施です。
@@ -153,11 +154,12 @@ BBR2とloopback Large MTUの既存組み合わせは維持しますが、全通�
 TCP全体の`pacingprofile=always`を追加適用します。製品のおまかせ設定は選択NICの媒体で適用を分けません。送信の平滑化とキュー圧の抑制という機構を優先する方針で、BBR2を必須条件とはしません。[IETF BBR draft §4.2](https://www.ietf.org/archive/id/draft-ietf-ccwg-bbr-05.html)、[Microsoft netsh interface](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/netsh-interface)を参照してください。有線・BBR2固定のoff/always/off比較では中央値の一貫した改善はなく、Upload P95は改善側でした。この計測条件は製品の媒体制限ではなく、実測で改善が証明された設定や、すべての環境で低遅延になる設定とは説明しません。
 System32のnetshの終了値と、`int tcp dump`の`set global`行にある固定トークン`pacingprofile=always`の一意な読み戻しを確認します。保証するのは保存された構成で、各接続の実際のペーシング挙動や遅延ではありません。個別の既定化は引き続き`default`です。
 
-RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、RTO・HyStart・PRRの新たな強制値は追加しません。
+RX/TXバッファの一律最小化、RSSキュー数の最大化・固定CPU指定、USOの一律停止、HyStart・PRRの新たな強制値は追加しません。RTOは上の表の初回再送・SYN再送の組だけを例外とし、それ以外のRTO値は強制しません。
 負荷・ドライバー・輻輳制御との組み合わせを確認する必要があり、低遅延に有利な共通値を確定できないためです。
 旧ACK/Nagleレジストリ調整の除去後、選択NICの既存インターフェースキーへ`TcpAckFrequency`をDWORDの1で設定します。
 2026年10月24日のWindows 11ビルド26300・Wi-FiでのA/B/A2各3試行では、受信からACK送信までの時間の中央値の平均が44.665ms → 0.125ms → 44.696msとなりました。
 各段階の実再起動と設定値を照合したTCPIP層の観測で、他のNIC・Windowsビルド・ゲームやpingへの効果、上り混雑時の影響は未測定です。
+上りが細い回線では、即時ACKが上りを圧迫し得ます。試算として、この1台で下り90〜95Mbps中の送信（ほぼACK）は3.5〜4.7Mbpsで、上り10Mbps未満の回線なら約35〜47%に当たります。この観測は即時ACKと既定のACKの比較ではなく、ACK頻度のA/Bは未実施です。そのため、30日以内に計測済みで上り10Mbps未満と確認できた回線だけ設定を省き、確認できなければ従来の1にします。おまかせから計測・制限は起動しません。
 個別設定にも選択NICへの値1の適用・設定値表示・値の削除によるWindows既定への復帰を設けます。変更後はPCの再起動が必要で、設定値の表示だけでは再起動後の実動作を保証しません。
 `TcpDelAckTicks`の旧Windows向け説明やMSMQ固有の`TCPNoDelay`を一般アプリへ転用しません。
 テンプレートのDelayedAckFrequency / DelayedAckTimeoutMsは変更せず、インターフェースの値だけを操作します。関連する仕様資料は[Microsoft、KB328890](https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/registry-entry-control-tcp-acknowledgment-behavior)、[Set-NetTCPSetting、DelayedAckFrequency / DelayedAckTimeoutMs](https://learn.microsoft.com/en-us/powershell/module/nettcpip/set-nettcpsetting)を参照してください。
@@ -181,6 +183,35 @@ A-MSDU受信（`AMSDURx`）は、確認したRZ616ドライバーでOFFが集約
 GUIDと説明で対象を照合し、再適用で元の値を上書きしません。復元は保存対象だけを扱い、外部変更との競合は上書きしません。
 詳細プロパティとSelective Suspendの変更には `-NoRestart` を指定し、WDF/WMI経路でもNICの再起動を要求しません。ドライバー設定として保存された値の読み戻しと、稼働中の反映・性能の確認を区別します。適用・復元後はPC再起動が必要です。
 NIC設定の適用処理は、仮想NIC、未知のプロパティ値、許可対象外のオフロード・リンク速度・バッファー・周波数帯・チャンネル幅・ローミングを変更しません。一括処理のTCPグローバル設定とは責務を分けます。
+
+### 上り速度の制限
+
+Windows 専用で、「おまかせ高速化設定」とは別の画面です。おまかせから計測・制限・解除を起動せず、利用者が個別に操作します。目的は、大きな送信中に PC 側で作られる送信の待ち行列を、回線の上り容量の手前で止めることです。ルーター・ISP 側の待ち行列は直接制御しません。
+
+- **方式**: QoS ポリシーを `ActiveStore` にだけ作ります（`ShisuiUplinkLimit` が適用用、`ShisuiUplinkTrial` が計測用）。`-Default` と `-ThrottleRateActionBitsPerSecond` を使い、PC 全体の送信合計に効きます。LAN 宛ても対象で、LAN 除外はできません。宛先・プロトコルの条件は ActiveStore に保存されず、無条件になることを実機で確認しています。永続ストアは未検証です。
+- **他ポリシーとの境界**: `Shisui*` 以外の QoS ポリシーが ActiveStore または既定ストアに 1 件でもあれば、計測・適用を拒否して名前を表示します。他のポリシーは変更・削除しません。状態を読めない場合も拒否し、「無い」とは扱いません。
+- **同時に作らない**: 試験用と適用用は Precedence が同値で競合するため同時に存在させません。計測開始時に適用用があれば値を覚えて削除し、計測を適用せずに終えたら `finally` で元の値へ復元します。計測結果を適用する場合は復元せず、新しい値を入れます。
+- **回線の識別**: 既定経路（IPv4、なければ IPv6）の InterfaceGuid とゲートウェイの MAC です。MAC を取れない場合は適用不可、既定経路が仮想 NIC の場合は計測・適用を拒否します。
+- **計測**: 測定先は `https://speed.cloudflare.com/__up` で、HTTP/1.1・4 接続・8MB の POST を繰り返します（プロキシ不使用、証明書検証は既定）。NIC 送信は `GetIPStatistics().BytesSent` を 1 秒ごとに、遅延は 1.1.1.1 への ICMP を 10Hz で取ります。手順は ① 無負荷 20 秒（NIC の送受信平均が 1Mbps を超えれば中止。標本不足・損失 5% 超・ICMP 全滅は「回線が不安定」）、② 4 接続 10 秒を最大 3 回（立ち上がり 3 秒を除いた NIC 送信の平均を 3 回取り、その最小値を容量とする。負荷時の p90 が無負荷 +15ms 以内かつ損失が +2 ポイント以内なら「変更不要」で終了）、③ 容量の 95/90/85/80/75/70% の二分探索（各 20 秒、最大 3 試行）で最速の合格値を選ぶ（合格なしは「制限しても改善しない」）、④ 「なし→あり→なし→あり」を各 10 秒で再現確認（「あり」が 2 回とも無負荷 +25ms・損失 +2 ポイント以内で、遅延の増分が直前の「なし」の半分以下）、です。③ の合格線 +15ms のすぐ内側の値は 10 秒区間の揺れで落ち得る（推定）ため、④ の許容は広げ、改善幅を必須にしています。容量から見積もった ③④ の送信量が残り予算に足りなければ、③ の前に止めます。計測中の変更コマンドへはキャンセルを渡さず、前後で判定します（途中で止めると終了を確認できず、後始末できないため）。ポリシー値は NIC 送信を設定値で割った比（試験用ポリシーで校正し、既定は 1.03、範囲 1.0〜1.10）で換算し、1kbps 単位へ切り捨てます。Windows は上限値を 8bps 単位へ切り捨てて保存するため、端数があると読み戻しが一致しません（実機確認）。
+- **打ち切り・失敗**: 総量 2GB・5 分で打ち切り、適用しません。中止・失敗・未完了の計測は、保存済みの計測を上書きしません。変更コマンドの終了を確認できない場合だけは、既存規約どおり以降の変更を止め、試験用が残り得ることを表示します。総量 2GB は、上り約 120Mbps を超える回線で制限が必要な場合、計測の途中で届く計算です。成功以外の HTTP 応答・接続失敗は測定先エラーとして全体を中止し、自動再試行しません。区間は、標本 50 未満、または NIC 送信とアプリ送信の差が 15% を超えると無効とし、1 回だけやり直して再び無効なら中止します。計測は必ず `finally` で試験用を削除（`CancellationToken.None`）し、0 件を読み戻して、失敗を画面に明示します。
+- **適用と保存の順序**: 適用は結果表示後の利用者操作だけです。設定保存（IsEnabled=true）→ 適用 → 読み戻しの順で、保存失敗なら適用せず、適用失敗なら IsEnabled=false を保存します。解除は OS 削除 → 保存で、保存失敗は OS の完了と分けて通知します。変更ゲートは ViewModel が取得し、サービスは再取得しません。
+- **再起動・回線変更**: ポリシーは再起動で消えるため、起動時に保存済みの回線と照合して再適用し、不一致・読込失敗・保存なしなら適用用を削除します。試験用は起動時に必ず削除します。起動中は `NetworkChange.NetworkAddressChanged` を数秒まとめて照合し、不一致なら解除し、保存済みの回線に戻れば再適用します。回線を一時的に特定できない場合は、3 秒間隔で 5 回まで再試行してから判断します。先に状態だけを読み、変更が必要なときだけゲートと処理中表示を使います。有効な保存がなければ、回線変更では何も実行しません。他の QoS ポリシーがあっても、回線不一致・有効な保存なしなら自名のポリシーの削除は続けます（適用だけを拒否）。終了時は計測を中止し、後始末を最大 15 秒待ちます。強制終了・電源断では、次回起動か再起動まで試験用が残り得ます。Shisui が起動していない間の回線変更は検知できません。
+- **保存形式**: `AppSettings.UplinkLimitProfiles`（回線ごとに 1 件、同一回線は上書き。旧設定は欠落＝空）。計測は 30 日を超えると「古い」と案内するだけで、自動解除しません。
+
+実機の確認結果（この 1 台・Wi-Fi・Windows 11 build 26300・夜間 1 回、BBR2・pacing=always 適用済み）:
+
+| 条件 | NIC 送信 | 負荷時 ICMP（1.1.1.1） |
+| --- | --- | --- |
+| 制限なし（4 接続・各 10 秒） | 36.8〜37.2Mbps | p50 83〜119ms / p90 161〜169ms / 損失 5〜7 件 / 約 50 件 |
+| 28Mbps（`ActiveStore`） | 28.8〜28.9Mbps（設定値の約 1.03 倍） | p50 17ms / p90 21〜25ms / 損失 2〜3 件 / 約 100 件 |
+
+UDP 60Mbps の送信は、制限ありで NIC 28.3Mbps、なしで 59.2Mbps でした。アプリ側の平滑制限では p90 が 145〜160ms から 13〜16ms に下がり、curl の間欠制限では改善しませんでした。ポリシーは作成直後から有効で、削除で戻り、再起動で消え、毎回読み戻しで残存 0 を確認しています。Windows PowerShell 5.1 でも作成・読み戻し・削除と、条件が保存されないことを確認済みです。
+
+計測サービス（`UplinkMeasurementService`）の実回線での完走（管理者、同じ 1 台・別の時刻に 1 回）: 無負荷 p90 11ms、容量 36.9Mbps、提案 35.0Mbps（95%）。④ の p90 は、なし 160 / 163ms に対し、あり 25 / 24ms、損失はすべて 0%、アプリ送信と NIC 送信の差は 2.5〜6.3%。送信 456MB・184 秒、終了後の試験用の残存 0 件。
+
+実アプリ（管理者、同じ 1 台）で、計測→適用→読み戻し→実測（上限 34.2Mbps に対し NIC 34.1Mbps、p90 24ms）→終了しても維持→再起動相当（ポリシーを外して起動し直し）の再適用→解除、計測の中止、強制終了後の起動時の試験用削除を Debug 版で確認。Native AOT 公開物（署名・MSI なし）では、計測の完走、他ポリシーがあるときの計測拒否、強制終了後の試験用削除、保存済み設定からの起動時適用、解除を確認（[この上限を適用] のクリックは Debug 版だけ）。③ の合格線 +15ms を ④ にも使っていた間は、3 回中 1 回が ④ で「改善なし」になりました。その回の ④ の区間値は記録しておらず、落ちた条件（遅延か損失か）は未確認です。変更後の 2 回は合格しましたが、変更の効果を示すものではありません。現在は ④ で不合格のとき区間ごとの p90 と損失を表示します。
+
+未検証: 署名済み MSI での動作、実際の PC 再起動後の再適用、回線を実際に切り替えたときの解除・再適用、ログオフ・更新再起動時の後始末、他の回線・時間帯・有線での効果。この結果は他の環境の改善を示しません。
 
 ### ネットワーク診断
 
@@ -274,6 +305,7 @@ metadata 公開後の失敗では退避 metadata を復元して再 purge しま
 - DoH のチェック状態は OS の実状態から復元します。DoT はロケール非依存に状態取得できる API がないため、
   保存状態を実状態として表示せず、操作時だけ有効化・無効化します。
 - DoH は対象 IP の登録を一括取得し、欠落だけを追加、不整合なテンプレート・自動昇格だけを修復します。既存の UDP fallback 禁止は維持します。正しい登録は再設定しません。グローバル有効化の終了値と、対象の期待 HTTPS テンプレート・型付き bool・fallback の読み戻しを確認し、成功しない設定を表示上だけ有効にしません。登録値確認と実際の TLS 通信成功は区別します。
+- 上り速度の制限は ActiveStore の `ShisuiUplinkLimit` / `ShisuiUplinkTrial` だけを扱い、`Shisui*` 以外の QoS ポリシーを変更・削除しません。試験用と適用用を同時に存在させず、計測後は試験用の残存 0 件を読み戻します。おまかせ高速化設定から計測・制限を起動しません。
 - Windows の正式配布物は署名済み PerMachine MSI です。新しい PerUser `Setup.exe` は公開せず、旧配布物は「設定と更新」の保持方針に従います。旧 PerUser 版を
   ユーザー書き込み可能な場所から管理者実行し続けません。移行・修復対象は検証済みの既知パスに限定します。
   ダウンロードした MSI は書換え・削除を拒否する同一ハンドルで署名検証し、そのハンドルから再解析ポイントを解決した最終パスだけを `msiexec` へ渡して終了まで保持します。

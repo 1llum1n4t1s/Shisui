@@ -40,7 +40,17 @@ public partial class App : Application
             {
                 DataContext = mainViewModel,
             };
-            desktop.Exit += (_, _) => LoggerBootstrap.Shutdown();
+            // 計測中の終了 (終了操作・ログオフ・更新再起動) では、計測を中止して試験用ポリシーの削除を待つ (最大 15 秒)。
+            // 更新再起動は Exit を経由しないことがあるため、ProcessExit でも行う (何度呼んでもよい)。
+            void StopUplinkMeasurement() =>
+                mainViewModel.UplinkLimit?.Shutdown(UplinkLimitViewModel.ShutdownWaitTimeout);
+            desktop.ShutdownRequested += (_, _) => StopUplinkMeasurement();
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => StopUplinkMeasurement();
+            desktop.Exit += (_, _) =>
+            {
+                StopUplinkMeasurement();
+                LoggerBootstrap.Shutdown();
+            };
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -73,8 +83,12 @@ public partial class App : Application
             services.AddSingleton<ILegacyNetworkDiagnosticsService, Core.Services.Windows.WindowsLegacyNetworkDiagnosticsService>();
             services.AddSingleton<IGamingNetworkProfileService, Core.Services.Windows.WindowsGamingNetworkProfileService>();
             services.AddSingleton<INetworkDiagnosticsService, Core.Services.Windows.WindowsNetworkDiagnosticsService>();
+            services.AddSingleton<IUplinkLimitService, Core.Services.Windows.WindowsUplinkLimitService>();
+            services.AddSingleton<IUplinkLoadProbe, UplinkLoadProbe>();
+            services.AddSingleton<IUplinkMeasurementService, UplinkMeasurementService>();
             services.AddSingleton<TcpTuningViewModel>();
             services.AddSingleton<MaintenanceViewModel>();
+            services.AddSingleton<UplinkLimitViewModel>();
         }
         else if (OperatingSystem.IsMacOS())
         {

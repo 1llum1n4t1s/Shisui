@@ -62,6 +62,7 @@ cleanup targets described in [DESIGN.md](DESIGN.md#インストール移行の�
 | DNS プリセット、DoH / DoT | DNS Preset Catalog / DoH toggle / DoT toggle |
 | ワンクリック最適化 | One-click optimization |
 | ゲーム向け NIC 設定 | Gaming NIC profile |
+| 上り速度の制限（QoS ポリシー、回線計測） | Uplink speed limit |
 | 現在値の読み取り（ロケール非依存） | Reading current state is locale-independent |
 | ネットワーク診断 | Used-PC network diagnostics / Network diagnostics |
 | アダプタ一覧・詳細・ゴースト削除 | Adapter list filtering / Adapter details / Disconnected network device cleanup |

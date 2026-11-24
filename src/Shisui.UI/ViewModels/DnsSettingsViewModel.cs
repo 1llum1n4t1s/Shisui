@@ -27,6 +27,7 @@ public partial class DnsSettingsViewModel : ObservableObject
     private readonly IWinsockResetService? _winsockResetService;
     private readonly IWinHttpCacheService? _winHttpCacheService;
     private readonly IIpStackResetService? _ipStackResetService;
+    private readonly IUplinkLimitService? _uplinkLimitService;
     private int _adapterDetailsRequestVersion;
     private int _dohStateRequestVersion;
     private int _busyOperationCount;
@@ -148,10 +149,13 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (_tcpTuningService is not null)
             {
                 items.Add("TCP 設定・旧レジストリ調整：初期化後に再設定");
-                items.Add("選択 NIC の TCP ACK 頻度：1");
+                items.Add(_uplinkLimitService is null
+                    ? "選択 NIC の TCP ACK 頻度：1"
+                    : "選択 NIC の TCP ACK 頻度：1（上りが 10 Mbps 未満と計測済みの回線では既定のまま）");
                 items.Add("輻輳制御：BBR2 / 受信ウィンドウ：Normal");
                 items.Add("TCP RACK・TLP・RSS：ON / RSC：OFF");
                 items.Add("ECN・timestamps・Fast Open / fallback：ON");
+                items.Add("TCP 接続の再送：初回 1 秒・最大 4 回");
                 items.Add("TCP ペーシング：always（PC 全体）");
             }
             if (_gamingNetworkProfileService is not null)
@@ -203,8 +207,10 @@ public partial class DnsSettingsViewModel : ObservableObject
         IWinsockResetService? winsockResetService = null,
         IWinHttpCacheService? winHttpCacheService = null,
         IIpStackResetService? ipStackResetService = null,
-        IDnsClientRepairService? dnsClientRepairService = null)
+        IDnsClientRepairService? dnsClientRepairService = null,
+        IUplinkLimitService? uplinkLimitService = null)
     {
+        _uplinkLimitService = uplinkLimitService;
         _adapterService = adapterService;
         _dnsService = dnsService;
         _cacheService = cacheService;
@@ -482,6 +488,26 @@ public partial class DnsSettingsViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 選択 NIC が現在の回線で、保存済みの計測が上りの細い回線 (30 日以内・10 Mbps 未満) を示すときだけ true。
+    /// サービスなし・状態取得の失敗・回線不明はすべて false (従来どおり ACK を設定する)。計測や制限は起動しない。
+    /// </summary>
+    private async Task<bool> ShouldSkipImmediateAckAsync(string adapterConnectionName)
+    {
+        if (_uplinkLimitService is null)
+            return false;
+        try
+        {
+            var state = await _uplinkLimitService.GetStateAsync();
+            return UplinkAckPolicy.ShouldSkipImmediateAck(
+                state, adapterConnectionName, _settingsService.Current.UplinkLimitProfiles, DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            LoggerBootstrap.Log.Error("上り回線の確認に失敗したため、ACK 頻度は従来どおり設定します", ex);
+            return false;
+        }
+    }
 
     /// <summary>
     /// PC 初心者でも迷わず使えるように、DNS プリセットの適用・DoH 有効化・DNS キャッシュクリア・
@@ -517,6 +543,9 @@ public partial class DnsSettingsViewModel : ObservableObject
                 StatusText = "アダプタを選択してください";
                 return;
             }
+
+            // 回線の照合は IP スタックのリセットや接続名整理より前に行う (ゲートウェイ・接続名が変わる前の状態で判定する)。
+            var skipImmediateAck = _tcpTuningService is not null && await ShouldSkipImmediateAckAsync(adapter.Id);
 
             if (_dnsClientRepairService is not null)
             {
@@ -709,11 +738,20 @@ public partial class DnsSettingsViewModel : ObservableObject
                 results.Add(await _tcpTuningService.RevertLegacyTcpRegistryTweaksToDefaultAsync());
                 EnsureCommandsFinished(results);
                 // 旧値の除去後に、選択 NIC へ即時 ACK を設定する。接続名整理より先に適用する。
+                // 上りが細い回線では設定を省く (旧値の除去が前回の値も消すため、再起動案内は必要)。
                 ackConfigurationRequested = true;
-                var ackResult = await _tcpTuningService.SetTcpAckFrequencyAsync(adapter.Id, true);
-                results.Add(ackResult);
-                if (ackResult.RequiresOperationAbort)
-                    throw new InvalidOperationException("ACK 頻度の設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
+                if (skipImmediateAck)
+                {
+                    results.Add(new CommandExecutionResult(true, "ACK 頻度: 上りが細い回線のため Windows の既定", 0,
+                        string.Empty, string.Empty));
+                }
+                else
+                {
+                    var ackResult = await _tcpTuningService.SetTcpAckFrequencyAsync(adapter.Id, true);
+                    results.Add(ackResult);
+                    if (ackResult.RequiresOperationAbort)
+                        throw new InvalidOperationException("ACK 頻度の設定処理の終了を確認できないため、後続の変更を中断しました。ログを確認してください。");
+                }
                 results.Add(await _tcpTuningService.SetAutoTuningLevelAsync(AutoTuningLevel.Normal));
                 EnsureCommandsFinished(results);
                 results.AddRange(await _tcpTuningService.EnableLossRecoveryAsync());
@@ -731,6 +769,7 @@ public partial class DnsSettingsViewModel : ObservableObject
                     results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.EcnCapability, true));
                     results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.Timestamps, true));
                     results.Add(TcpSettingsVerifier.VerifyGlobalOption(snapshot, TcpGlobalOption.FastOpen, true));
+                    results.Add(TcpSettingsVerifier.VerifyInitialRto(snapshot));
                 }
                 catch (Exception ex)
                 {
@@ -830,7 +869,9 @@ public partial class DnsSettingsViewModel : ObservableObject
             if (allSucceeded)
             {
                 StatusText = IsTcpOptimizationAvailable
-                    ? "設定コマンドを実行しました。BBR2・RSS・Fast Open 有効 / RSC 無効と、Internet の ECN・timestamps 有効・受信ウィンドウ実効 Normal を確認済みです。選択 NIC の ACK 頻度の設定値 1 も確認済みです。Fast Open fallback・RACK / TLP・UDP の実状態は未検証です。遅延改善量も未測定です。"
+                    ? "設定コマンドを実行しました。BBR2・RSS・Fast Open 有効 / RSC 無効と、Internet の ECN・timestamps 有効・受信ウィンドウ実効 Normal・接続再送（初回 1 秒・SYN 再送 4 回）を確認済みです。" + (skipImmediateAck
+                        ? "選択 NIC の ACK 頻度は、上りが細い回線のため Windows の既定のままです。"
+                        : "選択 NIC の ACK 頻度の設定値 1 も確認済みです。") + "Fast Open fallback・RACK / TLP・UDP の実状態は未検証です。遅延改善量も未測定です。"
                     : "おまかせ高速化設定を適用しました";
                 if (_gamingNetworkProfileService is not null)
                 {

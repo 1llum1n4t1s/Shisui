@@ -48,6 +48,25 @@ public class WindowsTcpStateParserTests
     }
 
     [TestMethod]
+    public void Parse_ReadsInitialRtoAndMaxSynRetransmissions()
+    {
+        var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample + "\nINITIALRTO=1000\nMAXSYNRETRANSMISSIONS=4");
+
+        Assert.AreEqual("1000", snapshot.InitialRto);
+        Assert.AreEqual("4", snapshot.MaxSynRetransmissions);
+    }
+
+    [TestMethod]
+    public void Parse_InitialRtoMissing_ReturnsEmptyWithoutBreakingOtherReads()
+    {
+        var snapshot = WindowsTcpStateParser.Parse(AllBbr2Sample + "\nINITIALRTO=\nMAXSYNRETRANSMISSIONS=");
+
+        Assert.AreEqual(string.Empty, snapshot.InitialRto);
+        Assert.AreEqual(string.Empty, snapshot.MaxSynRetransmissions);
+        Assert.AreEqual(Bbr2Status.Enabled, snapshot.Bbr2);
+    }
+
+    [TestMethod]
     public void Parse_NoTemplatesBbr2_ReturnsDisabled()
     {
         const string sample = """

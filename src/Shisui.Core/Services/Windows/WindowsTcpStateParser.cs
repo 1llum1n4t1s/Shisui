@@ -17,6 +17,8 @@ public static class WindowsTcpStateParser
         var autoTuningLevel = string.Empty;
         var autoTuningLevelGroupPolicy = string.Empty;
         var autoTuningLevelEffective = string.Empty;
+        var initialRto = string.Empty;
+        var maxSynRetransmissions = string.Empty;
         var hasInvalidProviderData = false;
         var hasLegacyProviderData = false;
         var hasNamedProviderData = false;
@@ -43,6 +45,8 @@ public static class WindowsTcpStateParser
                 case "AUTOTUNE": autoTuningLevel = value; break;
                 case "AUTOTUNE_POLICY": autoTuningLevelGroupPolicy = value; break;
                 case "AUTOTUNE_SOURCE": autoTuningLevelEffective = value; break;
+                case "INITIALRTO": initialRto = value; break;
+                case "MAXSYNRETRANSMISSIONS": maxSynRetransmissions = value; break;
                 case "CC":
                     if (value.Length == 0)
                     {
@@ -103,7 +107,9 @@ public static class WindowsTcpStateParser
             autoTuningLevel,
             providers,
             autoTuningLevelGroupPolicy,
-            autoTuningLevelEffective);
+            autoTuningLevelEffective,
+            initialRto,
+            maxSynRetransmissions);
     }
 
     private static Bbr2Status ResolveBbr2(
