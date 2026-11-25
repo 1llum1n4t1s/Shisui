@@ -4,7 +4,7 @@
 
 - 直接参照の `Velopack` パッケージと `$VpkVersion` の CLI 固定版は揃えて保つ。どちらも最新版の自動解決ではない。ダイアログのパッケージは単独で更新してよい。更新・パッケージの変更はすべて `pwsh scripts/release-local.ps1 -SkipUpload` で検証する（win-x64 Native AOT、MSI Directory 正規化、再署名、署名検査を含む）。publish と一致する明示的な `vpk pack --runtime $runtime` を維持する。
 - 署名は Sigilune（`scripts/Sigilune.Common.ps1`。Certum のクラウド鍵を signtool の `/dlib` 経由で使用。署名者は `CN=Open Source Developer Yuichiro Shinozaki`）と Windows SDK の `signtool.exe` で行う。SimplySign Desktop は使わない。MSI Directory 正規化後の再署名は `sigilune sign --replace` を使う。
-- `.github/workflows/dependency-validation.yml`（build + `dotnet test` + R2 fixtures）は、`main` への push、すべての PR、手動実行、および `release.yml` の `test` ジョブとして動く。`release` ジョブは `needs: test` なので、テストが失敗すると署名と配信が止まる。
+- `.github/workflows/dependency-validation.yml`（build + `dotnet test` + R2 fixtures）は、`main` への push、すべての PR、手動実行、および `release.yml` の `test` ジョブとして動く。`release` ジョブは `needs: test` なので、テストが失敗すると署名と配信が止まる。 `concurrency` は PR では PR 番号で束ねて古い実行を取り消し、`main` への push などでは `github.run_id` で実行ごとに分ける（後続の push で先の検証を取り消さない）。
 - 正式なリリースは `.github/workflows/release.yml` で動く（`main` の commit への軽量タグ `v<version>` の push が契機。Environment は `release`、`SIGILUNE_EMAIL` / `SIGILUNE_TOTP_URI` / `CLOUDFLARE_API_TOKEN`）。ローカル実行には `sigilune setup` が必要。
 - `-SkipUpload` はクラウドへの書き込みなしでビルドと署名だけを行う。アップロードには、さらに `CLOUDFLARE_API_TOKEN`、またはローカルではリリーススクリプトが設定した秘密情報の取得元の `cloudflare.api_token` が要る。
 - リリーススクリプトは、クリーンな作業ツリー（未追跡ファイルを含む）、.NET 11 SDK、HEAD と一致する完全なソース commit SHA を要求する。`-SourceGitSha` の既定は HEAD で、別のリビジョンは選べない。これらの検査は `-SkipUpload` にも適用される。
