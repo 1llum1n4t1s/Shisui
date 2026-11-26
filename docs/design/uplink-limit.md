@@ -19,4 +19,4 @@ Windows 専用で、「おまかせ高速化設定」とは別の画面です。
 
 実機での結果と未検証の項目は[実機での検証結果](testing.md)にあります。
 
-関連文書: [重要な不変条件](section-02.md)、[DESIGN.md](../../DESIGN.md)
+関連文書: [重要な不変条件](critical-invariants.md)、[DESIGN.md](../../DESIGN.md)

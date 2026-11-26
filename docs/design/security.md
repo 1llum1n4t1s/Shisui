@@ -5,7 +5,7 @@
 `ExecutableTrustVerifier` は System32 の WinVerifyTrust を使い、期待する publisher CN とチェーン全体の
 失効状態を検証します。ダウンロードした MSI は Online、ローカル実行ファイルは CacheOnly を使い、
 証明書は別のファイル読込みではなく検証済み trust chain から取得します。
-MSI の同一ハンドルを署名検証から `msiexec` 終了まで保持する条件は[重要な不変条件](section-02.md)に示します。
+MSI の同一ハンドルを署名検証から `msiexec` 終了まで保持する条件は[重要な不変条件](critical-invariants.md)に示します。
 
 信頼済み PerMachine 版は旧 `Update.exe` を実行せず、再解析ポイントを辿らない限定的な清掃を行います。
 HKLM の安定実行ファイル登録、`.msi-installed`、現在の実行場所と署名 publisher が一致する場合だけ

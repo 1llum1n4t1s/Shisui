@@ -1,6 +1,6 @@
 # ゲーム向け NIC の詳細設定
 
-Windows 専用で、おまかせ高速化設定の一括適用に含めます。画面に個別の適用欄は設けません。電源管理の項目は [電源管理](section-05.md) に分けます。
+Windows 専用で、おまかせ高速化設定の一括適用に含めます。画面に個別の適用欄は設けません。電源管理の項目は [電源管理](power-management.md) に分けます。
 
 - **共通項目**: 物理 Ethernet/Wi-Fi の対応する標準プロパティで、RSS・LSOv2 IPv4/IPv6 を 1、IP IPv4・TCP/UDP IPv4/IPv6 のチェックサムオフロードを 3（送受信有効）にします。二値項目は 0/1 の両方、チェックサム項目は元値と目標値がドライバーの対応値に含まれることを確認します。CPU 負荷への効果と、ゲーム・WAN の遅延改善は区別します。
 - **UDP RSC・割り込み調整**: 標準 `*UdpRsc` を公開し 0/1 に対応する物理 Ethernet/Wi-Fi では URO を 0 にします。OS 側の UDP URO/USO 既定化とは別に扱います。物理 Ethernet の `*InterruptModeration` / `*EEE`、物理 Wi-Fi の `*InterruptModeration` も対応値を確認して無効化します。

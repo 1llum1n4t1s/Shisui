@@ -30,11 +30,11 @@ ViewModel が共有 `INetworkMutationGate` を取得し、service が builder �
 
 ### 低遅延を優先する設定方針
 
-遅延と損失回復の遅れを減らすことを優先し、設定の受理・実効値・実測を区別します。[configuration.md](docs/design/configuration.md)。ゲーム向け NIC 設定は [section-04.md](docs/design/section-04.md)、電源管理は [section-05.md](docs/design/section-05.md) にあります。
+遅延と損失回復の遅れを減らすことを優先し、設定の受理・実効値・実測を区別します。[configuration.md](docs/design/configuration.md)。ゲーム向け NIC 設定は [gaming-nic-settings.md](docs/design/gaming-nic-settings.md)、電源管理は [power-management.md](docs/design/power-management.md) にあります。
 
 ### 上り速度の制限
 
-ActiveStore の QoS ポリシーで送信待ち行列を抑えます。おまかせ設定とは独立です。[section-01.md](docs/design/section-01.md)
+ActiveStore の QoS ポリシーで送信待ち行列を抑えます。おまかせ設定とは独立です。[uplink-limit.md](docs/design/uplink-limit.md)
 
 ### ネットワーク診断
 
@@ -46,8 +46,8 @@ ICMP の遅延診断（4/30/100 回の計測、p95、ジッター）と、その
 
 ## 重要な不変条件
 
-引数は整形済み文字列で渡し、builder/parser は純粋処理とし、変更ゲートは非再入、QoS は `Shisui*` だけを扱い、旧版を管理者実行しません。[section-02.md](docs/design/section-02.md)
+引数は整形済み文字列で渡し、builder/parser は純粋処理とし、変更ゲートは非再入、QoS は `Shisui*` だけを扱い、旧版を管理者実行しません。[critical-invariants.md](docs/design/critical-invariants.md)
 
 ## 採用済みの設計判断
 
-Core/UI/Tests 分離、`net11.0`、Native AOT、ロケール非依存出力、実行時昇格、CI 署名リリースの理由とトレードオフを [section-03.md](docs/design/section-03.md) にまとめています。
+Core/UI/Tests 分離、`net11.0`、Native AOT、ロケール非依存出力、実行時昇格、CI 署名リリースの理由とトレードオフを [design-decisions.md](docs/design/design-decisions.md) にまとめています。
